@@ -30,6 +30,7 @@
       <SafetyDashboard v-if="activeTab === 'Dashboard' && session.role === 'safety'" />
       <DashboardHome v-else-if="activeTab === 'Dashboard'" :cards="currentData.cards" />
       <VenueCatalogue v-else-if="activeTab === 'Venue Catalogue'" />
+      <VenueCalendar v-else-if="activeTab === 'Venue Calendar'" />
       <BrowseEvents v-else-if="activeTab === 'Browse Events'" />
       <CreateEvent v-else-if="activeTab === 'New Request'" />
       <UpcomingEventsCalendar v-else-if="activeTab === 'Upcoming Events'"/>
@@ -43,7 +44,7 @@
       <Profile v-else-if="activeTab === 'Profile'" />
 
       <div class="not-built" v-else>
-        This tab isn't built yet for this sprint — only Dashboard{{ hasVenueTab ? ', Venue Catalogue' : '' }}{{ hasAssignedTab ? ', Assigned Events' : '' }}{{ hasEventsTab ? ', Browse Events' : '' }}{{ hasNewRequestTab ? ', New Request' : '' }}{{ hasEquipmentTab ? ', Equipment Catalogue' : '' }}{{ hasMyEventsTab ? ', My Events' : '' }}{{ hasRegistrationsTab ? ', My Registrations' : '' }}{{ hasProfileTab ? ', Profile' : '' }} are functional.
+        This tab isn't built yet for this sprint — only Dashboard{{ hasVenueTab ? ', Venue Catalogue' : '' }}{{ hasCalendarTab ? ', Venue Calendar' : '' }}{{ hasAssignedTab ? ', Assigned Events' : '' }}{{ hasEventsTab ? ', Browse Events' : '' }}{{ hasNewRequestTab ? ', New Request' : '' }}{{ hasEquipmentTab ? ', Equipment Catalogue' : '' }}{{ hasMyEventsTab ? ', My Events' : '' }}{{ hasRegistrationsTab ? ', My Registrations' : '' }}{{ hasProfileTab ? ', Profile' : '' }} are functional.
       </div>
     </main>
   </div>
@@ -56,6 +57,7 @@ import { signOut } from 'firebase/auth'
 import AppLogo from '../components/shared/AppLogo.vue'
 import DashboardHome from '../features/dashboard/DashboardHome.vue'
 import VenueCatalogue from '../features/venue-catalogue/VenueCatalogue.vue'
+import VenueCalendar from '../features/venue-calendar/VenueCalendar.vue'
 import BrowseEvents from '../features/browse-events/BrowseEvents.vue'
 import CreateEvent from '../features/create-event/CreateEvent.vue'
 import { roles } from '../config/roles.js'
@@ -83,6 +85,7 @@ const currentData = computed(() => roles[session.role] ?? { tabs: [], cards: [],
 const activeTab = ref('Dashboard')
 
 const hasVenueTab = computed(() => currentData.value.tabs.includes('Venue Catalogue'))
+const hasCalendarTab = computed(() => currentData.value.tabs.includes('Venue Calendar'))
 const hasAssignedTab = computed(() => currentData.value.tabs.includes('Assigned Events'))
 const hasEventsTab = computed(() => currentData.value.tabs.includes('Browse Events'))
 const hasNewRequestTab = computed(() => currentData.value.tabs.includes('New Request'))

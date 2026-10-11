@@ -38,6 +38,7 @@ class TestReplacementRoutes(VenueCase):
         self.patches = {
             "event": patch("app.routers.venue.fetch_event_facts", return_value=EVENT),
             "notify": patch("app.routers.venue.notify_venue_staff", return_value=2),
+            "coordinator": patch("app.routers.venue.notify_coordinator", return_value=True),
         }
         self.mocks = {name: p.start() for name, p in self.patches.items()}
 
@@ -122,6 +123,121 @@ class TestReplacementRoutes(VenueCase):
         self.assertEqual(original.json()["status"], "cancelled")
         refused = self.call("venue", "POST", f"/venues/bookings/{booking_id}/replacement", {"venueId": self.other_id})
         self.assertEqual(refused.status_code, 403)
+
+    def test_staff_can_change_and_remove_a_block_and_the_coordinator_is_told(self):
+        booking_id = self.affected_booking()
+        self.mocks["event"].reset_mock()
+        self.mocks["coordinator"].reset_mock()
+        listed = self.call("venue", "GET", f"/venues/{self.venue_id}/unavailability")
+        self.assertEqual(listed.status_code, 200, listed.text)
+        block_id = listed.json()[0]["unavailabilityId"]
+
+        updated = self.call(
+            "venue", "PATCH", f"/venues/{self.venue_id}/unavailability/{block_id}", {"note": "updated note"}
+        )
+        self.assertEqual((updated.status_code, updated.json()["note"]), (200, "updated note"))
+        self.mocks["coordinator"].assert_not_called()
+        kept = self.call("coordinator", "GET", f"/venues/bookings/{booking_id}")
+        self.assertEqual(kept.json()["status"], "approved")
+
+        moved = self.call(
+            "venue",
+            "PATCH",
+            f"/venues/{self.venue_id}/unavailability/{block_id}",
+            {"startsAt": "2030-01-07T09:00:00Z", "endsAt": "2030-01-07T11:00:00Z"},
+        )
+        self.assertEqual(moved.status_code, 409, moved.text)
+        self.assertIn("e1", moved.text)
+        self.mocks["coordinator"].reset_mock()
+        moved = self.call(
+            "venue",
+            "PATCH",
+            f"/venues/{self.venue_id}/unavailability/{block_id}",
+            {
+                "startsAt": "2030-01-07T09:00:00Z",
+                "endsAt": "2030-01-07T11:00:00Z",
+                "acknowledgeConflicts": True,
+            },
+        )
+        self.assertEqual(moved.status_code, 200, moved.text)
+        self.mocks["coordinator"].assert_called_once()
+        self.assertEqual(self.mocks["coordinator"].call_args.args[5], "venue.unavailability")
+        self.assertIn("unavailable", self.mocks["coordinator"].call_args.args[3])
+
+        removed = self.call("venue", "DELETE", f"/venues/{self.venue_id}/unavailability/{block_id}")
+        self.assertEqual(removed.status_code, 204, removed.text)
+        self.assertEqual(self.call("venue", "GET", f"/venues/{self.venue_id}/unavailability").json(), [])
+        actions = " ".join(row["action"] for row in self.call("venue", "GET", f"/venues/{self.venue_id}/activity-log").json())
+        self.assertIn("unavailability created", actions)
+        self.assertIn("unavailability updated", actions)
+        self.assertIn("unavailability cancelled", actions)
+        self.assertEqual(
+            self.call("coordinator", "DELETE", f"/venues/{self.venue_id}/unavailability/{block_id}").status_code, 403
+        )
+
+    def test_a_notification_failure_still_leaves_the_block_saved(self):
+        with signed_in_as("coordinator"):
+            created = self.client.post(
+                "/venues/bookings",
+                headers=HEADERS,
+                json={
+                    "venueId": self.venue_id,
+                    "eventId": "e1",
+                    "startsAt": "2030-01-08T10:00:00Z",
+                    "endsAt": "2030-01-08T12:00:00Z",
+                },
+            )
+        self.assertEqual(created.status_code, 201, created.text)
+        self.service.approve_booking(created.json()["bookingId"], CALLER["userId"], None)
+        self.mocks["coordinator"].reset_mock()
+        self.mocks["event"].side_effect = RuntimeError("event service down")
+        try:
+            saved = self.call(
+                "venue",
+                "POST",
+                f"/venues/{self.venue_id}/unavailability",
+                {
+                    "startsAt": "2030-01-08T10:00:00Z",
+                    "endsAt": "2030-01-08T12:00:00Z",
+                    "reason": "safety issue",
+                    "acknowledgeConflicts": True,
+                },
+            )
+        finally:
+            self.mocks["event"].side_effect = None
+        self.assertEqual(saved.status_code, 201, saved.text)
+        self.mocks["coordinator"].assert_not_called()
+
+        with signed_in_as("coordinator"):
+            other = self.client.post(
+                "/venues/bookings",
+                headers=HEADERS,
+                json={
+                    "venueId": self.other_id,
+                    "eventId": "e1",
+                    "startsAt": "2030-01-08T10:00:00Z",
+                    "endsAt": "2030-01-08T12:00:00Z",
+                },
+            )
+        self.assertEqual(other.status_code, 201, other.text)
+        self.service.approve_booking(other.json()["bookingId"], CALLER["userId"], None)
+        self.mocks["event"].return_value = EVENT.model_copy(update={"coordinatorId": None})
+        try:
+            saved = self.call(
+                "venue",
+                "POST",
+                f"/venues/{self.other_id}/unavailability",
+                {
+                    "startsAt": "2030-01-08T10:00:00Z",
+                    "endsAt": "2030-01-08T12:00:00Z",
+                    "reason": "internal activity",
+                    "acknowledgeConflicts": True,
+                },
+            )
+        finally:
+            self.mocks["event"].return_value = EVENT
+        self.assertEqual(saved.status_code, 201, saved.text)
+        self.mocks["coordinator"].assert_not_called()
 
 
 if __name__ == "__main__":

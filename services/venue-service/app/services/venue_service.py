@@ -23,6 +23,7 @@ from app.schemas.venue import (
     SuitabilityRequest,
     UnavailabilityCreate,
     UnavailabilityOut,
+    UnavailabilityUpdate,
     VenueActivityLogOut,
     VenueBookingCreate,
     VenueBookingOut,
@@ -183,6 +184,44 @@ def _approval_blocked(venue: VenueInfo, held: occupancy.Commitments) -> str:
 
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
+
+
+UNAVAILABILITY_REASONS = ("maintenance", "renovation", "safety issue", "internal activity", "other")
+
+
+def _reason(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise HTTPException(status_code=422, detail="Give a reason for this unavailability block.")
+    if cleaned not in UNAVAILABILITY_REASONS:
+        raise HTTPException(
+            status_code=422,
+            detail="Choose a reason from maintenance, renovation, safety issue, internal activity, or other.",
+        )
+    return cleaned
+
+
+def _block_changes(row: VenueUnavailability) -> dict:
+    return {
+        "unavailabilityId": row.unavailabilityId,
+        "startsAt": row.startsAt.isoformat(),
+        "endsAt": row.endsAt.isoformat(),
+        "reason": row.reason,
+        "note": row.note or "",
+    }
+
+
+def _block_out(row: VenueUnavailability) -> UnavailabilityOut:
+    return UnavailabilityOut(
+        unavailabilityId=row.unavailabilityId,
+        venueId=row.venueId,
+        startsAt=row.startsAt,
+        endsAt=row.endsAt,
+        reason=row.reason,
+        note=row.note or "",
+        createdBy=row.createdBy,
+        createdAt=row.createdAt,
+    )
 
 
 def _event_snapshot(event: EventFacts) -> dict:
@@ -651,46 +690,124 @@ class VenueService(BaseService):
         start, end = _occupied_window(row)
         return bool(self.unavailability_dao.find_overlapping(row.venueId, start, end))
 
-    def record_unavailability(self, venue_id: str, data: UnavailabilityCreate, caller: dict) -> UnavailabilityOut:
-        """Save a block. Approved bookings that overlap it stay approved, and no event is read or changed."""
+    def list_unavailability(self, venue_id: str) -> list[UnavailabilityOut]:
         self._require_venue(venue_id)
-        starts_at, ends_at = suitability._utc(data.startsAt), suitability._utc(data.endsAt)
-        if ends_at <= starts_at:
-            raise HTTPException(status_code=422, detail="The end time must be after the start time.")
-        reason = data.reason.strip()
-        if not reason:
-            raise HTTPException(status_code=422, detail="Give a reason for this unavailability block.")
-        hits = [
-            row
-            for row in self.booking_dao.list("approved", None, venue_id)
-            if self._window_overlaps(row, starts_at, ends_at)
-        ]
-        if hits and not data.acknowledgeConflicts:
-            named = "; ".join(f"event {row.eventId}" for row in hits)
-            raise conflict(
-                "This block overlaps a confirmed booking and needs to be confirmed before it is recorded: "
-                f"{named}. The booking stays as it is until a replacement is requested."
-            )
+        return [_block_out(row) for row in self.unavailability_dao.list_for_venue(venue_id)]
+
+    def record_unavailability(self, venue_id: str, data: UnavailabilityCreate, caller: dict) -> UnavailabilityOut:
+        """Save a block. Overlapping bookings and holds stay as they are, and no event is read or changed."""
+        self._require_venue(venue_id)
+        starts_at, ends_at = self._period(data.startsAt, data.endsAt)
+        reason = _reason(data.reason)
+        self._require_acknowledgement(venue_id, starts_at, ends_at, data.acknowledgeConflicts)
         row = VenueUnavailability(
             unavailabilityId=str(uuid4()),
             venueId=venue_id,
             startsAt=starts_at,
             endsAt=ends_at,
             reason=reason,
+            note=(data.note or "").strip(),
             createdBy=caller["userId"],
             createdAt=datetime.utcnow(),
         )
         self.unavailability_dao.add(row)
+        self.log_dao.log(venue_id, "unavailability created", caller, {"unavailability": {"new": _block_changes(row)}})
         self.db.commit()
         self.db.refresh(row)
-        return UnavailabilityOut(
-            unavailabilityId=row.unavailabilityId,
-            venueId=row.venueId,
-            startsAt=row.startsAt,
-            endsAt=row.endsAt,
-            reason=row.reason,
-            createdBy=row.createdBy,
-            createdAt=row.createdAt,
+        return _block_out(row)
+
+    def update_unavailability(
+        self, venue_id: str, unavailability_id: str, data: UnavailabilityUpdate, caller: dict
+    ) -> UnavailabilityOut:
+        """Change the note, reason, or period. A new overlap must be confirmed again. Bookings stay as they are."""
+        row = self._require_block(venue_id, unavailability_id)
+        starts_at = suitability._utc(data.startsAt) if data.startsAt is not None else row.startsAt
+        ends_at = suitability._utc(data.endsAt) if data.endsAt is not None else row.endsAt
+        if ends_at <= starts_at:
+            raise HTTPException(status_code=422, detail="The end time must be after the start time.")
+        reason = _reason(data.reason) if data.reason is not None else row.reason
+        note = data.note.strip() if data.note is not None else row.note
+        if starts_at != row.startsAt or ends_at != row.endsAt:
+            self._require_acknowledgement(venue_id, starts_at, ends_at, data.acknowledgeConflicts)
+        before = _block_changes(row)
+        row.startsAt, row.endsAt, row.reason, row.note = starts_at, ends_at, reason, note
+        self.log_dao.log(
+            venue_id,
+            "unavailability updated",
+            caller,
+            {"unavailability": {"old": before, "new": _block_changes(row)}},
+        )
+        self.db.commit()
+        self.db.refresh(row)
+        return _block_out(row)
+
+    def cancel_unavailability(self, venue_id: str, unavailability_id: str, caller: dict) -> None:
+        """Remove the block. Search and approval treat that time as free again; the activity log keeps the record."""
+        row = self._require_block(venue_id, unavailability_id)
+        self.log_dao.log(
+            venue_id, "unavailability cancelled", caller, {"unavailability": {"old": _block_changes(row)}}
+        )
+        self.unavailability_dao.delete(row)
+        self.db.commit()
+
+    def unavailability_alerts(self, venue_id: str, starts_at: datetime, ends_at: datetime) -> list[dict]:
+        """One notice per event whose approved booking or active hold overlaps the block. Events are not read here."""
+        venue = self._require_venue(venue_id)
+        alerts = {}
+        for row in self._affected_bookings(venue_id, starts_at, ends_at):
+            alerts.setdefault(
+                row.eventId,
+                {
+                    "eventId": row.eventId,
+                    "eventName": (row.eventSnapshot or {}).get("eventName") or "",
+                    "venueName": venue.name,
+                },
+            )
+        return list(alerts.values())
+
+    def _period(self, starts_at: datetime, ends_at: datetime) -> tuple[datetime, datetime]:
+        starts_at, ends_at = suitability._utc(starts_at), suitability._utc(ends_at)
+        if ends_at <= starts_at:
+            raise HTTPException(status_code=422, detail="The end time must be after the start time.")
+        return starts_at, ends_at
+
+    def _require_block(self, venue_id: str, unavailability_id: str) -> VenueUnavailability:
+        self._require_venue(venue_id)
+        row = self.unavailability_dao.get(unavailability_id)
+        if row is None or row.venueId != venue_id:
+            raise HTTPException(status_code=404, detail="Unavailability block not found.")
+        return row
+
+    def _affected_bookings(self, venue_id: str, starts_at: datetime, ends_at: datetime) -> list[VenueBooking]:
+        """Approved bookings, and pending requests with an active hold, whose occupied window overlaps.
+
+        A pending request with no hold does not reserve the venue, so it is not listed. Windows that
+        only touch do not overlap.
+        """
+        now = datetime.utcnow()
+        hits = []
+        for row in self.booking_dao.list(None, None, venue_id):
+            if row.status not in ("approved", "pending") or not self._window_overlaps(row, starts_at, ends_at):
+                continue
+            if row.status == "pending" and occupancy.hold_state(row, now) != "active":
+                continue
+            hits.append(row)
+        return hits
+
+    def _require_acknowledgement(self, venue_id: str, starts_at: datetime, ends_at: datetime, acknowledged: bool) -> None:
+        hits = self._affected_bookings(venue_id, starts_at, ends_at)
+        if not hits or acknowledged:
+            return
+        parts = []
+        for row in hits:
+            name = (row.eventSnapshot or {}).get("eventName")
+            label = f"event {row.eventId}" + (f" ({name})" if name else "")
+            kind = "confirmed booking" if row.status == "approved" else "active tentative hold"
+            parts.append(f"{kind} for {label}")
+        raise conflict(
+            "This block overlaps a confirmed booking or an active hold and needs to be confirmed before it is recorded: "
+            + "; ".join(parts)
+            + ". The booking stays as it is."
         )
 
     def _window_overlaps(self, row: VenueBooking, starts_at: datetime, ends_at: datetime) -> bool:

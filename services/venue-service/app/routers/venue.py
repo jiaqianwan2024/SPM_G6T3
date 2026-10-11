@@ -21,6 +21,7 @@ from app.schemas.venue import (
     ReplacementRequest,
     UnavailabilityCreate,
     UnavailabilityOut,
+    UnavailabilityUpdate,
     VenueBookingCreate,
     VenueBookingDecision,
     VenueArrangementOut,
@@ -295,10 +296,10 @@ def retire_venue(
     status_code=201,
     summary="Record a venue unavailability block",
     description=(
-        "Venue Staff only. Saves the block and does not read or change the event. "
-        "An approved booking whose occupied window overlaps the block stays approved until the "
-        "assigned coordinator requests a replacement. That overlap must be confirmed with "
-        "`acknowledgeConflicts`."
+        "Venue Staff only. Saves the block and does not change the event or its bookings. "
+        "An approved booking, or a pending request with an active hold, whose occupied window overlaps "
+        "the block must be confirmed with `acknowledgeConflicts`. The assigned coordinator is then notified. "
+        "A pending request with no hold does not need confirmation."
     ),
     responses=error_responses(403, 404, 409, 422, 503),
 )
@@ -309,7 +310,95 @@ def record_unavailability(
     service: VenueService = Depends(get_venue_service),
 ):
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"venue"})
-    return service.record_unavailability(venue_id, body, caller)
+    saved = service.record_unavailability(venue_id, body, caller)
+    _notify_alternative_arrangements(service, venue_id, saved.startsAt, saved.endsAt, saved.reason, authorization)
+    return saved
+
+
+@router.get(
+    "/{venue_id}/unavailability",
+    response_model=list[UnavailabilityOut],
+    summary="List a venue's unavailability blocks",
+    description="Coordinators, venue staff, and technical support. Active blocks only; a cancelled block is removed.",
+    responses=error_responses(403, 404, 503),
+)
+def list_unavailability(
+    venue_id: str = Path(..., description="Venue id, e.g. `v1`."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    resolve_caller(authorization, settings.user_service_url, allowed_roles=CATALOGUE_READER_ROLES)
+    return service.list_unavailability(venue_id)
+
+
+@router.patch(
+    "/{venue_id}/unavailability/{unavailability_id}",
+    response_model=UnavailabilityOut,
+    summary="Change a venue unavailability block",
+    description=(
+        "Venue Staff only. The note, the reason, and the period can change. A changed period that overlaps "
+        "an approved booking or an active hold must be confirmed again with `acknowledgeConflicts`. "
+        "Bookings and events are left as they are."
+    ),
+    responses=error_responses(403, 404, 409, 422, 503),
+)
+def update_unavailability(
+    body: UnavailabilityUpdate,
+    venue_id: str = Path(..., description="Venue id, e.g. `v1`."),
+    unavailability_id: str = Path(..., description="Unavailability block id."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"venue"})
+    saved = service.update_unavailability(venue_id, unavailability_id, body, caller)
+    if body.startsAt is not None or body.endsAt is not None:
+        _notify_alternative_arrangements(service, venue_id, saved.startsAt, saved.endsAt, saved.reason, authorization)
+    return saved
+
+
+@router.delete(
+    "/{venue_id}/unavailability/{unavailability_id}",
+    status_code=204,
+    summary="Cancel a venue unavailability block",
+    description="Venue Staff only. Removes the block, so that time can be searched and approved again.",
+    responses=error_responses(403, 404, 503),
+)
+def cancel_unavailability(
+    venue_id: str = Path(..., description="Venue id, e.g. `v1`."),
+    unavailability_id: str = Path(..., description="Unavailability block id."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"venue"})
+    service.cancel_unavailability(venue_id, unavailability_id, caller)
+
+
+def _notify_alternative_arrangements(service, venue_id, starts_at, ends_at, reason, authorization) -> None:
+    """Tell each affected event's coordinator, in the app, that they need another arrangement.
+
+    Best effort: the block is already saved. An event with no coordinator is skipped. A failure to
+    reach event-service or notification-service does not undo the block.
+    """
+    for alert in service.unavailability_alerts(venue_id, starts_at, ends_at):
+        event_id = alert["eventId"]
+        try:
+            event = fetch_event_facts(event_id, authorization)
+        except Exception:
+            continue
+        if not event.coordinatorId:
+            continue
+        name = event.eventName or alert["eventName"] or event_id
+        notify_coordinator(
+            event.coordinatorId,
+            event_id,
+            "Venue unavailable",
+            (
+                f"{alert['venueName']} ({venue_id}) is unavailable ({reason}). "
+                f"Alternative arrangements are required for {name}."
+            ),
+            authorization or "",
+            "venue.unavailability",
+        )
 
 
 @router.get(

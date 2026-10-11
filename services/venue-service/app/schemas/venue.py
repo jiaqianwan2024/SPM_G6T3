@@ -243,14 +243,18 @@ class BookingReleaseRequest(BaseModel):
 
 
 class UnavailabilityCreate(BaseModel):
-    """SPM-115: Venue Staff record a block. This does not change any event."""
+    """SPM-9: Venue Staff record a block. This does not change any event or booking."""
 
     startsAt: datetime
     endsAt: datetime
     reason: str = Field(min_length=1, max_length=500)
+    note: str = Field(default="", max_length=2000)
     acknowledgeConflicts: bool = Field(
         default=False,
-        description="Required when the block overlaps an approved booking. Those bookings stay approved.",
+        description=(
+            "Required when the block overlaps an approved booking or a pending request with an active hold. "
+            "Those bookings stay as they are."
+        ),
     )
 
     model_config = ConfigDict(
@@ -259,10 +263,21 @@ class UnavailabilityCreate(BaseModel):
                 "startsAt": "2030-01-07T10:00:00Z",
                 "endsAt": "2030-01-07T12:00:00Z",
                 "reason": "maintenance",
+                "note": "Lift inspection",
                 "acknowledgeConflicts": True,
             }
         }
     )
+
+
+class UnavailabilityUpdate(BaseModel):
+    """SPM-9: change the note, the reason, or the period. A changed period that still overlaps must be confirmed again."""
+
+    startsAt: datetime | None = None
+    endsAt: datetime | None = None
+    reason: str | None = Field(default=None, max_length=500)
+    note: str | None = Field(default=None, max_length=2000)
+    acknowledgeConflicts: bool = False
 
 
 class UnavailabilityOut(BaseModel):
@@ -271,6 +286,7 @@ class UnavailabilityOut(BaseModel):
     startsAt: datetime
     endsAt: datetime
     reason: str
+    note: str = ""
     createdBy: str
     createdAt: datetime
 
