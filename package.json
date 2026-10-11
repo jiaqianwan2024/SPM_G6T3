@@ -76,7 +76,10 @@
     "test:spm95": "npm run test:prepare && playwright test e2e/spm95.spec.js",
     "test:spm51": "npm run test:prepare && playwright test e2e/spm51.spec.js",
     "test:spm120": "npm run test:prepare && playwright test e2e/spm120.spec.js",
-    "test:spm121": "npm run test:prepare && playwright test e2e/spm121.spec.js"
+    "test:spm121": "npm run test:prepare && playwright test e2e/spm121.spec.js",
+    "test:spm117": "npm run test:prepare && playwright test e2e/spm117.spec.js",
+    "test:spm118": "npm run test:prepare && playwright test e2e/spm118.spec.js",
+    "test:spm119": "npm run test:prepare && playwright test e2e/spm119.spec.js"
   },
   "dependencies": {
     "@fullcalendar/vue3": "^7.1.0",

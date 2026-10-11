@@ -76,6 +76,7 @@ def seed_user() -> None:
             ("u12", "tech2@connectsphere.com", "Tom Teo", "techsupport", None, "Technical Support", "tech456"),
             ("u5", "attendee@connectsphere.com", "Amy Wong", "attendee", None, None, "attend123"),
             ("u13", "safety@connectsphere.com", "Hana Yusof", "safety", None, "Safety", "safety123"),
+            ("u14", "lead@connectsphere.com", "Rachel Goh", "coordinatorlead", None, "Events", "lead123"),
         ]
         for user_id, email, name, role, org_id, department, password in users:
             firebase_uid = _ensure_firebase_user(email, password, name)

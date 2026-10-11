@@ -221,6 +221,7 @@ Shown on the login screen. Seeded in MySQL and listed in `Test Data/credentials-
 | organiser4@connectsphere.com | organiser000 | Event Organiser |
 | coordinator@connectsphere.com | coord123 | Event Coordinator |
 | coordinator2@connectsphere.com | coord456 | Event Coordinator |
+| lead@connectsphere.com | lead123 | Event Coordinator Lead |
 | venue@connectsphere.com | venue123 | Venue Staff |
 | venue2@connectsphere.com | venue456 | Venue Staff |
 | tech@connectsphere.com | tech123 | Technical Support |

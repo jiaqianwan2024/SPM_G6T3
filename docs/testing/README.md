@@ -171,6 +171,9 @@ Failures: `test-results/`. HTML report: `playwright-report/`.
 | SPM-106 | TC-SPM106-AC01–AC10 | `e2e/spm106.spec.js` |
 | SPM-120 | TC-SPM120-AC01–AC08 | `e2e/spm120.spec.js` |
 | SPM-121 | TC-SPM121-AC01–AC05 | `e2e/spm121.spec.js` |
+| SPM-117 | TC-SPM117-AC01–AC07 | `e2e/spm117.spec.js` |
+| SPM-118 | TC-SPM118-AC01–AC05 | `e2e/spm118.spec.js` |
+| SPM-119 | TC-SPM119-AC01–AC03 | `e2e/spm119.spec.js` |
 | SPM-11 | TC-SPM11-AC01–AC10 | `e2e/spm11.spec.js` |
 | SPM-12 | TC-SPM12-AC01–AC09 | `e2e/spm12.spec.js` |
 | SPM-89 | TC-SPM89-AC01–AC07 | `e2e/spm89.spec.js` |

@@ -79,6 +79,9 @@ export const saveDraftRequirements = (eventId, body) => axiosClient.patch(`/even
 // activeEventCount } — the count is information only, there is no limit.
 export const getCoordinatorCandidates = () => axiosClient.get("/events/coordinators");
 
+// SPM-119, Event Coordinator Lead only: each coordinator with their active events.
+export const getCoordinatorAssignments = () => axiosClient.get("/events/assignments");
+
 // Assigning a submitted request moves it to "under review".
 export const assignCoordinator = (eventId, coordinatorId) =>
   axiosClient.post(`/events/${eventId}/assign-coordinator`, { coordinatorId });

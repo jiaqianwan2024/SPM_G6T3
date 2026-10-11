@@ -20,6 +20,14 @@ export const roles = {
       { title: 'Recently confirmed', sub: 'Q3 Partner Summit confirmed' }
     ]
   },
+  // Oversees incoming requests: each new request waits, unassigned, until the
+  // Lead assigns it to an Event Coordinator. The Lead does not manage events.
+  coordinatorlead: {
+    label: 'Event Coordinator Lead',
+    tabs: ['Dashboard', 'Review Queue', 'Assignments', 'Profile'],
+    // The Dashboard tab is LeadDashboard (live counts, waiting requests, workload), not cards.
+    cards: []
+  },
   venue: {
     label: 'Venue Staff',
     tabs: ['Dashboard', 'Venue Calendar', 'Booking Requests', 'Unavailability', 'Venue Catalogue', 'Profile'],

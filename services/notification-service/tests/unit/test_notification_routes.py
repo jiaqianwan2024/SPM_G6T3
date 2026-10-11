@@ -92,6 +92,17 @@ class TestNotificationRoutes(ServiceTestCase):
 
         self.assertEqual((created.status_code, created.json()["userId"]), (201, "u-amy"))
 
+    def test_the_coordinator_lead_can_notify_the_coordinators_and_organisers_of_an_assignment(self):
+        self.resolve_caller.return_value = {"userId": "u-rachel", "role": "coordinatorlead"}
+
+        created = self.client.post(
+            "/notifications/records",
+            headers={"Authorization": "Bearer token"},
+            json={"userId": "u-ben", "eventId": "e3", "type": "event.assigned", "title": "Assigned", "body": "Yours."},
+        )
+
+        self.assertEqual((created.status_code, created.json()["userId"]), (201, "u-ben"))
+
     def test_anyone_else_cannot_notify_another_user(self):
         for role in ("attendee", "organiser"):
             self.resolve_caller.return_value = {"userId": "u-amy", "role": role}

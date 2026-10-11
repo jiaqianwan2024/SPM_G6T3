@@ -82,5 +82,14 @@ class EventDAO(BaseDAO):
         )
         return {coordinator_id: count for coordinator_id, count in rows}
 
+    def list_assigned_excluding_statuses(self, statuses: list[str]) -> list[Event]:
+        """Events that have a coordinator and are not in `statuses`, soonest first."""
+        return (
+            self.db.query(Event)
+            .filter(Event.coordinatorId.isnot(None), Event.status.notin_(statuses))
+            .order_by(Event.proposedStartAt.asc())
+            .all()
+        )
+
     def add(self, row: Event) -> None:
         self.db.add(row)

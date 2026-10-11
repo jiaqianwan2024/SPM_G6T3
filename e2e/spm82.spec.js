@@ -24,7 +24,7 @@ test.describe('SPM-82 Submit an event request for review', () => {
     expect(submitted.status).toBe(200)
     expect(submitted.body.status).toMatch(/submitted/i)
     expect(submitted.body.submittedAt).toBeTruthy()
-    const queue = await eventApi('GET', '/queue', 'EC-01')
+    const queue = await eventApi('GET', '/queue', 'ECL-01')
     expect((queue.body || []).map((row) => row.eventId)).toContain(draft.body.eventId)
   })
 
@@ -65,7 +65,7 @@ test.describe('SPM-82 Submit an event request for review', () => {
   test('TC-SPM82-AC06 submitting notifies ConnectSphere that a new request has arrived', async () => {
     const event = await createDraftEvent('EO-01', 'AUTO-SPM82-notify')
     await submitEvent(event.eventId)
-    const queue = await eventApi('GET', '/queue', 'EC-01')
+    const queue = await eventApi('GET', '/queue', 'ECL-01')
     expect((queue.body || []).map((row) => row.eventId)).toContain(event.eventId)
   })
 

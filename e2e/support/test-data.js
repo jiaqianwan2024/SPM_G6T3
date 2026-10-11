@@ -66,6 +66,7 @@ export const expectedTabs = {
     'Reports',
     'Profile',
   ],
+  'ECL-01': ['Dashboard', 'Review Queue', 'Assignments', 'Profile'],
   'VS-01': [
     'Dashboard',
     'Venue Calendar',

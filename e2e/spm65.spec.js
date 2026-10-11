@@ -7,7 +7,7 @@ import { createDraftEvent, eventApi } from './support/event.js'
 test.describe('SPM-65 Review queue of submitted requests', () => {
   test('TC-SPM65-AC01 the queue lists submitted, under review, and changes requested, and excludes drafts', async () => {
     const draft = await createDraftEvent('EO-01', 'AUTO-SPM65-draft')
-    const queue = await eventApi('GET', '/queue', 'EC-01')
+    const queue = await eventApi('GET', '/queue', 'ECL-01')
     expect(queue.status).toBe(200)
     const ids = (queue.body || []).map((row) => row.eventId)
     expect(ids).toContain('e6')
@@ -21,7 +21,7 @@ test.describe('SPM-65 Review queue of submitted requests', () => {
   test('TC-SPM65-AC02 each row shows name, organisation, datetime, attendance, status, coordinator, and submitted time', async ({
     page,
   }) => {
-    await login(page, account('EC-01'))
+    await login(page, account('ECL-01'))
     await page.locator('.nav-item').getByText('Review Queue', { exact: true }).click()
     const row = page.getByTestId('review-queue-e6')
     await expect(row).toBeVisible()
@@ -36,7 +36,7 @@ test.describe('SPM-65 Review queue of submitted requests', () => {
   test('TC-SPM65-AC03 unassigned requests are distinguished and can be filtered on their own', async ({
     page,
   }) => {
-    await login(page, account('EC-01'))
+    await login(page, account('ECL-01'))
     await page.locator('.nav-item').getByText('Review Queue', { exact: true }).click()
     await expect(page.getByTestId('review-queue-e6')).toHaveAttribute('data-assigned', 'false')
     await page.getByTestId('queue-filter-unassigned').click()
@@ -45,23 +45,24 @@ test.describe('SPM-65 Review queue of submitted requests', () => {
   })
 
   test('TC-SPM65-AC04 the queue sorts by submission time and proposed date, defaulting to longest wait first', async () => {
-    const queue = await eventApi('GET', '/queue', 'EC-01')
+    const queue = await eventApi('GET', '/queue', 'ECL-01')
     expect(queue.status).toBe(200)
     const submitted = (queue.body || []).map((row) => new Date(row.submittedAt).getTime())
     for (let i = 1; i < submitted.length; i += 1) {
       expect(submitted[i]).toBeGreaterThanOrEqual(submitted[i - 1])
     }
-    const byDate = await eventApi('GET', '/queue?sort=proposedStartAt', 'EC-01')
+    const byDate = await eventApi('GET', '/queue?sort=proposedStartAt', 'ECL-01')
     expect(byDate.status).toBe(200)
     expect(byDate.body[0].eventId).not.toBeUndefined()
   })
 
-  test('TC-SPM65-AC05 a coordinator can filter to only their assigned events', async ({ page }) => {
+  test('TC-SPM65-AC05 a coordinator sees only their assigned events', async ({ page }) => {
     await login(page, account('EC-01'))
     await page.locator('.nav-item').getByText('Review Queue', { exact: true }).click()
-    await page.getByTestId('queue-filter-mine').click()
     await expect(page.getByTestId('review-queue-e6')).toHaveCount(0)
-    const mine = await eventApi('GET', '/queue?assignedTo=u2', 'EC-01')
+    await expect(page.getByTestId('queue-filter-unassigned')).toHaveCount(0)
+    // Asking for another coordinator's requests still returns only their own.
+    const mine = await eventApi('GET', '/queue?assignedTo=u6', 'EC-01')
     expect(mine.status).toBe(200)
     for (const row of mine.body || []) {
       expect(row.coordinatorId).toBe('u2')
@@ -70,7 +71,7 @@ test.describe('SPM-65 Review queue of submitted requests', () => {
 
   test('TC-SPM65-AC06 a request whose proposed date is near is flagged from one shared threshold', async () => {
     expect(EVENT_PROPOSED_DATE_NEAR_DAYS).toBeGreaterThan(0)
-    const queue = await eventApi('GET', '/queue', 'EC-01')
+    const queue = await eventApi('GET', '/queue', 'ECL-01')
     expect(queue.status).toBe(200)
     const near = (queue.body || []).filter((row) => row.dateNear)
     for (const row of near) {
@@ -81,9 +82,10 @@ test.describe('SPM-65 Review queue of submitted requests', () => {
   })
 
   test('TC-SPM65-AC07 an empty filter explains what is excluded', async ({ page }) => {
-    await login(page, account('EC-02'))
+    await login(page, account('ECL-01'))
     await page.locator('.nav-item').getByText('Review Queue', { exact: true }).click()
-    await page.getByTestId('queue-filter-mine').click()
+    await page.getByTestId('queue-filter-unassigned').click()
+    await page.getByRole('searchbox').fill(`no-such-request-${Date.now()}`)
     const empty = page.getByTestId('review-queue-empty')
     await expect(empty).toBeVisible()
     await expect(empty).toContainText(/filter|assigned|no requests/i)

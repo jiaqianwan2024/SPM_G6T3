@@ -28,6 +28,10 @@
       <!-- listed here has no folder yet — that's an honest scope signal,   -->
       <!-- not a bug, for tabs not built this sprint.                      -->
       <SafetyDashboard v-if="activeTab === 'Dashboard' && session.role === 'safety'" />
+      <LeadDashboard
+        v-else-if="activeTab === 'Dashboard' && session.role === 'coordinatorlead'"
+        @open-tab="activeTab = $event"
+      />
       <DashboardHome v-else-if="activeTab === 'Dashboard'" :cards="currentData.cards" />
       <VenueCatalogue v-else-if="activeTab === 'Venue Catalogue'" />
       <BrowseEvents v-else-if="activeTab === 'Browse Events'" />
@@ -36,6 +40,7 @@
       <EquipmentCatalogue v-else-if="activeTab === 'Equipment Catalogue'" />
       <AssignedEvents v-else-if="activeTab === 'Assigned Events'" />
       <ReviewQueue v-else-if="activeTab === 'Review Queue'" />
+      <CoordinatorAssignments v-else-if="activeTab === 'Assignments'" />
       <SafetyReviews v-else-if="activeTab === 'Safety Reviews'" />
       <DraftsList v-else-if="activeTab === 'Drafts'" @edit-draft="activeTab = 'New Request'" />
       <MyEvents v-else-if="activeTab === 'My Events'" @create="activeTab = 'New Request'" />
@@ -65,11 +70,13 @@ import UpcomingEventsCalendar from '../features/event-calendar/EventCalendar.vue
 import EquipmentCatalogue from '../features/equipment-catalogue/EquipmentCatalogue.vue'
 import AssignedEvents from '../features/assigned-events/AssignedEvents.vue'
 import ReviewQueue from '../features/review-queue/ReviewQueue.vue'
+import CoordinatorAssignments from '../features/assignments/CoordinatorAssignments.vue'
 import DraftsList from '../features/drafts/DraftsList.vue'
 import MyEvents from '../features/my-events/MyEvents.vue'
 import MyRegistrations from '../features/my-registrations/MyRegistrations.vue'
 import Profile from '../features/profile/Profile.vue'
 import SafetyDashboard from '../features/safety-reviews/SafetyDashboard.vue'
+import LeadDashboard from '../features/lead-dashboard/LeadDashboard.vue'
 import SafetyReviews from '../features/safety-reviews/SafetyReviews.vue'
 import { draftEditor } from '../store/draftEditor.js'
 
