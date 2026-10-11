@@ -65,14 +65,16 @@ def notify_venue_staff(subject: str, body: str, authorization: str, skip_user_id
         return 0
 
 
-def notify_coordinator(user_id: str, event_id: str, title: str, body: str, authorization: str) -> bool:
+def notify_coordinator(
+    user_id: str, event_id: str, title: str, body: str, authorization: str, notice_type: str = "venue.hold"
+) -> bool:
     """SPM-116 AC5: put a notification in the coordinator's in-app inbox, through
     notification-service with the Venue Staff member's own token (staff may
     notify another user). Best effort: the hold is already saved."""
     try:
         response = httpx.post(
             f"{settings.notification_service_url}/notifications/records",
-            json={"userId": user_id, "eventId": event_id, "type": "venue.hold", "title": title, "body": body},
+            json={"userId": user_id, "eventId": event_id, "type": notice_type, "title": title, "body": body},
             headers={"Authorization": authorization},
             timeout=5.0,
         )

@@ -65,6 +65,12 @@ const router = createRouter({
       name: 'event-venue-select',
       component: EventVenueSelect,
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/app/venues/:id/calendar',
+      name: 'venue-calendar',
+      component: () => import('../features/venue-calendar/VenueCalendar.vue'),
+      meta: { requiresAuth: true }
     }
   ]
 })
