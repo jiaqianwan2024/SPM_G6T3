@@ -40,12 +40,6 @@
           >
             <strong>Unavailable</strong>
             <span class="kind">{{ arg.event.extendedProps.reason }}</span>
-            <div v-if="canWrite && selectedId === arg.event.extendedProps.id" class="action-pop" @click.stop>
-              <button type="button" @click="startEdit(arg.event.extendedProps.id)">Edit</button>
-              <button type="button" class="danger" @click="cancelBlock(arg.event.extendedProps.id)">
-                Cancel block
-              </button>
-            </div>
           </div>
           <div
             v-else-if="arg.event.extendedProps.kind === 'draft'"
@@ -73,7 +67,8 @@
 
       <form v-if="form.open" class="panel" @submit.prevent="save">
         <h2>{{ form.id ? 'Edit unavailability' : 'Mark unavailable' }}</h2>
-        <p class="hint">Click a day, or drag across one or more days or times. The selected range stays on the calendar until you close this form or choose a different range. Times are UTC.</p>
+        <p v-if="form.id" class="hint">Update the time, reason, or note. The block stays where it is until you save. Times are UTC.</p>
+        <p v-else class="hint">Click a day, or drag across one or more days or times. The selected range stays on the calendar until you close this form or choose a different range. Times are UTC.</p>
         <label>
           Start (UTC)
           <input v-model="form.startsAt" type="datetime-local" required />
@@ -158,16 +153,19 @@ import {
 } from '../../api/venueService.js'
 import { session } from '../../store/session.js'
 
+const props = defineProps({
+  focusVenue: { type: String, default: '' },
+  focusAt: { type: String, default: '' }
+})
 const reasons = ['maintenance', 'renovation', 'safety issue', 'internal activity', 'other']
 const route = useRoute()
 const embedded = computed(() => route.name !== 'venue-calendar')
-const venueId = ref(typeof route.params.id === 'string' ? route.params.id : '')
+const venueId = ref(props.focusVenue || (typeof route.params.id === 'string' ? route.params.id : ''))
 const venues = ref([])
 const venue = ref(null)
 const entries = ref([])
 const visibleRange = ref(null)
 const loadError = ref('')
-const selectedId = ref('')
 const calendarRef = ref(null)
 const detail = reactive({ entry: null, pinned: false, overCard: false, top: 0, left: 0 })
 let hideTimer = 0
@@ -223,7 +221,6 @@ const calendarOptions = reactive({
     const entry = arg.event.extendedProps
     if (entry.kind === 'draft') return
     if (entry.kind === 'unavailable') {
-      selectedId.value = entry.id
       openDetailAt(arg.el.getBoundingClientRect(), entry, true)
       return
     }
@@ -322,15 +319,18 @@ async function load() {
       })
     entries.value = [...blocks, ...bookings]
     paintEvents()
-    await nextTick()
-    if (!form.open) showNearbyMonth()
   } catch {
     loadError.value = 'Could not load this venue calendar.'
+    return
   }
+  await nextTick()
+  if (!form.open) showNearbyMonth()
+  await nextTick()
+  revealFocusedBlock()
 }
 
 function currentDraft() {
-  if (!form.open || !form.startsAt || !form.endsAt) return null
+  if (!form.open || form.id || !form.startsAt || !form.endsAt) return null
   const startsAt = toUtc(form.startsAt)
   const endsAt = toUtc(form.endsAt)
   const start = new Date(startsAt).getTime()
@@ -397,6 +397,11 @@ function overlapsRange(entry, range) {
 function showNearbyMonth() {
   const api = calendarRef.value?.getApi?.()
   if (!api) return
+  const at = props.focusAt || (typeof route.query.at === 'string' ? route.query.at : '')
+  if (at && !Number.isNaN(new Date(ensureZ(at)).getTime())) {
+    api.gotoDate(ensureZ(at))
+    return
+  }
   const now = Date.now()
   const horizon = now + 400 * 24 * 60 * 60 * 1000
   const nearby = entries.value
@@ -406,6 +411,23 @@ function showNearbyMonth() {
     .sort((a, b) => String(b.entry.createdAt).localeCompare(String(a.entry.createdAt)))
   if (nearby.length) api.gotoDate(ensureZ(nearby[0].entry.startsAt))
   else api.today()
+}
+
+function revealFocusedBlock() {
+  const at = props.focusAt || (typeof route.query.at === 'string' ? route.query.at : '')
+  if (!at) return
+  const moment = new Date(ensureZ(at)).getTime()
+  if (Number.isNaN(moment)) return
+  const blocks = entries.value.filter((entry) => entry.kind === 'unavailable')
+  const match = blocks.find((entry) => new Date(ensureZ(entry.startsAt)).getTime() === moment)
+    || blocks.find((entry) => {
+      const start = new Date(ensureZ(entry.startsAt)).getTime()
+      const end = new Date(ensureZ(entry.endsAt)).getTime()
+      return start <= moment && end > moment
+    })
+  if (!match) return
+  document.querySelector(`[data-testid="calendar-unavailable-${match.id}"]`)
+    ?.scrollIntoView({ block: 'center' })
 }
 
 const detailRows = computed(() => {
@@ -460,7 +482,6 @@ function openDetail(domEvent, entry, pin) {
 }
 
 function selectBlock(id, domEvent) {
-  selectedId.value = id
   const entry = entryById(id)
   if (entry && domEvent) openDetail(domEvent, entry, true)
 }
@@ -549,7 +570,6 @@ function revealDraft(range) {
 }
 
 function startCreate() {
-  selectedId.value = ''
   Object.assign(form, {
     open: true,
     id: '',
@@ -567,7 +587,7 @@ function startCreate() {
 function startEdit(id) {
   const entry = entryById(id)
   if (!entry) return
-  selectedId.value = id
+  closeDetail()
   Object.assign(form, {
     open: true,
     id,
@@ -612,7 +632,6 @@ async function cancelBlock(id) {
   try {
     await cancelVenueUnavailability(venueId.value, id)
     if (form.id === id) closeForm()
-    selectedId.value = ''
     await load()
   } catch (err) {
     form.open = true
@@ -736,19 +755,6 @@ h1 { margin: 0; font-size: 28px; line-height: 1.15; }
 .event-body[data-kind='booking'] { background: #5b21b6; }
 .event-body[data-kind='booking'][data-status='approved'] { background: #15803d; }
 .kind { text-transform: capitalize; color: #fff7ed; }
-.action-pop {
-  position: absolute;
-  z-index: 40;
-  top: calc(100% + 4px);
-  left: 0;
-  display: flex;
-  gap: 6px;
-  padding: 6px;
-  background: #1a1030;
-  border: 1px solid #c4b5fd;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
-}
 .panel {
   display: flex;
   flex-direction: column;
@@ -773,7 +779,7 @@ input, select, textarea {
 select option { background: #1a1030; color: #f3eeff; }
 .ack { flex-direction: row; align-items: flex-start; }
 .ack input { width: auto; margin-top: 3px; }
-.mark-btn, .ghost-btn, .action-pop button {
+.mark-btn, .ghost-btn {
   border-radius: 8px;
   padding: 8px 12px;
   cursor: pointer;
@@ -787,13 +793,11 @@ select option { background: #1a1030; color: #f3eeff; }
   background: #6d28d9;
   border: 1px solid #6d28d9;
 }
-.ghost-btn, .action-pop button {
+.ghost-btn {
   color: #f3eeff;
   background: #2a1458;
   border: 1px solid #c4b5fd;
 }
-.action-pop button { padding: 6px 10px; }
-.action-pop .danger { color: #ffd0d0; border-color: #ffb4b4; }
 .mark-btn:disabled { opacity: 0.55; cursor: default; }
 .form-actions { display: flex; gap: 8px; }
 .error { color: #ffb4b4; margin: 8px 0 0; white-space: pre-wrap; }
@@ -832,11 +836,6 @@ select option { background: #1a1030; color: #f3eeff; }
 .calendar-shell :deep(a),
 .calendar-shell :deep(h2) {
   color: #1c1233;
-}
-.action-pop button {
-  color: #f3eeff;
-  background: #2a1458;
-  border: 1px solid #c4b5fd;
 }
 .detail-card {
   position: fixed;

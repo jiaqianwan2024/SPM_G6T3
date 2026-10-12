@@ -112,8 +112,9 @@ test.describe('SPM-09 Mark a Venue as Unavailable', () => {
     await expect(entry).toContainText(/unavailable/i)
     await expect(entry).toHaveAttribute('data-kind', 'unavailable')
     await entry.click()
-    await expect(entry.getByRole('button', { name: 'Edit' })).toBeVisible()
-    await expect(entry.getByRole('button', { name: 'Cancel block' })).toBeVisible()
+    const detail = page.locator('.detail-card')
+    await expect(detail.getByRole('button', { name: 'Edit' })).toBeVisible()
+    await expect(detail.getByRole('button', { name: 'Cancel block' })).toBeVisible()
   })
 
   test('TC-SPM09-AC06 overlapping bookings require acknowledgement and notify coordinators', async () => {
