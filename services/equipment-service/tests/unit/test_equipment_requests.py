@@ -148,16 +148,30 @@ class TestEquipmentRequests(EquipmentCase):
         _Client.fail_post = False
         _Client.posted = None
 
-        with patch("app.services.equipment_service.httpx.Client", _Client):
+        record = {"eventName": "Summit", "coordinatorId": "u-coord", "organiserId": "u-org"}
+        with patch("app.services.equipment_service._event_record", return_value=record), patch(
+            "app.services.equipment_service.publish_notification"
+        ) as publish:
             marked = self.service.mark_unavailable(
-                request.requestId, CALLER, "insufficient stock", "Only two exist", "Bearer token"
+                request.requestId,
+                CALLER,
+                "insufficient stock",
+                "Only two exist",
+                "Bearer token",
+                "eq-alt",
             )
 
         self.assertEqual(marked.status, "unavailable")
         self.assertEqual(marked.reviewedBy, "u-tech")
         self.assertIsNotNone(marked.reviewedAt)
         self.assertIn("insufficient stock", marked.reviewNote)
-        self.assertEqual(_Client.posted["to"], "coordinator@connectsphere.com")
+        trigger, _event_id, _occurrence, recipients, context = publish.call_args.args[:5]
+        self.assertEqual(trigger, "equipment.shortfall")
+        self.assertEqual(recipients, [{"userId": "u-coord", "role": "coordinator"}])
+        self.assertEqual(context["equipmentName"], created.name)
+        self.assertEqual(context["shortfall"], "2 of 2 short")
+        self.assertEqual(context["reason"], "insufficient stock")
+        self.assertEqual(context["alternative"], "eq-alt")
         opened = self.service.get_request(request.requestId)
         self.assertEqual(opened.status, "unavailable")
 

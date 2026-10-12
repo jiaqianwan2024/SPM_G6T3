@@ -487,6 +487,7 @@ def _to_out(
         capacity=row.capacity,
         submittedAt=row.submittedAt,
         organisationId=row.organisationId,
+        organiserId=row.organiserId,
         organisationName=org_names.get(row.organisationId) if row.organisationId else None,
         coordinatorId=row.coordinatorId,
         organiserContact=row.organiserContact or "",

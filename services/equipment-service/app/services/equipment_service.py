@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.orchestration.clients import event_recipients, publish_notification
 
 from app.dao.equipment_activity_log_dao import EquipmentActivityLogDAO
 from app.dao.equipment_dao import EquipmentDAO
@@ -108,25 +109,6 @@ def _events_over_serviceable(rows: list[EquipmentReservation], serviceable: int)
     return sorted(event_ids)
 
 
-def _user_email(user_id: str, authorization: str | None) -> str | None:
-    if not authorization:
-        return None
-    try:
-        with httpx.Client(timeout=5) as client:
-            response = client.get(
-                f"{settings.user_service_url}/users",
-                headers={"Authorization": authorization},
-            )
-    except httpx.HTTPError:
-        return None
-    if response.status_code != 200:
-        return None
-    for user in response.json():
-        if user.get("userId") == user_id and user.get("email"):
-            return user["email"]
-    return None
-
-
 def _event_record(event_id: str, authorization: str | None) -> dict | None:
     if not authorization:
         return None
@@ -158,27 +140,6 @@ def _notify_people(subject: str, body: str, emails: list[str], authorization: st
             )
         except httpx.HTTPError:
             continue
-
-
-def _notify_coordinator(row: EquipmentRequest, authorization: str | None) -> None:
-    email = _user_email(row.requestedBy, authorization)
-    if not email:
-        return
-    try:
-        with httpx.Client(timeout=5) as client:
-            client.post(
-                f"{settings.notification_service_url}/notifications",
-                headers={"Authorization": authorization},
-                json={
-                    "to": email,
-                    "subject": "An equipment request cannot be fulfilled",
-                    "body": (
-                        f"{row.equipmentId} for event {row.eventId} was marked unavailable. {row.reviewNote}"
-                    ).strip(),
-                },
-            )
-    except httpx.HTTPError:
-        return
 
 
 def _request_to_out(row: EquipmentRequest) -> EquipmentRequestOut:
@@ -657,11 +618,14 @@ class EquipmentService(BaseService):
         self.db.commit()
         self.db.refresh(row)
         if record.get("status") == "confirmed":
-            _notify_people(
-                "Equipment released",
-                f"Equipment for {record.get('eventName') or row.eventId} was released. Reason: {reason}",
-                [],
-                authorization,
+            publish_notification(
+                "equipment.released",
+                row.eventId,
+                f"{row.eventId}:equipment.released:{row.reservationId}",
+                event_recipients(record, ("coordinator", "organiser")),
+                {"eventName": record.get("eventName") or row.eventId, "reason": reason.strip()},
+                actor_id=caller.get("userId"),
+                resource={"type": "equipment_reservation", "id": row.reservationId},
             )
         return _reservation_to_out(row)
 
@@ -717,7 +681,7 @@ class EquipmentService(BaseService):
         )
         self.db.commit()
         self.db.refresh(row)
-        _notify_coordinator(row, authorization)
+        self._publish_shortfall(row, caller, authorization, alternative)
         return _request_to_out(row)
 
     def record_partial(
@@ -758,8 +722,40 @@ class EquipmentService(BaseService):
         )
         self.db.commit()
         self.db.refresh(row)
-        _notify_coordinator(row, authorization)
+        self._publish_shortfall(row, caller, authorization)
         return _request_to_out(row)
+
+    def _publish_shortfall(
+        self,
+        row: EquipmentRequest,
+        caller: dict,
+        authorization: str | None,
+        alternative_id: str | None = None,
+    ) -> None:
+        """SPM-77 AC3: tell the assigned coordinator the line, shortfall, reason, and alternative."""
+        record = _event_record(row.eventId, authorization) or {}
+        shortfall = row.shortfall if row.status == "partial" else row.quantity
+        context = {
+            "eventName": record.get("eventName") or row.eventId,
+            "equipmentName": self._equipment_label(row.equipmentId),
+            "shortfall": f"{shortfall} of {row.quantity} short",
+            "reason": (row.decisionReason or row.reviewNote or "").strip(),
+        }
+        if alternative_id:
+            context["alternative"] = self._equipment_label(alternative_id)
+        publish_notification(
+            "equipment.shortfall",
+            row.eventId,
+            f"{row.eventId}:equipment.shortfall:{row.requestId}:{row.reviewedAt.isoformat()}",
+            event_recipients(record, ("coordinator",)),
+            context,
+            actor_id=caller.get("userId"),
+            resource={"type": "equipment_request", "id": row.requestId},
+        )
+
+    def _equipment_label(self, equipment_id: str) -> str:
+        row = self.equipment_dao.get_by_id(equipment_id)
+        return row.name if row is not None and row.name else equipment_id
 
     def accept_shortfall(self, request_id: str, caller: dict) -> EquipmentRequestOut:
         row = self._require_request(request_id)

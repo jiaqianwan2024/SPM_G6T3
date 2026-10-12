@@ -85,6 +85,10 @@ class EventOut(BaseModel):
     capacity: int
     submittedAt: datetime | None = None
     organisationId: str | None = None
+    organiserId: str | None = Field(
+        default=None,
+        description="The organiser who owns the event. Other services use it to notify them.",
+    )
     organisationName: str | None = Field(
         default=None, description="Resolved from user-service; null if that service is down."
     )
