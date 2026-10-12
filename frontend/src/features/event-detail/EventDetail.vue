@@ -65,6 +65,14 @@
               Choose venues
             </button>
             <button
+              v-if="canViewReadiness"
+              class="btn btn-outline"
+              data-testid="event-readiness-link"
+              @click="router.push(`/app/events/${event.eventId}/readiness`)"
+            >
+              Readiness
+            </button>
+            <button
               v-if="session.role === 'organiser' && event.status === 'draft'"
               class="btn btn-outline"
               data-testid="event-discard"
@@ -523,6 +531,10 @@ const canComplete = computed(
 
 const showEquipment = computed(
   () => session.role === 'coordinator' || session.role === 'techsupport',
+)
+// SPM-5: coordinators follow up here; organisers and technical support can read it.
+const canViewReadiness = computed(() =>
+  ['coordinator', 'organiser', 'techsupport'].includes(session.role),
 )
 const showRegistrations = computed(
   () =>

@@ -75,8 +75,14 @@ export const getOpenEvent = (eventId) => axiosClient.get(`/events/open-for-regis
 
 export const getReadiness = (eventId) => axiosClient.get(`/events/${eventId}/readiness`);
 
+export const createReadinessItem = (eventId, body) =>
+  axiosClient.post(`/events/${eventId}/readiness-items`, body);
+
 export const updateReadinessItem = (eventId, itemId, body) =>
   axiosClient.patch(`/events/${eventId}/readiness-items/${itemId}`, body);
+
+export const deleteReadinessItem = (eventId, itemId) =>
+  axiosClient.delete(`/events/${eventId}/readiness-items/${itemId}`);
 
 export const saveDraftRequirements = (eventId, body) => axiosClient.patch(`/events/${eventId}`, body);
 
