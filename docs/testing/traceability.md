@@ -177,17 +177,32 @@
 | SPM-65 | Queue row fields | TC-SPM65-AC02 | `e2e/spm65.spec.js` | Automated |
 | SPM-65 | Unassigned distinguished and filterable | TC-SPM65-AC03 | `e2e/spm65.spec.js` | Automated |
 | SPM-65 | Sort by wait and proposed date | TC-SPM65-AC04 | `e2e/spm65.spec.js` | Automated |
-| SPM-65 | Filter to assigned-to-me | TC-SPM65-AC05 | `e2e/spm65.spec.js` | Automated |
+| SPM-65 | A coordinator sees only their assigned requests (SPM-117) | TC-SPM65-AC05 | `e2e/spm65.spec.js` | Automated |
 | SPM-65 | Near proposed date uses shared threshold | TC-SPM65-AC06 | `e2e/spm65.spec.js` | Automated |
 | SPM-65 | Empty filter explains the exclusion | TC-SPM65-AC07 | `e2e/spm65.spec.js` | Automated |
-| SPM-66 | Assign self or another coordinator | TC-SPM66-AC01 | `e2e/spm66.spec.js` | Automated |
+| SPM-66 | Superseded by SPM-117: the Lead assigns a coordinator | TC-SPM66-AC01 | `e2e/spm66.spec.js` | Automated |
 | SPM-66 | Candidate list shows active-event counts | TC-SPM66-AC02 | `e2e/spm66.spec.js` | Automated |
 | SPM-66 | No workload cap | TC-SPM66-AC03 | `e2e/spm66.spec.js` | Automated |
 | SPM-66 | Assignment recorded in the activity log | TC-SPM66-AC04 | `e2e/spm66.spec.js` | Automated |
 | SPM-66 | Notify and show coordinator contact | TC-SPM66-AC05 | `e2e/spm66.spec.js` | Automated |
 | SPM-66 | Submitted moves to Under Review | TC-SPM66-AC06 | `e2e/spm66.spec.js` | Automated |
-| SPM-66 | Non-coordinators get 403 | TC-SPM66-AC07 | `e2e/spm66.spec.js` | Automated |
+| SPM-66 | Everyone but the Lead, Event Coordinators included, gets 403 | TC-SPM66-AC07 | `e2e/spm66.spec.js` | Automated |
 | SPM-66 | Cannot assign a non-coordinator | TC-SPM66-AC08 | `e2e/spm66.spec.js` | Automated |
+| SPM-117 | An Event Coordinator Lead signs in with a pre-created account | TC-SPM117-AC01 | `e2e/spm117.spec.js`; `e2e/spm43.spec.js` (ECL-01) | Automated |
+| SPM-117 | A newly submitted request stays unassigned until the Lead assigns it | TC-SPM117-AC02 | `e2e/spm117.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
+| SPM-117 | The Lead sees unassigned requests in the review queue with name, organisation, date and time, attendance, and submission time | TC-SPM117-AC03 | `e2e/spm117.spec.js` | Automated (UI) |
+| SPM-117 | The Lead assigns a request to an Event Coordinator | TC-SPM117-AC04 | `e2e/spm117.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated (UI) |
+| SPM-117 | An Event Coordinator who tries to assign gets 403 | TC-SPM117-AC05 | `e2e/spm117.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
+| SPM-117 | The activity log records who assigned, who was assigned, and when | TC-SPM117-AC06 | `e2e/spm117.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
+| SPM-117 | The new coordinator and the organiser are notified | TC-SPM117-AC07 | `e2e/spm117.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
+| SPM-118 | The Lead reassigns an event to a different coordinator; the current one cannot be chosen again | TC-SPM118-AC01 | `e2e/spm118.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated (UI and API) |
+| SPM-118 | An Event Coordinator who tries to reassign gets 403 | TC-SPM118-AC02 | `e2e/spm118.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
+| SPM-118 | Edit permission moves at once from the previous to the new coordinator | TC-SPM118-AC03 | `e2e/spm118.spec.js`; `e2e/spm46-ui.contract.spec.js` (TC-SPM46-AC03) | Automated |
+| SPM-118 | The activity log records who reassigned, who was assigned, and when | TC-SPM118-AC04 | `e2e/spm118.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
+| SPM-118 | The new coordinator, the previous coordinator, and the organiser are notified | TC-SPM118-AC05 | `e2e/spm118.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
+| SPM-119 | The Lead sees each Event Coordinator and their active events | TC-SPM119-AC01 | `e2e/spm119.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated (API and UI) |
+| SPM-119 | The Lead can open any of those events | TC-SPM119-AC02 | `e2e/spm119.spec.js` | Automated (UI) |
+| SPM-119 | An Event Coordinator does not get the view and manages only their own events | TC-SPM119-AC03 | `e2e/spm119.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
 | SPM-68 | Raise a clarification with optional field | TC-SPM68-AC01 | `e2e/spm68.spec.js` | Automated |
 | SPM-68 | Event moves to Changes Requested | TC-SPM68-AC02 | `e2e/spm68.spec.js` | Automated |
 | SPM-68 | Thread shows author, role, and time | TC-SPM68-AC03 | `e2e/spm68.spec.js` | Automated |

@@ -14,7 +14,7 @@ from app.models.event_readiness import EventReadinessItem
 from app.orchestration.clients import list_users, registration_count
 from app.schemas.followup import OpenEventOut, ReadinessCreate, ReadinessItemOut, ReadinessPatch
 from app.services.arrangements import equipment_status as _equipment_status
-from shared.exceptions.http import not_found
+from shared.exceptions.http import forbidden, not_found
 from shared.services.base import BaseService
 
 DUE_SOON = timedelta(days=3)
@@ -163,8 +163,17 @@ class EventFollowUp(BaseService):
             raise not_found("Readiness item not found")
         return _item_out(row, datetime.utcnow())
 
-    def create_item(self, event_id: str, body: ReadinessCreate, authorization: str | None) -> ReadinessItemOut:
-        self._event(event_id)
+    def _managed(self, event_id: str, coordinator_id: str) -> Event:
+        """Each coordinator manages only the events assigned to them."""
+        event = self._event(event_id)
+        if event.coordinatorId != coordinator_id:
+            raise forbidden("Only the event's assigned coordinator can change its readiness items")
+        return event
+
+    def create_item(
+        self, event_id: str, body: ReadinessCreate, authorization: str | None, coordinator_id: str
+    ) -> ReadinessItemOut:
+        self._managed(event_id, coordinator_id)
         name, email, phone = _person(body.handlerId, authorization)
         row = EventReadinessItem(
             itemId=str(uuid4()),
@@ -185,8 +194,10 @@ class EventFollowUp(BaseService):
         self.db.refresh(row)
         return _item_out(row, datetime.utcnow())
 
-    def update_item(self, event_id: str, item_id: str, body: ReadinessPatch, authorization: str | None) -> ReadinessItemOut:
-        event = self._event(event_id)
+    def update_item(
+        self, event_id: str, item_id: str, body: ReadinessPatch, authorization: str | None, coordinator_id: str
+    ) -> ReadinessItemOut:
+        event = self._managed(event_id, coordinator_id)
         row = self.readiness.get(item_id)
         if row is None and item_id in ("derived-venue", "derived-equipment"):
             derived = {item.itemId: item for item in self._derived(event, authorization, datetime.utcnow())}
@@ -228,8 +239,8 @@ class EventFollowUp(BaseService):
         self.db.refresh(row)
         return _item_out(row, datetime.utcnow())
 
-    def delete_item(self, event_id: str, item_id: str) -> None:
-        self._event(event_id)
+    def delete_item(self, event_id: str, item_id: str, coordinator_id: str) -> None:
+        self._managed(event_id, coordinator_id)
         row = self.readiness.get(item_id)
         if row is None or row.eventId != event_id:
             raise not_found("Readiness item not found")

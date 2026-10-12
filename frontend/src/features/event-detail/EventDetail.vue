@@ -455,12 +455,12 @@ const decidedByName = computed(() =>
     : '',
 )
 
-// SPM-66: any coordinator can assign or reassign, but not a finished event or a draft.
+// Only the Event Coordinator Lead assigns or reassigns, and never a finished event or a draft.
 const canAssign = computed(
-  () => session.role === 'coordinator' && !LOCKED_EVENT_STATUSES.includes(event.value?.status),
+  () => session.role === 'coordinatorlead' && !LOCKED_EVENT_STATUSES.includes(event.value?.status),
 )
 // Who may see the coordinator's contact; the server enforces the organisation check.
-const CONTACT_ROLES = ['organiser', 'coordinator', 'venue', 'techsupport', 'safety']
+const CONTACT_ROLES = ['organiser', 'coordinator', 'coordinatorlead', 'venue', 'techsupport', 'safety']
 const outcomes = ref([])
 const reservations = ref([])
 const venue = ref({ venueName: '', location: '' })
@@ -534,6 +534,7 @@ const backTarget = computed(() => {
   if (session.role === 'organiser') return { label: 'My Events', tab: 'My Events' }
   if (session.role === 'techsupport') return { label: 'Upcoming Events', tab: 'Upcoming Events' }
   if (session.role === 'safety') return { label: 'Safety Reviews', tab: 'Safety Reviews' }
+  if (session.role === 'coordinatorlead') return { label: 'Assignments', tab: 'Assignments' }
   return { label: 'Dashboard', tab: 'Dashboard' }
 })
 

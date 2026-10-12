@@ -10,7 +10,7 @@ import {
 
 async function pendingChange(name, changes) {
   const event = await createSubmittedEvent('EO-01', name)
-  await assignCoordinator(event.eventId, 'u2', 'EC-01')
+  await assignCoordinator(event.eventId, 'u2')
   const raised = await raiseChangeRequest(event.eventId, 'EO-01', {
     reason: 'AUTO-SPM85',
     proposedChanges: changes,

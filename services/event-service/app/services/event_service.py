@@ -62,6 +62,7 @@ from app.schemas.event import (
     ClarificationReplyCreate,
     ConfirmationGap,
     ConfirmationOut,
+    CoordinatorAssignmentsOut,
     CoordinatorCandidateOut,
     EventActivityOut,
     EventApprovalOut,
@@ -94,6 +95,7 @@ from app.schemas.event import (
     SafetyTechnicalHandoff,
     SafetyVenueFacts,
     SafetyVenueHandoff,
+    SupervisedEventOut,
     SignificantFieldsOut,
 )
 from app.services.arrangements import (
@@ -150,7 +152,10 @@ RESOLVED = "resolved"
 DECISIONS = {"approve": "approved", "reject": "rejected"}
 # Staff who can see an event's coordinator; organisers see it only for their
 # own organisation's events, and attendees not at all (SPM-59 AC5).
-STAFF_ROLES = ("coordinator", "venue", "techsupport", "safety")
+# The Event Coordinator Lead assigns requests to Event Coordinators and oversees
+# them; it is not itself a coordinator, so it never manages an event.
+COORDINATOR_LEAD = "coordinatorlead"
+STAFF_ROLES = ("coordinator", COORDINATOR_LEAD, "venue", "techsupport", "safety")
 
 # SPM-80: published lists the organiser picks from. "No preference" is a real choice.
 LAYOUT_OPTIONS = ["Theatre", "Boardroom", "Classroom", "Banquet", "U-shape", "No preference"]
@@ -1447,6 +1452,39 @@ class EventService(BaseService):
             key=lambda candidate: candidate.name.lower(),
         )
 
+    def list_coordinator_assignments(self, authorization: str | None = None) -> list[CoordinatorAssignmentsOut]:
+        """SPM-119: every Event Coordinator, by name, with the active events
+        assigned to them (not completed, cancelled, rejected, draft, or
+        discarded), soonest first. A coordinator with none is still listed, and
+        an event assigned to someone no longer listed as a coordinator is not
+        lost from view. The router lets only the Lead read it."""
+        directory = {user["userId"]: user for user in list_users(authorization)}
+        org_names = organisation_names(authorization)
+        groups = {
+            user_id: CoordinatorAssignmentsOut(userId=user_id, name=user["userName"], email=user["email"])
+            for user_id, user in directory.items()
+            if user.get("role") == "coordinator"
+        }
+        for row in self.event_dao.list_assigned_excluding_statuses(list(LOCKED_STATUSES)):
+            if row.coordinatorId not in groups:
+                known = directory.get(row.coordinatorId, {})
+                groups[row.coordinatorId] = CoordinatorAssignmentsOut(
+                    userId=row.coordinatorId,
+                    name=known.get("userName") or row.coordinatorId,
+                    email=known.get("email") or "",
+                )
+            groups[row.coordinatorId].events.append(
+                SupervisedEventOut(
+                    eventId=row.eventId,
+                    eventName=row.eventName,
+                    status=row.status,
+                    proposedStartAt=row.proposedStartAt,
+                    proposedEndAt=row.proposedEndAt,
+                    organisationName=org_names.get(row.organisationId or ""),
+                )
+            )
+        return sorted(groups.values(), key=lambda group: group.name.lower())
+
     def get_event_coordinator(
         self, event_id: str, caller: dict, authorization: str | None = None
     ) -> EventCoordinatorOut:
@@ -1471,13 +1509,16 @@ class EventService(BaseService):
         assigned_by: str,
         authorization: str | None = None,
     ) -> EventAssignmentOut:
-        """SPM-66: assign (or reassign) the event's coordinator.
+        """The Event Coordinator Lead assigns (or reassigns) the event's
+        coordinator; the router refuses everyone else. A new request stays
+        unassigned until then.
 
-        The assignee must be an Event Coordinator (AC8); there is no workload
-        limit (AC3). The assignment row records who assigned whom and when and
-        appears in the activity log (AC4). A submitted request moves to
+        The assignee must be an Event Coordinator (SPM-66 AC8); there is no
+        workload limit (AC3). The assignment row records who assigned whom and
+        when and appears in the activity log. A submitted request moves to
         "under review" (AC6). The new coordinator and the organiser are
-        notified (AC5) after the save, best effort.
+        notified, and on a reassignment the coordinator it was taken from,
+        after the save, best effort.
         """
         event = self._require_event(event_id)
         if event.status in LOCKED_STATUSES:
@@ -1489,6 +1530,10 @@ class EventService(BaseService):
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="An event can only be assigned to an Event Coordinator",
             )
+        if event.coordinatorId == data.coordinatorId:
+            # SPM-118 AC1: a reassignment moves the event to a different coordinator.
+            raise conflict(f"{assignee['userName']} is already the coordinator for this event")
+        previous = event.coordinatorId
         now = datetime.utcnow()
         row = EventAssignment(
             assignmentId=str(uuid4()),
@@ -1505,7 +1550,9 @@ class EventService(BaseService):
         event.updatedAt = now
         self.db.commit()
         self.db.refresh(row)
-        self._notify_assignment(event, assignee, users.get(event.organiserId), authorization)
+        replaced = users.get(previous) if previous else None
+        self._notify_assignment(event, assignee, users.get(event.organiserId), replaced, authorization)
+        # SPM-93: the new coordinator's in-app notice, worded by notification-service.
         publish_notification(
             "booking.assigned",
             event.eventId,
@@ -1525,23 +1572,38 @@ class EventService(BaseService):
 
     @staticmethod
     def _notify_assignment(
-        event: Event, assignee: dict, organiser: dict | None, authorization: str | None
+        event: Event, assignee: dict, organiser: dict | None, replaced: dict | None, authorization: str | None
     ) -> None:
+        """Best effort: the new coordinator by email (their in-app notice is
+        SPM-93's "booking.assigned", published by the caller), and by email and
+        in-app the coordinator a reassignment took the event from and the organiser."""
+
+        def tell(user: dict, kind: str, title: str, body: str) -> None:
+            send_notification(user["email"], title, body, authorization)
+            record_notification(user["userId"], event.eventId, kind, title, body, authorization)
+
         send_notification(
             assignee["email"],
             f"You are now the coordinator for {event.eventName}",
             f"{event.eventName} has been assigned to you. It is currently {event.status}.",
             authorization,
         )
+        if replaced is not None:
+            tell(
+                replaced,
+                "event.reassigned",
+                f"{event.eventName} has been reassigned",
+                f"{event.eventName} is now with {assignee['userName']}, so you are no longer its coordinator.",
+            )
         if organiser is None:
             logger.warning("organiser %s of event %s not in the user directory", event.organiserId, event.eventId)
             return
-        send_notification(
-            organiser["email"],
+        tell(
+            organiser,
+            "event.coordinator",
             f"Your coordinator for {event.eventName}",
             f"{assignee['userName']} is now your coordinator for {event.eventName}. "
             f"You can reach them at {assignee['email']}.",
-            authorization,
         )
 
     def _record_status_change(
@@ -1878,6 +1940,9 @@ class EventService(BaseService):
         reason: str = "",
         authorization: str | None = None,
     ) -> EventOut:
+        # SPM-70 AC1: only the assigned coordinator rejects; each coordinator
+        # manages only the events assigned to them.
+        _require_assigned_coordinator(self._require_event(event_id), coordinator_id, "reject it")
         return self._decide_event(event_id, coordinator_id, "rejected", reason, authorization)
 
     def complete_event(

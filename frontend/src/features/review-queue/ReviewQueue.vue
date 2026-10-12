@@ -12,20 +12,13 @@
       </label>
       <div class="queue-filters">
         <button
+          v-if="isLead"
           class="filter-btn"
           :class="{ active: filter === 'unassigned' }"
           data-testid="queue-filter-unassigned"
           @click="toggleFilter('unassigned')"
         >
           Unassigned only
-        </button>
-        <button
-          class="filter-btn"
-          :class="{ active: filter === 'mine' }"
-          data-testid="queue-filter-mine"
-          @click="toggleFilter('mine')"
-        >
-          My assignments
         </button>
         <button
           class="filter-btn sort-btn"
@@ -71,7 +64,7 @@
         </div>
         <div class="event-facts">
           <span data-testid="queue-attendance">{{ event.expectedAttendance }} attendees</span>
-          <span class="event-assignee">{{ event.coordinatorId ? 'Assigned' : 'Unassigned' }}</span>
+          <span v-if="isLead" class="event-assignee" data-testid="queue-assignee">{{ assigneeLabel(event) }}</span>
         </div>
         <div class="actions">
           <button
@@ -83,6 +76,7 @@
             Approve
           </button>
           <button
+            v-if="canReject(event)"
             class="btn btn-outline"
             :disabled="isBusy(event.eventId)"
             @click.stop="openReject(event)"
@@ -118,14 +112,20 @@
 
         <div class="details-actions">
           <button
+            v-if="isLead"
             class="btn btn-outline"
             :disabled="isBusy(selected.eventId)"
             data-testid="queue-assign-coordinator"
             @click="assigning = selected"
           >
-            {{ selected.coordinatorId ? 'Change coordinator' : 'Assign coordinator' }}
+            {{ selected.coordinatorId ? 'Reassign coordinator' : 'Assign coordinator' }}
           </button>
-          <button class="btn btn-outline" :disabled="isBusy(selected.eventId)" @click="openReject(selected)">
+          <button
+            v-if="canReject(selected)"
+            class="btn btn-outline"
+            :disabled="isBusy(selected.eventId)"
+            @click="openReject(selected)"
+          >
             Reject
           </button>
           <button
@@ -141,7 +141,7 @@
     </div>
     </div>
 
-    <!-- SPM-66: assign from the queue (stacks above the details popup) -->
+    <!-- The Event Coordinator Lead assigns from the queue (stacks above the details popup) -->
     <AssignCoordinatorDialog
       v-if="assigning"
       :event="assigning"
@@ -176,9 +176,10 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { getSubmissionQueue, rejectEvent } from '../../api/eventService.js'
+import { getCoordinatorCandidates, getSubmissionQueue, rejectEvent } from '../../api/eventService.js'
 import { getMe } from '../../api/userService.js'
 import { IN_REVIEW_EVENT_STATUSES } from '../../config/eventStatus.js'
+import { session } from '../../store/session.js'
 import ApproveEventDialog from '../event-detail/ApproveEventDialog.vue'
 import AssignCoordinatorDialog from '../event-detail/AssignCoordinatorDialog.vue'
 
@@ -195,8 +196,13 @@ const assigning = ref(null)
 const approving = ref(null)
 const dialogOpen = computed(() => Boolean(assigning.value || rejecting.value || approving.value))
 
-// 'all' | 'unassigned' | 'mine'
+// 'all' | 'unassigned' (the Lead's filter)
 const filter = ref('all')
+// The Event Coordinator Lead sees every request and assigns them; a coordinator
+// sees only the requests assigned to them (the server applies the same rule).
+const isLead = computed(() => session.role === 'coordinatorlead')
+// userId -> name, so the Lead sees who each request is with. Display only.
+const coordinatorNames = ref({})
 const query = ref('')
 // 'waiting' (default, server-side longest-wait-first) | 'proposedStartAt'
 const sortMode = ref('waiting')
@@ -218,6 +224,19 @@ function canApprove(event) {
     event.coordinatorId === myUserId.value &&
     IN_REVIEW_EVENT_STATUSES.includes(event.status)
   )
+}
+
+// SPM-70: only the assigned coordinator rejects, while the request awaits a decision.
+function canReject(event) {
+  return !!event.coordinatorId && event.coordinatorId === myUserId.value && ['submitted', 'under review'].includes(event.status)
+}
+
+function coordinatorName(userId) {
+  return coordinatorNames.value[userId] || userId
+}
+
+function assigneeLabel(event) {
+  return event.coordinatorId ? `Assigned to ${coordinatorName(event.coordinatorId)}` : 'Unassigned'
 }
 
 // submittedAt is stamped with utcnow() on the server and serialised without a
@@ -255,9 +274,6 @@ function formatSubmitted(value) {
 const filteredEvents = computed(() => {
   let list = events.value
   if (filter.value === 'unassigned') list = list.filter((event) => !event.coordinatorId)
-  else if (filter.value === 'mine') {
-    list = list.filter((event) => event.coordinatorId && event.coordinatorId === myUserId.value)
-  }
   const term = query.value.trim().toLowerCase()
   if (!term) return list
   return list.filter((event) => {
@@ -270,7 +286,7 @@ const filteredEvents = computed(() => {
 const emptyMessage = computed(() => {
   if (query.value.trim()) return 'No requests match this search.'
   if (filter.value === 'unassigned') return 'No unassigned requests match this filter.'
-  if (filter.value === 'mine') return 'No requests are currently assigned to you.'
+  if (!isLead.value) return 'No requests are currently assigned to you.'
   return 'No requests are awaiting review.'
 })
 
@@ -295,7 +311,7 @@ function detailRows(event) {
     { label: 'Organisation', value: event.organisationName },
     { label: 'Submitted', value: formatSubmitted(event.submittedAt) },
     { label: 'Waiting', value: waitingFor(event.submittedAt) },
-    { label: 'Assigned coordinator', value: event.coordinatorId },
+    { label: 'Assigned coordinator', value: event.coordinatorId ? coordinatorName(event.coordinatorId) : '' },
     { label: 'Category', value: event.category },
     { label: 'Proposed start', value: formatLocal(event.proposedStartAt) },
     { label: 'Proposed end', value: formatLocal(event.proposedEndAt) },
@@ -336,8 +352,9 @@ async function loadEvents() {
   try {
     // Server filters to submitted/under review/changes requested and orders
     // by submittedAt ascending (longest-waiting first) by default, or by
-    // proposedStartAt when sortMode is 'proposedStartAt'. "mine"/"unassigned"
-    // are applied client-side below (filteredEvents) against this list.
+    // proposedStartAt when sortMode is 'proposedStartAt'. A coordinator gets
+    // only their own requests; the Lead's "unassigned" filter is applied
+    // client-side below (filteredEvents) against this list.
     const { data } = await getSubmissionQueue({
       sort: sortMode.value === 'proposedStartAt' ? 'proposedStartAt' : undefined,
     })
@@ -346,6 +363,15 @@ async function loadEvents() {
     error.value = err.response?.data?.detail || 'Could not load the review queue. Please try again.'
   } finally {
     loading.value = false
+  }
+}
+
+async function loadCoordinatorNames() {
+  try {
+    const { data } = await getCoordinatorCandidates()
+    coordinatorNames.value = Object.fromEntries(data.map((row) => [row.userId, row.name]))
+  } catch {
+    // Non-fatal - the queue shows coordinator ids instead.
   }
 }
 
@@ -403,6 +429,7 @@ async function confirmReject() {
 onMounted(() => {
   loadEvents()
   loadMyUserId()
+  if (isLead.value) loadCoordinatorNames()
   ticker = setInterval(() => { now.value = Date.now() }, 60000)
 })
 onUnmounted(() => clearInterval(ticker))

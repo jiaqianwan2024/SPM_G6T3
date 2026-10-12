@@ -74,6 +74,7 @@ Authentication is handled by Firebase. The former `password_hash` column was rem
 
 - `organiser` — Event Organiser
 - `coordinator` — Event Coordinator
+- `coordinatorlead` — Event Coordinator Lead: assigns each new request to an Event Coordinator, and reassigns
 - `venue` — Venue Staff
 - `techsupport` — Technical Support Staff
 - `attendee` — Attendee
@@ -173,7 +174,7 @@ Coordinator assign / reassign history.
 | assigned_by | VARCHAR(64) | Logical FK → users |
 | assigned_at | DATETIME | |
 
-**Assignment rules (SPM-66, `POST /events/{id}/assign-coordinator`):** any Event Coordinator may assign or reassign an event to an Event Coordinator (the assignee's role is checked against user-service). No workload limit applies. Events that are `completed`, `cancelled`, `rejected`, `draft`, or `discarded` cannot be assigned. Each assignment adds a row here and sets `events.coordinator_id`. A `submitted` event moves to `under review` (written to `event_status_history`). These rows appear in the activity log as `assignment` entries, whose previous coordinator comes from the row before.
+**Assignment rules (`POST /events/{id}/assign-coordinator`):** only the Event Coordinator Lead assigns or reassigns an event, always to an Event Coordinator (the assignee's role is checked against user-service). A new request stays unassigned until then (SPM-117). A reassignment must choose a different coordinator, or it is 409 and nothing is saved (SPM-118). This replaces SPM-66, under which any coordinator could assign. No workload limit applies. Events that are `completed`, `cancelled`, `rejected`, `draft`, or `discarded` cannot be assigned. Each assignment adds a row here and sets `events.coordinator_id`. A `submitted` event moves to `under review` (written to `event_status_history`). These rows appear in the activity log as `assignment` entries, whose previous coordinator comes from the row before.
 
 ### event_safety_reviews
 
@@ -517,7 +518,7 @@ Indexes: `user_id`; `created_at`. Unique: (`occurrence_id`, `user_id`), so a ret
 
 ## Logical ERD
 
-Logical model of the whole system (Crow’s foot). Cross-service keys are logical FKs — there is no physical `FOREIGN KEY` across service schemas. `users.role` is a disjoint subtype: `organiser` | `coordinator` | `venue` | `techsupport` | `attendee`.
+Logical model of the whole system (Crow’s foot). Cross-service keys are logical FKs — there is no physical `FOREIGN KEY` across service schemas. `users.role` is a disjoint subtype: `organiser` | `coordinator` | `coordinatorlead` | `venue` | `techsupport` | `safety` | `attendee`.
 
 ```mermaid
 erDiagram

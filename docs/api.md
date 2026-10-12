@@ -27,8 +27,12 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 |---|---|
 | `POST /events` | `organiser` |
 | `GET /events/upcoming/technical` | `techsupport` |
-| `POST /events/{id}/assign-coordinator` | `coordinator`; the assignee must also be a `coordinator` (422 otherwise) (SPM-66) |
-| `GET /events/coordinators` | `coordinator` |
+| `POST /events/{id}/assign-coordinator` | `coordinatorlead` only (SPM-117, SPM-118); an Event Coordinator gets 403. The assignee must be a `coordinator` (422 otherwise) |
+| `GET /events/coordinators` | `coordinatorlead` |
+| `GET /events/assignments` | `coordinatorlead` only (SPM-119); an Event Coordinator gets 403 |
+| `GET /events/queue` | `coordinatorlead` sees every request; a `coordinator` sees only the requests assigned to them |
+| `POST /events/{id}/reject` | `coordinator` assigned to the event (SPM-70) |
+| `POST`, `PATCH`, `DELETE /events/{id}/readiness-items…` | `coordinator` assigned to the event |
 | `GET /events/{id}/coordinator` | `organiser` of that event's organisation, `coordinator`, `venue`, `techsupport` |
 | `POST /events/{id}/approve` | `coordinator` assigned to the event (SPM-69); only while it is `under review` or `changes requested` |
 | `GET /events/{id}/decision` | `organiser` of that event's organisation, `coordinator`, `venue`, `techsupport` |
@@ -78,11 +82,28 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `GET /equipment/reservations?eventId=` | `coordinator`, `techsupport` |
 | `POST /equipment/reservations/reverification` | `coordinator`, `safety` (event-service calls it on a confirmed significant edit, or when a Safety Officer requests changes) |
 
-## Assigning a coordinator (SPM-66)
+## Assigning a coordinator (SPM-117, SPM-118, SPM-119)
+
+A new request stays unassigned in the review queue until the Event Coordinator Lead (role `coordinatorlead`; demo account `lead@connectsphere.com` / `lead123`) assigns it to an Event Coordinator. The Lead can reassign it later. Coordinators manage only the events assigned to them:
+
+- their review queue shows only their own requests;
+- assigning, reassigning, and listing candidates return 403 for them.
+
+This replaces SPM-66, under which any coordinator could assign.
 
 `GET /events/coordinators` lists every Event Coordinator as `{userId, name, email, activeEventCount}`. The count covers their assigned events that are not completed, cancelled, rejected, drafts, or discarded, and is for information only: there is no workload limit.
 
-`POST /events/{id}/assign-coordinator` with `{"coordinatorId": "u6"}` assigns or reassigns the event. A `submitted` event moves to `under review`; other statuses are unchanged. Reject accepts `submitted` or `under review`; approve needs an assigned coordinator (see SPM-69 below). The assignment appears in `GET /events/{id}/activity-log` as a `kind: "assignment"` entry: `changedBy` assigned `newValue` (replacing `oldValue`) at `createdAt`. The new coordinator and the organiser are emailed through notification-service; that step is best effort, so a failed email does not undo the assignment. It returns 409 for completed, cancelled, rejected, draft, or discarded events, 422 when the assignee is not a coordinator, and 503 when user-service cannot be reached (nothing is saved then).
+`POST /events/{id}/assign-coordinator` with `{"coordinatorId": "u6"}` assigns or reassigns the event.
+
+- **Status:** a `submitted` event moves to `under review`; other statuses are unchanged.
+- **Reassigning (SPM-118):** the event must move to a different coordinator. Choosing the one it already has is 409 and saves nothing. Edit permission moves at once: every service reads the event's coordinator on each request.
+- **Activity log:** the assignment appears in `GET /events/{id}/activity-log` as a `kind: "assignment"` entry: `changedBy` (the Lead) assigned `newValue`, replacing `oldValue`, at `createdAt`.
+- **Who's told:** by email and in-app, the new coordinator (`event.assigned`), the organiser (`event.coordinator`), and on a reassignment the coordinator it was taken from (`event.reassigned`). Assigning the coordinator it already has tells no one. This step is best effort, so a failed notice does not undo the assignment.
+- **Errors:** 409 for completed, cancelled, rejected, draft, or discarded events; 422 when the assignee is not a coordinator; 503 when user-service cannot be reached (nothing is saved then).
+
+Only the assigned coordinator can approve (SPM-69) or reject (SPM-70) a request; reject accepts `submitted` or `under review`.
+
+`GET /events/assignments` (SPM-119, Lead only) lists every Event Coordinator by name as `{userId, name, email, events}`. `events` holds their active events, soonest first, as `{eventId, eventName, status, proposedStartAt, proposedEndAt, organisationName}`; active means not completed, cancelled, rejected, draft, or discarded. A coordinator with no active events is still listed. An event assigned to someone no longer listed as a coordinator appears under that user's id. The Lead's **Assignments** tab shows this list, and each event opens its page, where the Lead can reassign it.
 
 `GET /events/{id}/coordinator` returns `{coordinatorId, name, email}`, all null until someone is assigned. It is kept off `GET /events/{id}` so attendees never see it.
 

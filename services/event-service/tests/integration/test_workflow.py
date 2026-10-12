@@ -10,6 +10,11 @@ from shared.testing.cases import ServiceTestCase
 
 ORGANISER = {"userId": "org-1", "organisationId": "o1", "role": "organiser", "userName": "Amy"}
 COORDINATOR = {"userId": "coord-1", "role": "coordinator", "userName": "Ben"}
+LEAD = {"userId": "lead-1", "role": "coordinatorlead", "userName": "Rachel"}
+DIRECTORY = [
+    {"userId": "coord-1", "userName": "Ben", "email": "ben@example.com", "role": "coordinator"},
+    {"userId": "org-1", "userName": "Amy", "email": "amy@example.com", "role": "organiser", "organisationId": "o1"},
+]
 
 
 class TestEventWorkflow(ServiceTestCase):
@@ -20,6 +25,8 @@ class TestEventWorkflow(ServiceTestCase):
         def as_role(_authorization, _url, allowed_roles=None):
             if allowed_roles == {"coordinator"}:
                 return COORDINATOR
+            if allowed_roles == {"coordinatorlead"}:
+                return LEAD
             return ORGANISER
 
         self.caller = patch("app.routers.event.resolve_caller", side_effect=as_role)
@@ -88,6 +95,19 @@ class TestEventWorkflow(ServiceTestCase):
         )
         self.assertEqual(submitted.status_code, 201)
         open_id = submitted.json()["eventId"]
+
+        # A new request stays unassigned until the Lead assigns it (SPM-117), and
+        # only its assigned coordinator manages its readiness items.
+        with patch("app.services.event_service.list_users", return_value=DIRECTORY), patch(
+            "app.services.event_service.send_notification", return_value=True
+        ), patch("app.services.event_service.record_notification", return_value=True), patch(
+            "app.services.event_service.publish_notification", return_value=True
+        ):
+            assigned = self.client.post(
+                f"/events/{open_id}/assign-coordinator", headers=self.headers, json={"coordinatorId": "coord-1"}
+            )
+        self.assertEqual(assigned.status_code, 201)
+        self.assertEqual(assigned.json()["assignedBy"], "lead-1")
 
         line = self.client.post(
             f"/events/{open_id}/readiness-items",

@@ -11,7 +11,7 @@ import {
 
 async function underReviewEvent(name) {
   const event = await createSubmittedEvent('EO-01', name)
-  await assignCoordinator(event.eventId, 'u2', 'EC-01')
+  await assignCoordinator(event.eventId, 'u2')
   return event
 }
 

@@ -26,6 +26,7 @@ from app.schemas.event import (
     ClarificationOut,
     ClarificationReplyCreate,
     ConfirmationOut,
+    CoordinatorAssignmentsOut,
     CoordinatorCandidateOut,
     EventActivityOut,
     EventApproval,
@@ -60,7 +61,7 @@ from app.schemas.event import (
 )
 from app.schemas.followup import OpenEventOut, ReadinessCreate, ReadinessItemOut, ReadinessPatch
 from app.services.event_followup import EventFollowUp
-from app.services.event_service import EventService
+from app.services.event_service import COORDINATOR_LEAD, EventService
 from shared.auth.deps import forwarded_bearer
 from shared.auth.roles import resolve_caller
 from shared.openapi import error_responses
@@ -214,18 +215,22 @@ def list_confirmed_events(
     "/queue",
     response_model=list[EventOut],
     summary="Coordinator review queue",
-    description="Coordinator only. Submitted / under-review / changes-requested events, ordered by "
-    "submission time - longest-waiting first, unless `sort=proposedStartAt`. Pass `assignedTo` "
-    "(a coordinator userId) to see only that coordinator's own assignments.",
+    description="Event Coordinator Lead and Event Coordinators. Submitted / under-review / changes-requested "
+    "events, ordered by submission time - longest-waiting first, unless `sort=proposedStartAt`. The Lead sees "
+    "every request, unassigned ones included, and can pass `assignedTo` (a coordinator userId) to see one "
+    "coordinator's assignments. A coordinator only ever sees the requests assigned to them.",
     responses=error_responses(403, 503),
 )
 def list_submission_queue(
     sort: str | None = Query(default=None, description="`proposedStartAt` to sort by event date instead of wait time."),
-    assignedTo: str | None = Query(default=None, description="Coordinator userId - only their assigned events."),
+    assignedTo: str | None = Query(default=None, description="Lead only: a coordinator userId."),
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
-    resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator", COORDINATOR_LEAD})
+    if caller["role"] == "coordinator":
+        # Each coordinator manages only the requests assigned to them.
+        assignedTo = caller["userId"]
     return service.list_submission_queue(authorization, sort=sort, assigned_to=assignedTo)
 
 
@@ -298,7 +303,7 @@ def list_safety_reviews(
     "/coordinators",
     response_model=list[CoordinatorCandidateOut],
     summary="Coordinators who can be assigned",
-    description="Coordinator only (SPM-66 AC2). Every Event Coordinator with their count of active events, "
+    description="Event Coordinator Lead only. Every Event Coordinator with their count of active events, "
     "for information only; no workload limit applies. 503 when user-service cannot be reached.",
     responses=error_responses(403, 503),
 )
@@ -306,8 +311,25 @@ def list_coordinator_candidates(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
-    resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    resolve_caller(authorization, settings.user_service_url, allowed_roles={COORDINATOR_LEAD})
     return service.list_coordinator_candidates(authorization)
+
+
+@router.get(
+    "/assignments",
+    response_model=list[CoordinatorAssignmentsOut],
+    summary="Every coordinator's active events",
+    description="Event Coordinator Lead only (SPM-119); an Event Coordinator, or anyone else, gets 403. Each "
+    "Event Coordinator, by name, with the active events assigned to them (not completed, cancelled, rejected, "
+    "draft, or discarded), soonest first. 503 when user-service cannot be reached.",
+    responses=error_responses(403, 503),
+)
+def list_coordinator_assignments(
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    resolve_caller(authorization, settings.user_service_url, allowed_roles={COORDINATOR_LEAD})
+    return service.list_coordinator_assignments(authorization)
 
 
 @router.get(
@@ -386,8 +408,8 @@ def create_readiness_item(
     authorization: str | None = Depends(forwarded_bearer),
     followup: EventFollowUp = Depends(get_followup),
 ):
-    resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
-    return followup.create_item(event_id, body, authorization)
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    return followup.create_item(event_id, body, authorization, caller["userId"])
 
 
 @router.get("/{event_id}/readiness-items/{item_id}", response_model=ReadinessItemOut)
@@ -411,8 +433,8 @@ def update_readiness_item(
     authorization: str | None = Depends(forwarded_bearer),
     followup: EventFollowUp = Depends(get_followup),
 ):
-    resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
-    return followup.update_item(event_id, item_id, body, authorization)
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    return followup.update_item(event_id, item_id, body, authorization, caller["userId"])
 
 
 @router.delete("/{event_id}/readiness-items/{item_id}", status_code=204)
@@ -422,8 +444,8 @@ def delete_readiness_item(
     authorization: str | None = Depends(forwarded_bearer),
     followup: EventFollowUp = Depends(get_followup),
 ):
-    resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
-    followup.delete_item(event_id, item_id)
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    followup.delete_item(event_id, item_id, caller["userId"])
 
 
 @router.get(
@@ -1054,11 +1076,14 @@ def complete_event(
     response_model=EventAssignmentOut,
     status_code=201,
     summary="Assign coordinator",
-    description="Coordinator only (SPM-66). Assigns or reassigns the event to an Event Coordinator (422 for "
-    "anyone else); no workload limit applies. Writes an `event_assignments` row, shown in the activity log, "
-    "and sets `events.coordinator_id`. A `submitted` event moves to `under review`. The coordinator and the "
-    "organiser are emailed (best effort). 409 for a completed, cancelled, rejected, draft, or discarded event; "
-    "503 when user-service cannot be reached.",
+    description="Event Coordinator Lead only; an Event Coordinator, or anyone else, gets 403. Assigns or "
+    "reassigns the event to an Event Coordinator (422 for anyone else); no workload limit applies. Writes an "
+    "`event_assignments` row, shown in the activity log with who assigned whom and when, and sets "
+    "`events.coordinator_id`. A `submitted` event moves to `under review`. Reassigning to the coordinator it "
+    "already has is 409 (SPM-118) and saves nothing. The new coordinator and the organiser "
+    "are notified by email and in-app, and on a reassignment so is the coordinator it was taken from (best "
+    "effort). 409 for a completed, cancelled, rejected, draft, or discarded event; 503 when user-service cannot "
+    "be reached.",
     responses=error_responses(403, 404, 409, 422, 503),
 )
 def assign_coordinator(
@@ -1067,5 +1092,5 @@ def assign_coordinator(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
-    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={COORDINATOR_LEAD})
     return service.assign_coordinator(event_id, body, caller["userId"], authorization)

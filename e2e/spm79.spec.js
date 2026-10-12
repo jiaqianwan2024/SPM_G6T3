@@ -39,7 +39,7 @@ test.describe('SPM-79 Create and save a draft event request', () => {
     await expect(row).toHaveAttribute('data-lifecycle', /draft|created/i)
     await expect(row).toContainText(/draft/i)
     expect(draft.coordinatorId || draft.coordinator).toBeFalsy()
-    const queue = await eventApi('GET', '/queue', 'EC-01')
+    const queue = await eventApi('GET', '/queue', 'ECL-01')
     expect((queue.body || []).map((row) => row.eventId)).not.toContain(draft.eventId)
   })
 

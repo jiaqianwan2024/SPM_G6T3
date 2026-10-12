@@ -7,7 +7,7 @@ import { venueRequest } from './support/venue.js'
 
 async function underReviewEvent() {
   const event = await createSubmittedEvent('EO-01', `AUTO-SPM70-${Date.now()}`)
-  await assignCoordinator(event.eventId, 'u2', 'EC-01')
+  await assignCoordinator(event.eventId, 'u2')
   return event.eventId
 }
 

@@ -74,7 +74,7 @@ export async function reserveQuantity(eventId, equipmentId, quantity, window) {
 
 export async function planningEventWithRequest(name, extras = {}) {
   const event = await createSubmittedEvent('EO-01', name)
-  await assignCoordinator(event.eventId, 'u2', 'EC-01')
+  await assignCoordinator(event.eventId, 'u2')
   const window = extras.window || equipmentPeriod(extras.sequence ?? 320)
   const request = await createPendingRequest({
     eventId: event.eventId,

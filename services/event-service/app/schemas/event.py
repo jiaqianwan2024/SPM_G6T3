@@ -910,6 +910,26 @@ class EventDraftUpsert(BaseModel):
         return self
 
 
+class SupervisedEventOut(BaseModel):
+    """SPM-119: one active event under a coordinator, enough to recognise and open it."""
+
+    eventId: str
+    eventName: str
+    status: str
+    proposedStartAt: datetime | None = None
+    proposedEndAt: datetime | None = None
+    organisationName: str | None = None
+
+
+class CoordinatorAssignmentsOut(BaseModel):
+    """SPM-119: an Event Coordinator and the active events assigned to them."""
+
+    userId: str
+    name: str
+    email: str = ""
+    events: list[SupervisedEventOut] = Field(default_factory=list)
+
+
 class EventAssignmentCreate(BaseModel):
     coordinatorId: str = Field(min_length=1, examples=["u2"])
 

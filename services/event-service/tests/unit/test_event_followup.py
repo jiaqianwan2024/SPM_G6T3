@@ -71,6 +71,7 @@ class TestFollowUp(EventCase):
                 attachments=[{"name": "Plan", "url": "https://example.test/plan"}],
             ),
             "Bearer token",
+            "coord-1",
         )
         self.assertTrue(created.dueSoon)
         self.assertEqual(created.handlerName, "Ben Lee")
@@ -89,6 +90,7 @@ class TestFollowUp(EventCase):
                 attachments=[{"name": "Note", "url": "https://example.test/note"}],
             ),
             "Bearer token",
+            "coord-1",
         )
         self.assertIn("edited", updated.note)
         self.assertEqual(updated.handlerName, "u9")
@@ -100,19 +102,36 @@ class TestFollowUp(EventCase):
                 dueAt=datetime.utcnow() - timedelta(days=2),
             ),
             "Bearer token",
+            "coord-1",
         )
         self.assertTrue(overdue.overdue)
         self.assertFalse(overdue.dueSoon)
         alerts = self.follow.list_readiness("e-open", "Bearer token", due_soon=True)
         self.assertIn(created.itemId, [row.itemId for row in alerts])
         self.assertNotIn(overdue.itemId, [row.itemId for row in alerts])
-        self.follow.delete_item("e-open", created.itemId)
+        self.follow.delete_item("e-open", created.itemId, "coord-1")
         with self.assertRaises(HTTPException):
             self.follow.get_item("e-open", created.itemId)
         with self.assertRaises(HTTPException):
-            self.follow.delete_item("e-open", created.itemId)
+            self.follow.delete_item("e-open", created.itemId, "coord-1")
         with self.assertRaises(HTTPException):
-            self.follow.update_item("e-open", "missing", ReadinessPatch(note="x"), "Bearer token")
+            self.follow.update_item("e-open", "missing", ReadinessPatch(note="x"), "Bearer token", "coord-1")
+
+    def test_only_the_assigned_coordinator_changes_readiness_items(self):
+        _open_event(self.db)
+        created = self.follow.create_item(
+            "e-open", ReadinessCreate(category="venue", handlerId="u3"), "Bearer token", "coord-1"
+        )
+        attempts = (
+            lambda: self.follow.create_item("e-open", ReadinessCreate(category="venue", handlerId="u3"), None, "coord-2"),
+            lambda: self.follow.update_item("e-open", created.itemId, ReadinessPatch(note="x"), None, "coord-2"),
+            lambda: self.follow.delete_item("e-open", created.itemId, "coord-2"),
+        )
+        for attempt in attempts:
+            with self.assertRaises(HTTPException) as ctx:
+                attempt()
+            self.assertEqual(ctx.exception.status_code, 403)
+        self.assertEqual(self.follow.get_item("e-open", created.itemId).note, "")
 
     def test_derived_rows_reflect_equipment_and_can_be_confirmed(self):
         _open_event(self.db)
@@ -123,7 +142,7 @@ class TestFollowUp(EventCase):
         self.assertTrue(rows[0].attachments)
         self.assertIn("@", rows[0].handlerEmail)
         confirmed = self.follow.update_item(
-            "e-open", "derived-venue", ReadinessPatch(status="confirmed"), None
+            "e-open", "derived-venue", ReadinessPatch(status="confirmed"), None, "coord-1"
         )
         self.assertEqual(confirmed.status, "confirmed")
         again = self.follow.list_readiness("e-open", None)

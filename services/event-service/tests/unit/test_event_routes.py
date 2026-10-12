@@ -70,14 +70,6 @@ class TestEventRoutes(ServiceTestCase):
         self.assertEqual(self.client.get(f"/events/{event_id}", headers=headers).status_code, 200)
         self.assertEqual(self.client.get(f"/events/{event_id}/activity-log", headers=headers).status_code, 200)
 
-        rejected_source = self.client.post("/events", headers=headers, json=body)
-        rejected = self.client.post(
-            f"/events/{rejected_source.json()['eventId']}/reject",
-            headers=headers,
-            json={"reason": "Dates clash"},
-        )
-        self.assertEqual(rejected.status_code, 200)
-
         directory = [{"userId": "coord-1", "userName": "Ben", "email": "ben@example.com", "role": "coordinator"}]
         with patch("app.services.event_service.list_users", return_value=directory), patch(
             "app.services.event_service.send_notification", return_value=True
@@ -88,6 +80,10 @@ class TestEventRoutes(ServiceTestCase):
                 json={"coordinatorId": "coord-1"},
             )
             approved = self.client.post(f"/events/{event_id}/approve", headers=headers, json={})
+            rejected_source = self.client.post("/events", headers=headers, json=body).json()["eventId"]
+            self.client.post(f"/events/{rejected_source}/assign-coordinator", headers=headers, json={"coordinatorId": "coord-1"})
+            rejected = self.client.post(f"/events/{rejected_source}/reject", headers=headers, json={"reason": "Dates clash"})
+        self.assertEqual(rejected.status_code, 200)
         self.assertEqual(assigned.status_code, 201)
         self.assertEqual(approved.status_code, 200)
         self.assertEqual(approved.json()["status"], "planning")

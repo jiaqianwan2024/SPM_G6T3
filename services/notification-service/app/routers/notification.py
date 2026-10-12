@@ -61,7 +61,7 @@ class NotifyOut(BaseModel):
 
 # Internal staff may notify someone else, e.g. a coordinator's change telling
 # the organiser and attendees (SPM-90). Everyone else notifies only themselves.
-STAFF_ROLES = {"coordinator", "venue", "techsupport", "safety"}
+STAFF_ROLES = {"coordinator", "coordinatorlead", "venue", "techsupport", "safety"}
 
 
 class RecordRequest(BaseModel):
