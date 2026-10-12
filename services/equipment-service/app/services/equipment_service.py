@@ -109,25 +109,6 @@ def _events_over_serviceable(rows: list[EquipmentReservation], serviceable: int)
     return sorted(event_ids)
 
 
-def _user_email(user_id: str, authorization: str | None) -> str | None:
-    if not authorization:
-        return None
-    try:
-        with httpx.Client(timeout=5) as client:
-            response = client.get(
-                f"{settings.user_service_url}/users",
-                headers={"Authorization": authorization},
-            )
-    except httpx.HTTPError:
-        return None
-    if response.status_code != 200:
-        return None
-    for user in response.json():
-        if user.get("userId") == user_id and user.get("email"):
-            return user["email"]
-    return None
-
-
 def _event_record(event_id: str, authorization: str | None) -> dict | None:
     if not authorization:
         return None
