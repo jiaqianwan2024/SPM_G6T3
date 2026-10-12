@@ -1550,7 +1550,9 @@ class EventService(BaseService):
         event.updatedAt = now
         self.db.commit()
         self.db.refresh(row)
-        self._notify_assignment(event, assignee, users.get(event.organiserId), authorization)
+        replaced = users.get(previous) if previous else None
+        self._notify_assignment(event, assignee, users.get(event.organiserId), replaced, authorization)
+        # SPM-93: the new coordinator's in-app notice, worded by notification-service.
         publish_notification(
             "booking.assigned",
             event.eventId,
@@ -1572,18 +1574,19 @@ class EventService(BaseService):
     def _notify_assignment(
         event: Event, assignee: dict, organiser: dict | None, replaced: dict | None, authorization: str | None
     ) -> None:
-        """By email and in-app, best effort: the new coordinator, the coordinator
-        a reassignment took the event from, and the organiser."""
+        """Best effort: the new coordinator by email (their in-app notice is
+        SPM-93's "booking.assigned", published by the caller), and by email and
+        in-app the coordinator a reassignment took the event from and the organiser."""
 
         def tell(user: dict, kind: str, title: str, body: str) -> None:
             send_notification(user["email"], title, body, authorization)
             record_notification(user["userId"], event.eventId, kind, title, body, authorization)
 
-        tell(
-            assignee,
-            "event.assigned",
+        send_notification(
+            assignee["email"],
             f"You are now the coordinator for {event.eventName}",
             f"{event.eventName} has been assigned to you. It is currently {event.status}.",
+            authorization,
         )
         if replaced is not None:
             tell(

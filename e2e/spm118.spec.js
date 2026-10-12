@@ -89,7 +89,7 @@ test.describe('SPM-118 Reassign an event to another Event Coordinator', () => {
     const event = await assignedToBen('ac05')
     await assignCoordinator(event.eventId, 'u6')
 
-    expect(await inbox('EC-02')).toContain(`You are now the coordinator for ${event.eventName}`)
+    expect(await inbox('EC-02')).toContain(`${event.eventName} has been assigned to you`)
     expect(await inbox('EC-01')).toContain(`${event.eventName} has been reassigned`)
     expect(await inbox('EO-01')).toContain(`Cara Ng is now your coordinator for ${event.eventName}`)
   })

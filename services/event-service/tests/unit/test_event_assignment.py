@@ -134,8 +134,10 @@ class TestAssignmentNotifications(AssignmentCase):
         self.assertIn("Cara Ng", calls[1].args[2])
         self.assertIn("cara@connectsphere.com", calls[1].args[2])
         self.assertEqual(calls[0].args[3], "Bearer token")
+        # The new coordinator's in-app notice is SPM-93's publish alone, so it is not doubled.
         inbox = [(call.args[0], call.args[2]) for call in self.mocks["inbox"].call_args_list]
-        self.assertEqual(inbox, [("coord-2", "event.assigned"), ("org-1", "event.coordinator")])
+        self.assertEqual(inbox, [("org-1", "event.coordinator")])
+        self.assertEqual(self.published.call_args.args[3], [{"userId": "coord-2", "role": "coordinator"}])
 
     def test_a_reassignment_also_tells_the_coordinator_it_was_taken_from(self):
         self.event(status="planning", coordinatorId="coord-1")

@@ -89,7 +89,7 @@ test.describe('SPM-117 Assign an unassigned request to an Event Coordinator', ()
   test('TC-SPM117-AC07 the newly assigned coordinator and the Event Organiser are notified', async () => {
     const event = await newRequest('ac07')
     await assignCoordinator(event.eventId, 'u2')
-    expect(await inbox('EC-01')).toContain(`You are now the coordinator for ${event.eventName}`)
+    expect(await inbox('EC-01')).toContain(`${event.eventName} has been assigned to you`)
     expect(await inbox('EO-01')).toContain(`Ben Lee is now your coordinator for ${event.eventName}`)
   })
 })
