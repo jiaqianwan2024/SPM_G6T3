@@ -1,9 +1,11 @@
 from datetime import datetime
+from typing import NamedTuple
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
 from app.models.notification import Notification
+from app.services.triggers import TRIGGERS, render
 
 # A page large enough that no existing caller that ignores pagination notices
 # a behaviour change, while still bounding a single query.
@@ -16,7 +18,8 @@ def send_email(to: str, subject: str, body: str) -> dict:
     return {"channel": "email", "to": to, "status": "queued"}
 
 
-def _new_row(user_id: str, event_id: str | None, type_: str, title: str, body: str) -> Notification:
+def _new_row(user_id: str, event_id: str | None, type_: str, title: str, body: str, **extra) -> Notification:
+    """`extra` carries the optional published-notification fields: link, resourceType, resourceId, occurrenceId."""
     return Notification(
         notificationId=str(uuid4()),
         userId=user_id,
@@ -26,6 +29,7 @@ def _new_row(user_id: str, event_id: str | None, type_: str, title: str, body: s
         body=body,
         isRead=False,
         createdAt=datetime.utcnow(),
+        **extra,
     )
 
 
@@ -104,3 +108,84 @@ def mark_all_read(db: Session, user_id: str) -> int:
         .update({"isRead": True}, synchronize_session=False)
     )
     return updated
+
+
+class PublishError(ValueError):
+    """The publish request itself is wrong (unknown trigger, missing context, wrong recipient role)."""
+
+
+class PublishResult(NamedTuple):
+    created: int
+    skipped_actor: int
+    skipped_attendee: int
+    skipped_duplicate: int
+
+
+def publish(
+    db: Session,
+    trigger_key: str,
+    event_id: str,
+    occurrence_id: str,
+    recipients: list[dict],
+    context: dict[str, str],
+    actor_id: str | None = None,
+    resource_type: str | None = None,
+    resource_id: str | None = None,
+) -> PublishResult:
+    """SPM-93: store one notification per recipient for one occurrence of a trigger.
+
+    `recipients` are `{"userId", "role"}` dicts the caller has already worked
+    out. A recipient is skipped, not failed, when they are the person who did
+    the action (AC5), an attendee on a trigger that is not attendee-visible
+    (AC9), listed twice, or already notified for this occurrence (AC6 - which
+    also makes a retried call safe). The caller commits.
+    """
+    trigger = TRIGGERS.get(trigger_key)
+    if trigger is None:
+        raise PublishError(f"Unknown trigger: {trigger_key}")
+    missing = [key for key in trigger.required_context if not str(context.get(key, "")).strip()]
+    if missing:
+        raise PublishError(f"{trigger_key} needs: {', '.join(missing)}")
+    title, body, link = render(trigger, event_id, context)
+
+    skipped_actor = skipped_attendee = skipped_duplicate = 0
+    wanted: list[str] = []
+    for recipient in recipients:
+        user_id, role = recipient["userId"], recipient["role"]
+        if user_id == actor_id:
+            skipped_actor += 1
+        elif role == "attendee" and not trigger.attendee_visible:
+            skipped_attendee += 1
+        elif role not in trigger.recipient_roles:
+            raise PublishError(f"A {role} cannot receive {trigger_key}")
+        elif user_id in wanted:
+            skipped_duplicate += 1
+        else:
+            wanted.append(user_id)
+
+    already = set()
+    if wanted:
+        already = {
+            user_id
+            for (user_id,) in db.query(Notification.userId).filter(
+                Notification.occurrenceId == occurrence_id, Notification.userId.in_(wanted)
+            )
+        }
+    skipped_duplicate += len(already)
+    rows = [
+        _new_row(
+            user_id,
+            event_id,
+            trigger_key,
+            title,
+            body,
+            link=link,
+            resourceType=resource_type,
+            resourceId=resource_id,
+            occurrenceId=occurrence_id,
+        )
+        for user_id in wanted
+        if user_id not in already
+    ]
+    db.add_all(rows)
+    return PublishResult(len(rows), skipped_actor, skipped_attendee, skipped_duplicate)

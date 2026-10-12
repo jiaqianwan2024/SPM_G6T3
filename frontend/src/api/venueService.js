@@ -46,6 +46,18 @@ export const cancelVenueBooking = (bookingId) => axiosClient.post(`/venues/booki
 export const requestVenueReplacement = (bookingId, body) =>
   axiosClient.post(`/venues/bookings/${bookingId}/replacement`, body);
 
+// SPM-9: a block keeps the venue out of search and approval for its period.
+export const getVenueUnavailability = (venueId) => axiosClient.get(`/venues/${venueId}/unavailability`);
+
+export const createVenueUnavailability = (venueId, body) =>
+  axiosClient.post(`/venues/${venueId}/unavailability`, body);
+
+export const updateVenueUnavailability = (venueId, unavailabilityId, body) =>
+  axiosClient.patch(`/venues/${venueId}/unavailability/${unavailabilityId}`, body);
+
+export const cancelVenueUnavailability = (venueId, unavailabilityId) =>
+  axiosClient.delete(`/venues/${venueId}/unavailability/${unavailabilityId}`);
+
 // SPM-116: Venue Staff hold a pending request's venue until `expiresAt` (UTC), or release it early.
 export const placeVenueHold = (bookingId, expiresAt) =>
   axiosClient.post(`/venues/bookings/${bookingId}/hold`, { expiresAt });

@@ -130,6 +130,9 @@ class NotificationOut(BaseModel):
     body: str
     isRead: bool
     createdAt: datetime
+    link: str | None = None
+    resourceType: str | None = None
+    resourceId: str | None = None
 
     model_config = ConfigDict(
         json_schema_extra={

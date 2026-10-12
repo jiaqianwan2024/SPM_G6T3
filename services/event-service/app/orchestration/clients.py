@@ -5,6 +5,7 @@ from datetime import datetime
 import httpx
 
 from app.core.config import settings
+from shared.auth.service_key import service_key_headers
 from shared.exceptions.http import forbidden, service_unavailable, unauthorized
 
 logger = logging.getLogger("perf.clients")
@@ -339,6 +340,45 @@ def record_notification(
         return False
     if response.status_code != 201:
         logger.warning("in-app notification to %s got status %s", user_id, response.status_code)
+        return False
+    return True
+
+
+def publish_notification(
+    trigger: str,
+    event_id: str,
+    occurrence_id: str,
+    recipients: list[dict],
+    context: dict[str, str],
+    actor_id: str | None = None,
+    resource: dict | None = None,
+) -> bool:
+    """SPM-93: publish one occurrence of a notification trigger. Notification-service
+    writes the message and drops the actor, attendees and repeats. Authenticated with
+    the service key rather than a user token, so an organiser's action can notify staff.
+    Best effort: callers have already saved their change."""
+    if not recipients:
+        return True
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            response = client.post(
+                f"{settings.notification_service_url}/notifications/publish",
+                json={
+                    "trigger": trigger,
+                    "occurrenceId": occurrence_id,
+                    "eventId": event_id,
+                    "actorId": actor_id,
+                    "recipients": recipients,
+                    "context": context,
+                    "resource": resource,
+                },
+                headers=service_key_headers(settings.internal_service_key),
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("publishing %s for %s raised %r", trigger, event_id, exc)
+        return False
+    if response.status_code != 201:
+        logger.warning("publishing %s for %s got status %s", trigger, event_id, response.status_code)
         return False
     return True
 

@@ -39,7 +39,7 @@ Run one of them from the service directory with `python -m unittest discover -s 
 | venue-service | `test_venue_helpers.py`, `test_venue_catalogue.py`, `test_venue_bookings.py`, `test_venue_retirement.py`, `test_venue_routes.py`, `test_venue_layout_rules.py`, `test_venue_route_guards.py`, `test_venue_suitability.py`, `test_venue_suitability_routes.py`, `test_venue_booking_requests.py`, `test_venue_booking_request_routes.py`, `test_venue_reverification.py`, `test_venue_search.py`, `test_venue_double_booking.py` |
 | equipment-service | `test_equipment_catalogue.py`, `test_equipment_units.py`, `test_equipment_reservations.py`, `test_equipment_requests.py`, `test_equipment_shortfalls.py`, `test_equipment_routes.py`, `test_equipment_reverification.py`, `test_equipment_assignment.py` |
 | registration-service | `test_eligibility.py`, `test_event_lookup.py`, `test_registration_service.py`, `test_registration_routes.py` |
-| notification-service | `test_notification_service.py`, `test_notification_routes.py` |
+| notification-service | `test_notification_service.py`, `test_notification_routes.py`, `test_notification_records.py`, `test_notification_publish.py` |
 
 ## Rules covered
 

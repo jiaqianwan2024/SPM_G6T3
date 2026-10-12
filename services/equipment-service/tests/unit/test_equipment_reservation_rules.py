@@ -62,12 +62,34 @@ class TestReservationRules(EquipmentCase):
             ),
             CALLER,
         )
-        with patch("app.services.equipment_service._event_record", return_value={"status": "confirmed", "eventName": "Summit"}):
+        record = {
+            "status": "confirmed",
+            "eventName": "Summit",
+            "coordinatorId": "u-coord",
+            "organiserId": "u-org",
+        }
+        with patch("app.services.equipment_service._event_record", return_value=record), patch(
+            "app.services.equipment_service.publish_notification"
+        ) as publish:
             with self.assertRaises(HTTPException) as ctx:
                 self.service.release_reservation(reserved.reservationId, CALLER, "", "Bearer token")
             self.assertEqual(ctx.exception.status_code, 422)
+            publish.assert_not_called()
             released = self.service.release_reservation(reserved.reservationId, CALLER, "panel failed", "Bearer token")
         self.assertEqual(released.status, "released")
+        publish.assert_called_once()
+        trigger, event_id, occurrence_id, recipients, context = publish.call_args.args[:5]
+        self.assertEqual(trigger, "equipment.released")
+        self.assertEqual(event_id, "e1")
+        self.assertIn(reserved.reservationId, occurrence_id)
+        self.assertEqual(
+            recipients,
+            [
+                {"userId": "u-coord", "role": "coordinator"},
+                {"userId": "u-org", "role": "organiser"},
+            ],
+        )
+        self.assertEqual(context, {"eventName": "Summit", "reason": "panel failed"})
 
     def test_a_finished_event_cannot_be_adjusted(self):
         created = self.service.create_equipment(equipment_create(code="END", totalQuantity=2), CALLER)

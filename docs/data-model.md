@@ -487,6 +487,14 @@ The current application rejects a duplicate email among rows whose status is `re
 
 The schema contains persisted notification records, and seed data inserts one example. `POST /notifications` is an email stub accepting `to`, `subject`, and `body`; it prints the message and returns `queued`. `POST /notifications/records` stores a row for the signed-in user, or for `userId` when the caller is staff (coordinator, venue, techsupport, safety); anyone else naming another user gets 403. `GET /notifications` returns only the caller's rows. Registration withdrawal writes one of these records, and so does a change to an event's registration settings (SPM-90): the organiser gets `event.registration_settings`, and registered attendees get `registration.closed` when registration is turned off. Mark-read is not implemented.
 
+**Published triggers (SPM-93).** Event-service publishes these triggers through `POST /notifications/publish`, authenticated with the `X-Service-Key` header (the `INTERNAL_SERVICE_KEY` setting, the same value on every service) rather than a user token. The caller names the trigger, the event, one `occurrenceId`, and the recipients (`userId` and `role`) it has already worked out. Notification-service writes the title, body, and link from its trigger registry (`app/services/triggers.py`), so callers never supply the message. The person who performed the action (`actorId`), attendees on a trigger that is not attendee-visible, repeated recipients, and recipients already notified for that `occurrenceId` are skipped and counted in the response. A recipient whose role the trigger is not meant for is a 422 and nothing is saved. Recipients are the event's organiser and coordinator, or everyone in the user directory with a role (venue, techsupport, safety); nothing ties a venue or technical staff member to one event yet.
+
+| Trigger | Sent when | Recipients |
+|---|---|---|
+| `booking.assigned` | a coordinator is assigned or reassigned | the assigned coordinator |
+| `safety.submitted` | the arrangements are submitted for a safety review | all safety officers |
+| `safety.approved`, `safety.changes_requested`, `safety.rejected` | the Safety Officer decides | the coordinator, the organiser, and all venue and technical staff |
+
 ### notifications
 
 | Column | Type | Notes |
@@ -499,8 +507,12 @@ The schema contains persisted notification records, and seed data inserts one ex
 | body | TEXT | |
 | is_read | BOOLEAN | |
 | created_at | DATETIME | |
+| link | VARCHAR(255) nullable | Where the notification takes the reader, e.g. `/app/events/{eventId}`. Set by published triggers |
+| resource_type | VARCHAR(64) nullable | What the notification concerns, e.g. `event` or `safety_review` |
+| resource_id | VARCHAR(64) nullable | |
+| occurrence_id | VARCHAR(128) nullable | One occurrence of a trigger, e.g. `e1:safety.submitted:{reviewId}` |
 
-Indexes: `user_id`; `created_at`.
+Indexes: `user_id`; `created_at`. Unique: (`occurrence_id`, `user_id`), so a retried publish never notifies anyone twice; rows with no occurrence id (NULL) never collide.
 
 ---
 
@@ -758,6 +770,10 @@ erDiagram
     text body
     boolean is_read
     datetime created_at
+    string link
+    string resource_type
+    string resource_id
+    string occurrence_id
   }
 
   organisations ||--o{ users : "has organisers"

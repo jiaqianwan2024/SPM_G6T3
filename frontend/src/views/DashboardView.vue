@@ -34,6 +34,12 @@
       />
       <DashboardHome v-else-if="activeTab === 'Dashboard'" :cards="currentData.cards" />
       <VenueCatalogue v-else-if="activeTab === 'Venue Catalogue'" />
+      <VenueCalendar
+        v-else-if="activeTab === 'Venue Calendar'"
+        :focus-venue="calendarFocus.venueId"
+        :focus-at="calendarFocus.at"
+      />
+      <UnavailabilityList v-else-if="activeTab === 'Unavailability'" />
       <BrowseEvents v-else-if="activeTab === 'Browse Events'" />
       <CreateEvent v-else-if="activeTab === 'New Request'" />
       <UpcomingEventsCalendar v-else-if="activeTab === 'Upcoming Events'"/>
@@ -48,19 +54,21 @@
       <Profile v-else-if="activeTab === 'Profile'" />
 
       <div class="not-built" v-else>
-        This tab isn't built yet for this sprint — only Dashboard{{ hasVenueTab ? ', Venue Catalogue' : '' }}{{ hasAssignedTab ? ', Assigned Events' : '' }}{{ hasEventsTab ? ', Browse Events' : '' }}{{ hasNewRequestTab ? ', New Request' : '' }}{{ hasEquipmentTab ? ', Equipment Catalogue' : '' }}{{ hasMyEventsTab ? ', My Events' : '' }}{{ hasRegistrationsTab ? ', My Registrations' : '' }}{{ hasProfileTab ? ', Profile' : '' }} are functional.
+        This tab isn't built yet for this sprint — only Dashboard{{ hasVenueTab ? ', Venue Catalogue' : '' }}{{ hasCalendarTab ? ', Venue Calendar' : '' }}{{ hasUnavailabilityTab ? ', Unavailability' : '' }}{{ hasAssignedTab ? ', Assigned Events' : '' }}{{ hasEventsTab ? ', Browse Events' : '' }}{{ hasNewRequestTab ? ', New Request' : '' }}{{ hasEquipmentTab ? ', Equipment Catalogue' : '' }}{{ hasMyEventsTab ? ', My Events' : '' }}{{ hasRegistrationsTab ? ', My Registrations' : '' }}{{ hasProfileTab ? ', Profile' : '' }} are functional.
       </div>
     </main>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { signOut } from 'firebase/auth'
 import AppLogo from '../components/shared/AppLogo.vue'
 import DashboardHome from '../features/dashboard/DashboardHome.vue'
 import VenueCatalogue from '../features/venue-catalogue/VenueCatalogue.vue'
+import VenueCalendar from '../features/venue-calendar/VenueCalendar.vue'
+import UnavailabilityList from '../features/unavailability/UnavailabilityList.vue'
 import BrowseEvents from '../features/browse-events/BrowseEvents.vue'
 import CreateEvent from '../features/create-event/CreateEvent.vue'
 import { roles } from '../config/roles.js'
@@ -87,9 +95,26 @@ const route = useRoute()
 // this falls back to an empty role rather than crashing on
 // "Cannot read properties of undefined" for that one render.
 const currentData = computed(() => roles[session.role] ?? { tabs: [], cards: [], label: '' })
-const activeTab = ref('Dashboard')
+
+function focusFromRoute() {
+  return {
+    venueId: typeof route.query.venue === 'string' ? route.query.venue : '',
+    at: typeof route.query.at === 'string' ? route.query.at : ''
+  }
+}
+
+function tabFromRoute() {
+  const requested = route.query.tab
+  if (typeof requested === 'string' && (roles[session.role]?.tabs || []).includes(requested)) return requested
+  return 'Dashboard'
+}
+
+const activeTab = ref(tabFromRoute())
+const calendarFocus = ref(focusFromRoute())
 
 const hasVenueTab = computed(() => currentData.value.tabs.includes('Venue Catalogue'))
+const hasCalendarTab = computed(() => currentData.value.tabs.includes('Venue Calendar'))
+const hasUnavailabilityTab = computed(() => currentData.value.tabs.includes('Unavailability'))
 const hasAssignedTab = computed(() => currentData.value.tabs.includes('Assigned Events'))
 const hasEventsTab = computed(() => currentData.value.tabs.includes('Browse Events'))
 const hasNewRequestTab = computed(() => currentData.value.tabs.includes('New Request'))
@@ -100,12 +125,19 @@ const hasProfileTab = computed(() => currentData.value.tabs.includes('Profile'))
 
 // Coming back from the event detail page (e.g. after discarding a draft)
 // lands on a specific tab via ?tab= instead of always resetting to Dashboard.
-onMounted(() => {
+onMounted(syncFromRoute)
+watch(() => [route.query.tab, route.query.venue, route.query.at], syncFromRoute)
+
+function syncFromRoute() {
   const requestedTab = route.query.tab
+  if (requestedTab === 'Venue Calendar') calendarFocus.value = focusFromRoute()
   if (typeof requestedTab === 'string' && currentData.value.tabs.includes(requestedTab)) {
     activeTab.value = requestedTab
   }
-})
+  if (requestedTab === 'Venue Calendar') {
+    nextTick(() => document.querySelector('.content')?.scrollTo(0, 0))
+  }
+}
 
 function selectTab(tab) {
   if (tab === activeTab.value) return
@@ -114,7 +146,9 @@ function selectTab(tab) {
   if (draftEditor.isDirty && !window.confirm('You have unsaved changes. Leave without saving?')) {
     return
   }
+  calendarFocus.value = { venueId: '', at: '' }
   activeTab.value = tab
+  router.replace({ name: 'dashboard', query: { tab } })
 }
 
 async function logout() {

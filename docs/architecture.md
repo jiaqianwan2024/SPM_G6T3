@@ -341,7 +341,7 @@ infra/
 
 | Script | Purpose |
 |---|---|
-| `dev-backend.py` | uvicorn all services |
+| `dev-backend.py` | uvicorn all services; sets a dev-only `INTERNAL_SERVICE_KEY` for them unless you already set one |
 | `migrate.py` | wait for MySQL → alembic upgrade → seed |
 | `prepare-acceptance-tests.py` | start MySQL, migrate, and seed before Playwright |
 | `revision.py` | `alembic revision --autogenerate` for one service (Windows-safe) |

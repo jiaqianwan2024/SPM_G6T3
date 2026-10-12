@@ -72,6 +72,14 @@
             >
               Discard
             </button>
+            <button
+              v-if="canComplete"
+              class="btn btn-solid"
+              data-testid="event-complete"
+              @click="openCompleteConfirm"
+            >
+              Mark completed
+            </button>
           </div>
         </header>
 
@@ -327,6 +335,30 @@
         </div>
       </div>
     </div>
+
+    <!-- SPM-73: completing confirmation -->
+    <div v-if="completing" class="modal-backdrop" @click.self="closeCompleteConfirm">
+      <div class="modal" data-testid="complete-confirm">
+        <h3>Mark this event completed?</h3>
+        <p>
+          <strong>{{ event.eventName }}</strong> will be marked completed now that it has taken place.
+          It drops out of active queues and attendees can no longer register or withdraw, but it stays
+          readable with its full activity log.
+        </p>
+        <p v-if="completeError" class="form-error">{{ completeError }}</p>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="closeCompleteConfirm">Cancel</button>
+          <button
+            class="btn btn-solid"
+            :disabled="completingSave"
+            data-testid="complete-confirm-submit"
+            @click="confirmComplete"
+          >
+            {{ completingSave ? 'Marking completed…' : 'Mark completed' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -337,6 +369,7 @@ import { getReservationSummary, getEventReservations } from '../../api/equipment
 import {
   getEvent,
   discardEvent,
+  completeEvent,
   getEventCoordinator,
   getEventDecision,
   getInternalNotes,
@@ -372,6 +405,10 @@ const confirming = ref(false)
 const discarding = ref(false)
 const discardError = ref('')
 
+const completing = ref(false)
+const completingSave = ref(false)
+const completeError = ref('')
+
 const internalNotes = ref('')
 const editing = ref(false)
 const savedNote = ref('')
@@ -386,7 +423,7 @@ function onRequirementsSaved(updated) {
 }
 
 const dialogOpen = computed(
-  () => assigning.value || approving.value || editing.value || confirming.value,
+  () => assigning.value || approving.value || editing.value || confirming.value || completing.value,
 )
 
 // SPM-69 AC1/AC5: only the assigned coordinator, and only once the request is
@@ -469,6 +506,19 @@ const canChooseVenue = computed(
     !!event.value?.coordinatorId &&
     event.value.coordinatorId === session.userId &&
     event.value.status !== 'draft',
+)
+
+// SPM-73 AC1: only the assigned coordinator, only a confirmed event, and only
+// once its end time has passed. The server enforces all three (403/409); this
+// only decides whether to offer the button.
+const canComplete = computed(
+  () =>
+    session.role === 'coordinator' &&
+    !!event.value?.coordinatorId &&
+    event.value.coordinatorId === session.userId &&
+    event.value.status === 'confirmed' &&
+    !!event.value.proposedEndAt &&
+    new Date(event.value.proposedEndAt).getTime() <= Date.now(),
 )
 
 const showEquipment = computed(
@@ -656,6 +706,31 @@ async function confirmDiscard() {
     confirming.value = false
   } finally {
     discarding.value = false
+  }
+}
+
+function openCompleteConfirm() {
+  completeError.value = ''
+  completing.value = true
+}
+
+function closeCompleteConfirm() {
+  if (completingSave.value) return
+  completing.value = false
+}
+
+async function confirmComplete() {
+  completingSave.value = true
+  completeError.value = ''
+  try {
+    const { data } = await completeEvent(event.value.eventId)
+    event.value = data
+    completing.value = false
+    savedNote.value = 'Event marked completed.'
+  } catch (err) {
+    completeError.value = err.response?.data?.detail || 'Could not mark this event completed. Please try again.'
+  } finally {
+    completingSave.value = false
   }
 }
 

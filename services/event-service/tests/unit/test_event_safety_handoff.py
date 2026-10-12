@@ -75,7 +75,7 @@ class TestVenueStaffSend(HandoffCase):
         self.assertIsNone(self.stored())
         history = self.db.query(EventStatusHistory).one()
         self.assertEqual((history.changedBy, history.note), ("venue-1", "Arrangements sent for safety review"))
-        told = {args[0] for args in self.inboxes()}
+        told = {args[0] for args in self.inboxes()} | self.published_to("safety.submitted")
         self.assertEqual(told, {"safety-1", "safety-2", "coord-1"})
         coordinator = next(args for args in self.emails() if args[0] == "ben@connectsphere.com")
         self.assertEqual(coordinator[1], "Summit is with the Safety Officer")

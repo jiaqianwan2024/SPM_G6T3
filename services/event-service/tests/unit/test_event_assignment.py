@@ -430,3 +430,29 @@ class TestAssignmentRoutes(AssignmentCase):
         self.assertEqual(shown.json()["name"], "Ben Lee")
         self.assertNotIn("allowed_roles", self.caller_mock.call_args.kwargs)
         self.assertEqual(hidden.status_code, 403)
+
+
+class TestAssignmentPublishes(AssignmentCase):
+    """SPM-93: "New booking request assigned" goes to the assigned coordinator."""
+
+    def test_the_new_coordinator_is_told_it_was_assigned_to_them(self):
+        self.event()
+
+        assignment = self.assign(coordinator_id="coord-2", assigned_by="coord-1")
+
+        call = self.published.call_args
+        self.assertEqual(call.args[:3], ("booking.assigned", "e1", f"e1:booking.assigned:{assignment.assignmentId}"))
+        self.assertEqual(call.args[3], [{"userId": "coord-2", "role": "coordinator"}])
+        self.assertEqual(call.args[4], {"eventName": "Summit"})
+        self.assertEqual(call.kwargs["actor_id"], "coord-1")
+        self.assertEqual(call.kwargs["resource"], {"type": "event", "id": "e1"})
+
+    def test_a_reassignment_is_a_new_occurrence(self):
+        self.event()
+
+        first = self.assign(coordinator_id="coord-1")
+        first_occurrence = self.published.call_args.args[2]
+        second = self.assign(coordinator_id="coord-2")
+
+        self.assertNotEqual(first.assignmentId, second.assignmentId)
+        self.assertNotEqual(self.published.call_args.args[2], first_occurrence)

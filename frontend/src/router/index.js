@@ -65,6 +65,17 @@ const router = createRouter({
       name: 'event-venue-select',
       component: EventVenueSelect,
       meta: { requiresAuth: true }
+    },
+    {
+      path: '/app/venues/:id/calendar',
+      redirect: (to) => ({
+        name: 'dashboard',
+        query: {
+          tab: 'Venue Calendar',
+          venue: String(to.params.id),
+          ...(typeof to.query.at === 'string' ? { at: to.query.at } : {})
+        }
+      })
     }
   ]
 })

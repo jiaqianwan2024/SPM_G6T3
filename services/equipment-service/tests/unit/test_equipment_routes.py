@@ -157,7 +157,7 @@ class TestEquipmentRoutes(ServiceTestCase):
         opened = self.client.get(f"/equipment/requests/{request_id}", headers=self.headers)
         self.assertEqual(opened.status_code, 200)
         self.assertEqual(opened.json()["status"], "pending")
-        with patch("app.services.equipment_service._notify_coordinator"):
+        with patch("app.services.equipment_service.publish_notification"):
             marked = self.client.post(
                 f"/equipment/requests/{request_id}/unavailable",
                 headers=self.headers,
