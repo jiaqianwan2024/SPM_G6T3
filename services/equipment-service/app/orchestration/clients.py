@@ -1,7 +1,12 @@
+import logging
+
 import httpx
 
 from app.core.config import settings
+from shared.auth.service_key import service_key_headers
 from shared.exceptions.http import not_found, service_unavailable
+
+logger = logging.getLogger("perf.clients")
 
 EVENT_UNREACHABLE = "The event's details could not be loaded right now. Please try again shortly."
 
@@ -24,3 +29,49 @@ def fetch_event_coordinator(event_id: str, authorization: str) -> str | None:
     if response.status_code != 200:
         raise service_unavailable(EVENT_UNREACHABLE)
     return response.json().get("coordinatorId")
+
+
+def event_recipients(event: dict, roles: tuple[str, ...]) -> list[dict]:
+    """SPM-93: the people on an event record that a trigger is for, as notification
+    recipients. `roles` is any of "coordinator" and "organiser"; a role with nobody
+    assigned is left out."""
+    ids = {"coordinator": event.get("coordinatorId"), "organiser": event.get("organiserId")}
+    return [{"userId": ids[role], "role": role} for role in roles if ids.get(role)]
+
+
+def publish_notification(
+    trigger: str,
+    event_id: str,
+    occurrence_id: str,
+    recipients: list[dict],
+    context: dict[str, str],
+    actor_id: str | None = None,
+    resource: dict | None = None,
+) -> bool:
+    """SPM-93: publish one occurrence of a notification trigger. Notification-service
+    writes the message and drops the actor and repeats. Authenticated with the service
+    key, not a user token. Best effort: the caller has already saved its change."""
+    if not recipients:
+        return True
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            response = client.post(
+                f"{settings.notification_service_url}/notifications/publish",
+                json={
+                    "trigger": trigger,
+                    "occurrenceId": occurrence_id,
+                    "eventId": event_id,
+                    "actorId": actor_id,
+                    "recipients": recipients,
+                    "context": context,
+                    "resource": resource,
+                },
+                headers=service_key_headers(settings.internal_service_key),
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("publishing %s for %s raised %r", trigger, event_id, exc)
+        return False
+    if response.status_code != 201:
+        logger.warning("publishing %s for %s got status %s", trigger, event_id, response.status_code)
+        return False
+    return True

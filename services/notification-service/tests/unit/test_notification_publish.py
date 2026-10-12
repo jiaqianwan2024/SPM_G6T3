@@ -104,6 +104,88 @@ class TestPublish(ServiceTestCase):
         self.assertTrue(bodies["a"].endswith("Keep the aisles clear."))
         self.assertTrue(bodies["b"].endswith("AI in Events Summit."))
 
+    def test_a_released_reservation_tells_the_coordinator_and_organiser_with_the_reason(self):
+        ctx = {**CONTEXT, "reason": "Stock moved to another venue"}
+        result = self.publish(
+            trigger="equipment.released",
+            recipients=[COORD, {"userId": "u-org", "role": "organiser"}],
+            context=ctx,
+            actor_id="u-tech",
+        )
+
+        self.assertEqual(result.created, 2)
+        self.assertEqual({row.userId for row in self.rows()}, {"u-coord", "u-org"})
+        for row in self.rows():
+            self.assertEqual(row.title, "Equipment released")
+            self.assertEqual(
+                row.body,
+                "Equipment for AI in Events Summit was released. Reason: Stock moved to another venue",
+            )
+
+    def test_a_release_with_no_reason_is_refused_and_notifies_no_one(self):
+        for context in (CONTEXT, {**CONTEXT, "reason": "   "}):
+            with self.subTest(context=context):
+                with self.assertRaisesRegex(PublishError, "equipment.released needs: reason"):
+                    self.publish(trigger="equipment.released", context=context)
+        self.assertEqual(self.rows(), [])
+
+    def test_a_release_notice_is_not_for_technical_support(self):
+        with self.assertRaises(PublishError):
+            self.publish(
+                trigger="equipment.released",
+                recipients=[{"userId": "u-tech", "role": "techsupport"}],
+                context={**CONTEXT, "reason": "No longer needed"},
+            )
+
+    SHORTFALL = {
+        "eventName": "AI in Events Summit",
+        "equipmentName": "Projector",
+        "shortfall": "2 of 5 short",
+        "reason": "Two units are out for repair",
+    }
+
+    def test_a_shortfall_names_the_line_the_shortfall_the_reason_and_the_alternative(self):
+        self.publish(
+            trigger="equipment.shortfall",
+            context={**self.SHORTFALL, "alternative": "Short-throw projector"},
+        )
+
+        row = self.rows()[0]
+        self.assertEqual(row.userId, "u-coord")
+        self.assertEqual(row.title, "Equipment cannot be fully supplied")
+        self.assertEqual(
+            row.body,
+            "Projector for AI in Events Summit cannot be fully supplied. Shortfall: 2 of 5 short. "
+            "Reason: Two units are out for repair. Suggested alternative: Short-throw projector",
+        )
+
+    def test_an_alternative_follows_a_reason_that_already_ends_in_a_full_stop(self):
+        self.publish(
+            trigger="equipment.shortfall",
+            context={**self.SHORTFALL, "reason": "Out for repair.", "alternative": "Short-throw projector"},
+        )
+
+        self.assertTrue(self.rows()[0].body.endswith("Reason: Out for repair. Suggested alternative: Short-throw projector"))
+
+    def test_a_shortfall_without_an_alternative_leaves_no_gap(self):
+        self.publish(trigger="equipment.shortfall", context=self.SHORTFALL)
+
+        self.assertTrue(self.rows()[0].body.endswith("Reason: Two units are out for repair"))
+
+    def test_a_shortfall_needs_every_fact_and_goes_only_to_the_coordinator(self):
+        with self.assertRaisesRegex(PublishError, "equipment.shortfall needs: shortfall, reason"):
+            self.publish(
+                trigger="equipment.shortfall",
+                context={"eventName": "AI in Events Summit", "equipmentName": "Projector"},
+            )
+        with self.assertRaises(PublishError):
+            self.publish(
+                trigger="equipment.shortfall",
+                recipients=[{"userId": "u-org", "role": "organiser"}],
+                context=self.SHORTFALL,
+            )
+        self.assertEqual(self.rows(), [])
+
     def test_a_recipient_listed_twice_is_notified_once(self):
         result = self.publish(recipients=[COORD, COORD])
 

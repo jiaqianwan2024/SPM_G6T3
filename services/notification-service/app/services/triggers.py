@@ -26,11 +26,14 @@ class Trigger:
     # Context values the body needs; a publish without them is rejected.
     required_context: tuple[str, ...] = ("eventName",)
     link: str = EVENT_LINK
+    # Sentences added to the body only when the caller sent that context value, as (key, sentence).
+    extras: tuple[tuple[str, str], ...] = ()
     # AC9: an attendee can only receive a trigger that is marked attendee-visible.
     attendee_visible: bool = False
 
 
 _SAFETY_RECIPIENTS = frozenset({"coordinator", "organiser", "venue", "techsupport"})
+_EQUIPMENT_RECIPIENTS = frozenset({"coordinator", "organiser"})
 
 TRIGGERS: dict[str, Trigger] = {
     trigger.key: trigger
@@ -74,6 +77,27 @@ TRIGGERS: dict[str, Trigger] = {
             recipient_roles=_SAFETY_RECIPIENTS,
             required_context=("eventName", "reason"),
         ),
+        # SPM-78 AC4: a reservation released on a confirmed event. The reason is required,
+        # so a release with no reason publishes nothing.
+        Trigger(
+            key="equipment.released",
+            title="Equipment released",
+            body="Equipment for {eventName} was released. Reason: {reason}",
+            recipient_roles=_EQUIPMENT_RECIPIENTS,
+            required_context=("eventName", "reason"),
+        ),
+        # SPM-77 AC3: a line marked unavailable or only partly fulfilled.
+        Trigger(
+            key="equipment.shortfall",
+            title="Equipment cannot be fully supplied",
+            body=(
+                "{equipmentName} for {eventName} cannot be fully supplied. "
+                "Shortfall: {shortfall}. Reason: {reason}"
+            ),
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "equipmentName", "shortfall", "reason"),
+            extras=(("alternative", "Suggested alternative: {alternative}"),),
+        ),
     )
 }
 
@@ -88,8 +112,13 @@ class _Context(dict):
 def render(trigger: Trigger, event_id: str, context: dict[str, str]) -> tuple[str, str, str]:
     """(title, body, link) for one occurrence of the trigger."""
     values = _Context(context)
+    body = trigger.body.format_map(values).strip()
+    for key, sentence in trigger.extras:
+        if str(context.get(key, "")).strip():
+            joiner = " " if body[-1] in ".!?" else ". "
+            body = f"{body}{joiner}{sentence.format_map(values).strip()}"
     return (
         trigger.title.format_map(values).strip(),
-        trigger.body.format_map(values).strip(),
+        body,
         trigger.link.format(eventId=event_id),
     )
