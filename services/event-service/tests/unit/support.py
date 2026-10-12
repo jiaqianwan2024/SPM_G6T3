@@ -71,10 +71,13 @@ class EventCase(ServiceTestCase):
         super().setUp()
         self.counts = patch("app.services.event_service.registration_count", return_value=3)
         self.counts.start()
+        self.publishing = patch("app.services.event_service.publish_notification", return_value=True)
+        self.published = self.publishing.start()
         self.service = EventService(
             self.db, EventDAO(self.db), EventAssignmentDAO(self.db), EventStatusHistoryDAO(self.db)
         )
 
     def tearDown(self):
+        self.publishing.stop()
         self.counts.stop()
         super().tearDown()

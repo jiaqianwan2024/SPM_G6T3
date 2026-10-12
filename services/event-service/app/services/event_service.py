@@ -25,6 +25,7 @@ from app.models.event_review import EventReview
 from app.models.event_safety_handoff import EventSafetyHandoff
 from app.models.event_safety_review import EventSafetyReview
 from app.models.event_status_history import EventStatusHistory
+from app.services.audiences import people
 from app.core.config import settings
 from app.orchestration.clients import (
     affected_arrangements,
@@ -39,6 +40,7 @@ from app.orchestration.clients import (
     flag_venue_arrangements,
     list_users,
     organisation_names,
+    publish_notification,
     record_notification,
     release_event_holds,
     registered_attendees,
@@ -1503,6 +1505,15 @@ class EventService(BaseService):
         self.db.commit()
         self.db.refresh(row)
         self._notify_assignment(event, assignee, users.get(event.organiserId), authorization)
+        publish_notification(
+            "booking.assigned",
+            event.eventId,
+            f"{event.eventId}:booking.assigned:{row.assignmentId}",
+            [{"userId": row.coordinatorId, "role": "coordinator"}],
+            {"eventName": event.eventName},
+            actor_id=assigned_by,
+            resource={"type": "event", "id": event.eventId},
+        )
         return EventAssignmentOut(
             assignmentId=row.assignmentId,
             eventId=row.eventId,
@@ -2035,7 +2046,7 @@ class EventService(BaseService):
         event.updatedAt = now
         self.db.commit()
         self.db.refresh(review)
-        self._notify_safety_officers(event, authorization)
+        self._notify_safety_officers(event, review, authorization)
         return review
 
     @staticmethod
@@ -2236,16 +2247,26 @@ class EventService(BaseService):
         self._record_status_change(event, "planning", changed_by, f"{withdrawn}. {summary}", now)
         event.status = "planning"
 
-    def _notify_safety_officers(self, event: Event, authorization: str | None) -> None:
-        """Best effort: the submission is already saved."""
+    def _notify_safety_officers(self, event: Event, review: EventSafetyReview, authorization: str | None) -> None:
+        """Best effort: the submission is already saved. Officers are emailed here;
+        their in-app notification is the published "Event details submitted" trigger (SPM-93)."""
         title = f"{event.eventName} is ready for a safety review"
         body = f"The venue and equipment for {event.eventName} are confirmed and have been sent for a safety review."
 
-        for officer in self._directory(authorization).values():
+        directory = self._directory(authorization)
+        for officer in directory.values():
             if officer.get("role") != "safety":
                 continue
             send_notification(officer["email"], title, body, authorization)
-            record_notification(officer["userId"], event.eventId, "event.safety_review", title, body, authorization)
+        publish_notification(
+            "safety.submitted",
+            event.eventId,
+            f"{event.eventId}:safety.submitted:{review.reviewId}",
+            people(event, ["safety"], directory),
+            {"eventName": event.eventName},
+            actor_id=review.submittedBy,
+            resource={"type": "safety_review", "id": review.reviewId},
+        )
 
     def _notify_review_opened(self, event: Event, authorization: str | None) -> None:
         """SPM-120, change 6, best effort: the coordinator did not send it
@@ -2284,7 +2305,33 @@ class EventService(BaseService):
             recipient = self._recipient(users, user_id, event)
             if recipient is not None:
                 send_notification(recipient["email"], title, body, authorization)
-            record_notification(user_id, event.eventId, "event.safety_review", title, body, authorization)
+        self._publish_safety_decision(event, review, users)
+
+    @staticmethod
+    def _publish_safety_decision(event: Event, review: EventSafetyReview, directory: dict[str, dict]) -> None:
+        """SPM-93: the coordinator, the organiser, venue staff and technical staff are told the outcome."""
+        context = {"eventName": event.eventName}
+        if review.status == "approved":
+            trigger = "safety.approved"
+            context["note"] = review.decisionNote or ""
+        elif review.status == "rejected":
+            trigger = "safety.rejected"
+            context["reason"] = review.decisionNote or ""
+        else:
+            trigger = "safety.changes_requested"
+            reason = review.decisionNote or ""
+            if review.affected:
+                reason += f" Flagged for re-checking: {', '.join(review.affected)} arrangements."
+            context["reason"] = reason
+        publish_notification(
+            trigger,
+            event.eventId,
+            f"{event.eventId}:safety.decided:{review.reviewId}",
+            people(event, ["coordinator", "organiser", "venue", "techsupport"], directory),
+            context,
+            actor_id=review.decidedBy,
+            resource={"type": "safety_review", "id": review.reviewId},
+        )
 
     # SPM-72: confirm an event -------------------------------------------------
 

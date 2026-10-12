@@ -136,6 +136,11 @@ class SafetyCase(EventCase):
     def inboxes(self):
         return [call.args for call in self.mocks["inbox"].call_args_list]
 
+    def published_to(self, trigger):
+        """User ids the last publish of `trigger` named as recipients."""
+        calls = [call for call in self.published.call_args_list if call.args[0] == trigger]
+        return {recipient["userId"] for recipient in calls[-1].args[3]}
+
 
 class TestAvailableOnlyWhenArranged(SafetyCase):
     """AC1."""
@@ -173,7 +178,7 @@ class TestAvailableOnlyWhenArranged(SafetyCase):
         history = self.db.query(EventStatusHistory).one()
         self.assertEqual((history.fromStatus, history.toStatus, history.note), ("planning", "safety review", "Submitted for safety review"))
         self.assertEqual({args[0] for args in self.emails()}, {"hana@connectsphere.com", "ravi@connectsphere.com"})
-        self.assertEqual({args[0] for args in self.inboxes()}, {"safety-1", "safety-2"})
+        self.assertEqual(self.published_to("safety.submitted"), {"safety-1", "safety-2"})
         self.assertEqual(self.emails()[0][1], "Summit is ready for a safety review")
 
     def test_an_event_needing_no_equipment_has_nothing_technical_to_wait_for(self):
@@ -299,7 +304,7 @@ class TestApproving(SafetyCase):
         self.assertEqual({args[0] for args in self.emails()}, {"ben@connectsphere.com", "amy@apex.com"})
         self.assertIn("The coordinator can now confirm it", self.emails()[0][2])
         self.assertIn("Note: Good plan", self.emails()[0][2])
-        self.assertEqual({args[0] for args in self.inboxes()}, {"coord-1", "org-1"})
+        self.assertEqual(self.published_to("safety.approved"), {"coord-1", "org-1"})
 
     def test_the_note_is_optional(self):
         self.event()
@@ -405,7 +410,7 @@ class TestDecisionRules(SafetyCase):
         self.mocks["users"].side_effect = service_unavailable("down")
 
         self.assertEqual(self.reject(review.reviewId).status, "rejected")
-        self.assertEqual({args[0] for args in self.inboxes()[-2:]}, {"coord-1", "org-1"})
+        self.assertEqual(self.published_to("safety.rejected"), {"coord-1", "org-1"})
 
 
 class TestChangesDuringReview(SafetyCase):
