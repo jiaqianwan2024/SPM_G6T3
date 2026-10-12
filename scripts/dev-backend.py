@@ -19,6 +19,10 @@ SERVICES = [
 def main():
     env = os.environ.copy()
     env["PYTHONPATH"] = PYTHONPATH
+    # Services publish notifications to each other with this shared secret (SPM-93).
+    # A fixed value is fine on a laptop; any real deployment must set its own and
+    # give every service the same one. A value you have already set is left alone.
+    env.setdefault("INTERNAL_SERVICE_KEY", "dev-only-service-key")
     procs = []
     for name, port in SERVICES:
         cwd = ROOT / "services" / name

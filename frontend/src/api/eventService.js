@@ -50,6 +50,11 @@ export const getMyEvents = () => axiosClient.get("/events/mine");
 // Only allowed while the event is still a draft — the backend enforces this.
 export const discardEvent = (eventId) => axiosClient.delete(`/events/${eventId}`);
 
+// SPM-73: the assigned coordinator closes out a confirmed event once it has
+// taken place. 409 if the event isn't confirmed or its proposedEndAt hasn't
+// passed yet; 403 if the caller isn't the assigned coordinator.
+export const completeEvent = (eventId) => axiosClient.post(`/events/${eventId}/complete`);
+
 export const getActivityLog = (eventId) => axiosClient.get(`/events/${eventId}/activity-log`);
 
 // SPM-71: the assigned coordinator edits an event. Send only the changed fields.

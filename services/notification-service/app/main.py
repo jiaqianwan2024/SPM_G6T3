@@ -2,6 +2,7 @@ from fastapi import Depends
 
 from app.core.config import settings
 from app.routers.notification import router as notification_router
+from app.routers.publish import router as publish_router
 from shared.auth.deps import require_authenticated_user
 from shared.config import parse_origins
 from shared.openapi import create_service_app
@@ -25,3 +26,5 @@ Delivery of email is currently a stub: the payload is logged and the response st
 )
 
 app.include_router(notification_router, dependencies=[Depends(require_authenticated_user)])
+# Called by other services with a service key, not a user token.
+app.include_router(publish_router)

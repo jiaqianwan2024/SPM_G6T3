@@ -50,6 +50,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `POST /events/{id}/change-requests/{crid}/withdraw` | the `organiser` who raised it |
 | `POST /events/{id}/change-requests/{crid}/accept` or `/decline` | `coordinator` assigned to the event |
 | `POST /notifications/records` with another user's `userId` | `coordinator`, `venue`, `techsupport` (anyone may name themselves) |
+| `POST /notifications/publish` | another service, sending the `X-Service-Key` header (SPM-93). No user token is used; with no `INTERNAL_SERVICE_KEY` configured every call gets 403 |
 | `PATCH /events/{id}` | `coordinator` assigned to the event (SPM-71); not while it is completed, cancelled, rejected, a draft, or discarded |
 | `GET /events/{id}/internal-notes` | `coordinator` |
 | `GET /events/significant-fields` | signed-in caller |
