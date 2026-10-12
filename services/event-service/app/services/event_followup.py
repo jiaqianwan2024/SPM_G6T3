@@ -50,7 +50,11 @@ def _person(user_id: str, authorization: str | None) -> tuple[str, str, str]:
         return "", "", ""
     for user in users:
         if user.get("userId") == user_id:
-            return user.get("name") or "", user.get("email") or "", user.get("phone") or ""
+            return (
+                user.get("userName") or user.get("name") or "",
+                user.get("email") or "",
+                user.get("phone") or "",
+            )
     return "", "", ""
 
 
