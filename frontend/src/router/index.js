@@ -68,9 +68,14 @@ const router = createRouter({
     },
     {
       path: '/app/venues/:id/calendar',
-      name: 'venue-calendar',
-      component: () => import('../features/venue-calendar/VenueCalendar.vue'),
-      meta: { requiresAuth: true }
+      redirect: (to) => ({
+        name: 'dashboard',
+        query: {
+          tab: 'Venue Calendar',
+          venue: String(to.params.id),
+          ...(typeof to.query.at === 'string' ? { at: to.query.at } : {})
+        }
+      })
     }
   ]
 })
