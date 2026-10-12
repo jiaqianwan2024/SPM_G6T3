@@ -2,6 +2,8 @@
 
 Unit tests and the Coverage.py demo are in [unit-tests.md](unit-tests.md). Integration tests are in [integration-tests.md](integration-tests.md).
 
+Before pushing, especially after a merge, run `npm run test:ci`. It runs exactly what GitHub Actions runs: every service's unit tests at 100% statement coverage, then the integration workflows. It needs no Docker or Firebase.
+
 Playwright covers SPM-43, the current SPM-45 API, the current SPM-46 API,
 the SPM-47 tenant-isolation contract, the role-home contracts for
 SPM-55 through SPM-59, the venue-catalogue contracts for SPM-8, SPM-9,

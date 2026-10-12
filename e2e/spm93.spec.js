@@ -77,11 +77,14 @@ test.describe('SPM-93 Notification delivery and recipient resolution', () => {
   })
 
   test('TC-SPM93-AC09 if delivery fails, the action still succeeds and the failure is logged', async () => {
-    const assigned = await eventApi('POST', '/e6/assign-coordinator', 'EC-01', {
+    // A request of its own, assigned by the Lead (SPM-117): the seeded unassigned
+    // request (e6) must stay unassigned for the review-queue specs.
+    const event = await createSubmittedEvent('EO-01', 'AUTO-SPM93-delivery')
+    const assigned = await eventApi('POST', `/${event.eventId}/assign-coordinator`, 'ECL-01', {
       coordinatorId: 'u2',
       simulateNotificationFailure: true,
     })
-    expect([201, 409]).toContain(assigned.status)
+    expect(assigned.status).toBe(201)
   })
 
   test('TC-SPM93-AC10 notifications persist after the event is completed or cancelled', async () => {
