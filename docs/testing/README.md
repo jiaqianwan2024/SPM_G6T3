@@ -129,7 +129,7 @@ Failures: `test-results/`. HTML report: `playwright-report/`.
 | SPM-57 | TC-SPM57-AC01–AC06 | `e2e/spm57.spec.js` |
 | SPM-58 | TC-SPM58-AC01–AC07 | `e2e/spm58.spec.js` |
 | SPM-59 | TC-SPM59-AC01–AC06 | `e2e/spm59.spec.js` |
-| SPM-8 | TC-SPM08-AC01–AC09 | `e2e/spm08.spec.js` |
+| SPM-8 | TC-SPM08-AC01–AC11 (and AC01b, AC02b, AC06b, AC06c) | `e2e/spm08.spec.js` |
 | SPM-9 | TC-SPM09-AC01–AC08 | `e2e/spm09.spec.js` |
 | SPM-10 | TC-SPM10-AC01–AC07 | `e2e/spm10.spec.js` |
 | SPM-17 | TC-SPM17-AC01–AC06 | `e2e/spm17.spec.js` |

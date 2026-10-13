@@ -341,6 +341,7 @@ class VenueBookingOut(BaseModel):
     requirementsSnapshot: str
     decisionReason: str | None
     reviewedBy: str | None
+    reviewedByName: str | None = Field(default=None, description="SPM-8 AC5: the approver's name.")
     reviewedAt: datetime | None
     createdAt: datetime
     eventSnapshot: dict | None = Field(

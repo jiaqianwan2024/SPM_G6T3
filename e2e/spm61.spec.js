@@ -38,6 +38,22 @@ async function confirmedBooking(venueId, period) {
   return approved.body
 }
 
+// SPM-9: Venue Staff record an unavailability block; tests remove theirs afterwards.
+async function block(venueId, startsAt, endsAt, note) {
+  const saved = await venueRequest('POST', `/venues/${venueId}/unavailability`, 'VS-01', {
+    startsAt,
+    endsAt,
+    reason: 'maintenance',
+    note,
+  })
+  expect(saved.status, JSON.stringify(saved.body)).toBe(201)
+  return saved.body
+}
+
+function unblock(venueId, saved) {
+  return venueRequest('DELETE', `/venues/${venueId}/unavailability/${saved.unavailabilityId}`, 'VS-01')
+}
+
 // SPM-116: Venue Staff hold another event's pending request for `venueId`.
 async function heldRequest(venueId, period, expiresAt) {
   const sent = await requestVenue(await approvedEvent(THEATRE_EVENT), venueId, period)
@@ -113,11 +129,21 @@ test.describe('SPM-61 Search and filter venues against event requirements', () =
     expect(ids(touching)).toContain('v1')
   })
 
-  test('TC-SPM61-AC03 an unavailability period excludes the venue', async () => {
-    test.skip(
-      true,
-      'Recording unavailability is SPM-9, not built yet. The unavailability rule is unit-tested in test_venue_search.py.',
-    )
+  test('TC-SPM61-AC03 an unavailability period excludes the venue, including its setup and turnaround', async () => {
+    const period = freshPeriod() // v1: a 10:00 to 12:00 search occupies 09:30 to 13:00
+    const inTurnaround = await block('v1', shift(period.endsAt, 30), shift(period.endsAt, 60), 'SPM-61 AC3')
+    try {
+      expect(ids(await search({ startsAt: period.startsAt, endsAt: period.endsAt }))).not.toContain('v1')
+    } finally {
+      await unblock('v1', inTurnaround)
+    }
+    // A block that starts as the occupied window ends only touches it.
+    const touching = await block('v1', shift(period.endsAt, 60), shift(period.endsAt, 90), 'SPM-61 AC3 touching')
+    try {
+      expect(ids(await search({ startsAt: period.startsAt, endsAt: period.endsAt }))).toContain('v1')
+    } finally {
+      await unblock('v1', touching)
+    }
   })
 
   test('TC-SPM61-AC03 an active tentative hold excludes the venue, including its setup and turnaround', async () => {

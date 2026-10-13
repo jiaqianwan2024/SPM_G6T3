@@ -58,6 +58,28 @@ test.describe('SPM-62 Venue suitability check for an event', () => {
     expect(JSON.stringify(result.body)).toMatch(/e1|booking|unavailab/i)
   })
 
+  test('TC-SPM62-AC04 an overlapping unavailability period is a failure naming it', async () => {
+    const period = freshPeriod()
+    const saved = await venueRequest('POST', '/venues/v1/unavailability', 'VS-01', {
+      startsAt: period.startsAt,
+      endsAt: period.endsAt,
+      reason: 'maintenance',
+      note: 'SPM-62 AC4',
+    })
+    expect(saved.status, JSON.stringify(saved.body)).toBe(201)
+    try {
+      const result = await suitability('e4', 'v1', { ...period, layout: 'Theatre' })
+
+      expect(result.status).toBe(200)
+      expect(result.body.verdict).toBe('not suitable')
+      const failure = result.body.reasons.find((reason) => reason.check === 'unavailable')
+      expect(failure.severity).toBe('failure')
+      expect(failure.message).toMatch(/^This venue is unavailable from .*\(maintenance\)\.$/)
+    } finally {
+      await venueRequest('DELETE', `/venues/v1/unavailability/${saved.body.unavailabilityId}`, 'VS-01')
+    }
+  })
+
   test('TC-SPM62-AC05 a time outside opening hours is a failure', async () => {
     const start = new Date(Date.now() + 251 * 24 * 60 * 60 * 1000)
     start.setUTCHours(2, 0, 0, 0)

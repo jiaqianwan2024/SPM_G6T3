@@ -8,9 +8,10 @@ A pending request never blocks anyone (SPM-63 AC6); it is reported so callers
 can warn about it.
 
 Search (SPM-61), suitability (SPM-62) and booking approval all call
-`VenueService.commitments`, which applies this rule. Venue blocking (SPM-9),
-rescheduling (SPM-87) and re-verification (SPM-86) are to call it too when they
-are built.
+`VenueService.commitments`, which applies this rule. Venue blocking (SPM-9)
+finds the bookings a block affects with the same occupied window and the same
+active-hold test (`hold_state`). Rescheduling (SPM-87) and re-verification
+(SPM-86) are to call it too when they are built.
 
 SPM-116: an active tentative hold on another pending request reserves the venue
 like a confirmed booking (AC2). A hold stops counting the moment its expiry time

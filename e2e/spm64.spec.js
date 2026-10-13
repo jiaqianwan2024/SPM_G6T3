@@ -30,6 +30,22 @@ async function pending(period, venueId = 'v1') {
   return { event, booking: sent.body }
 }
 
+// SPM-9: Venue Staff record an unavailability block; tests remove theirs afterwards.
+async function block(venueId, startsAt, endsAt, note) {
+  const saved = await venueRequest('POST', `/venues/${venueId}/unavailability`, 'VS-01', {
+    startsAt,
+    endsAt,
+    reason: 'maintenance',
+    note,
+  })
+  expect(saved.status, JSON.stringify(saved.body)).toBe(201)
+  return saved.body
+}
+
+function unblock(venueId, saved) {
+  return venueRequest('DELETE', `/venues/${venueId}/unavailability/${saved.unavailabilityId}`, 'VS-01')
+}
+
 // SPM-116: Venue Staff hold a pending request until `expiresAt`.
 function hold(booking, expiresAt) {
   return venueRequest('POST', `/venues/bookings/${booking.bookingId}/hold`, 'VS-01', { expiresAt })
@@ -87,10 +103,18 @@ test.describe('SPM-64 Prevent double-booking of a venue', () => {
   })
 
   test('TC-SPM64-AC04 a confirmed booking conflicts with an overlapping unavailability period', async () => {
-    test.skip(
-      true,
-      'Recording unavailability is SPM-9, not built yet. The unavailability rule is unit-tested in test_venue_double_booking.py.',
-    )
+    const base = freshPeriod()
+    const { booking } = await pending(base) // occupies v1 09:30 to 13:00
+    const saved = await block('v1', shift(base.endsAt, 30), shift(base.endsAt, 60), 'SPM-64 AC4') // inside the turnaround
+    try {
+      const refused = await approve(booking)
+
+      expect(refused.status).toBe(409)
+      expect(refused.body.detail).toMatch(/^Marina Hall A is unavailable from .*\(maintenance\), so this request cannot be approved\.$/)
+    } finally {
+      await unblock('v1', saved)
+    }
+    expect((await approve(booking)).status).toBe(200)
   })
 
   test('TC-SPM64-AC04 a booking cannot be confirmed over an active tentative hold', async () => {

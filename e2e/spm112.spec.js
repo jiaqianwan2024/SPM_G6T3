@@ -150,9 +150,8 @@ test.describe('SPM-112 Check availability using setup and turnaround', () => {
     expect(clash).toMatchObject(CLASH)
     expect(clash.reason).toContain('including setup and turnaround')
     expect(await answers(clear)).toMatchObject(FREE)
-    // Recording unavailability (SPM-9), rescheduling (SPM-87) and re-verification
-    // (SPM-86) are not built yet. The unavailability check inside the same rule
-    // is unit-tested in services/venue-service/tests/unit/test_venue_occupied_window.py.
+    // Rescheduling (SPM-87) and re-verification (SPM-86) are not built yet; they
+    // are to call the same rule. Unavailability is checked in TC-SPM112-AC02c.
   })
 
   test('TC-SPM112-AC02b the coordinator venue screen applies the same window', async ({ page }) => {
@@ -172,6 +171,37 @@ test.describe('SPM-112 Check availability using setup and turnaround', () => {
     // 13:15 to 14:00 is set up from 12:45, so its window only touches.
     const touching = await onTheVenueScreen(page, slot(base, 195, 240))
     expect(touching).toEqual({ verdict: 'Suitable', listed: true })
+  })
+
+  test('TC-SPM112-AC02c unavailability is judged on the same occupied window', async () => {
+    const base = freshPeriod()
+    const day = (minutes) => shift(base.startsAt, minutes) // minutes from 10:00 that day
+    // Requests sent first, while the hall is free; a block over a pending request needs no confirmation.
+    const fits = await candidate(slot(base, 480, 540)) // 18:00 to 19:00: 17:30 to 19:45
+    const reaches = await candidate(slot(base, 480, 570)) // 18:00 to 19:30: 17:30 to 20:15
+    const blocks = []
+    for (const [from, to, note] of [[360, 450, 'cleaning'], [600, 615, 'inspection']]) {
+      const saved = await venueRequest('POST', `/venues/${hall.venueId}/unavailability`, 'VS-01', {
+        startsAt: day(from),
+        endsAt: day(to),
+        reason: 'maintenance',
+        note: `SPM-112 ${note}`,
+      })
+      expect(saved.status, JSON.stringify(saved.body)).toBe(201)
+      blocks.push(saved.body)
+    }
+    try {
+      // A turnaround until 20:15 runs into the 20:00 inspection.
+      const clash = await answers(reaches)
+      expect(clash).toMatchObject(CLASH)
+      expect(clash.reason).toMatch(/is unavailable from .*\(maintenance\), so this request cannot be approved\.$/)
+      // The cleaning ends at 17:30 as the setup starts, and the turnaround ends at 19:45 before the inspection.
+      expect(await answers(fits)).toMatchObject(FREE)
+    } finally {
+      for (const saved of blocks) {
+        await venueRequest('DELETE', `/venues/${hall.venueId}/unavailability/${saved.unavailabilityId}`, 'VS-01')
+      }
+    }
   })
 
   test('TC-SPM112-AC03 occupied windows that only touch do not conflict', async () => {

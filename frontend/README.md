@@ -108,6 +108,19 @@ pattern — don't add it to `components/shared/`.
   holds" section. The coordinator's Choose venues page shows "Held until ..."
   on that request, or "Hold expired" once the time has passed
 
+**Booking Requests (SPM-8)**
+- `features/booking-requests/` is Venue Staff's "Booking Requests" tab. It lists
+  pending requests, oldest first, filtered by venue if wanted. Each shows the event's
+  times, the venue's occupied window (with setup and turnaround), the event's
+  requirements, the coordinator's notes and accepted warnings, the submission time,
+  and any tentative hold, all in UTC
+- Requests that compete for the same venue at overlapping times are marked with
+  their place ("Competing request 1 of 3")
+- "Approve" takes an optional note. A refusal (an overlapping confirmed booking,
+  unavailability, or active hold) is shown on the request, which stays pending
+- The Approved view shows who approved each booking and when. Rejecting is
+  SPM-10
+
 **Venue suitability (SPM-62)**
 - `features/venue-request/` opens from "Choose a venue" on an event
   (coordinators only). Picking a venue shows suitable, suitable with warnings,
@@ -130,8 +143,8 @@ pattern — don't add it to `components/shared/`.
 - While the event has a pending request, the page shows it with a
   "Withdraw request" button. The same venue cannot be requested again while
   that booking is pending or approved; another venue can be (SPM-114)
-- The Venue Staff queue screen, the venue calendar, and the readiness view are
-  other stories (SPM-8/SPM-57, SPM-108, SPM-5)
+- Venue Staff review requests on Booking Requests (SPM-8). The venue calendar
+  and the readiness view are other stories (SPM-108, SPM-5)
 
 **Attendee registration**
 - `features/browse-events/` — 4 hardcoded events specifically chosen to
