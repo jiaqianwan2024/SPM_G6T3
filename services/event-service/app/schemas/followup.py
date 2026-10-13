@@ -45,6 +45,15 @@ class ReadinessItemOut(BaseModel):
     attachments: list[dict] = Field(default_factory=list)
 
 
+class EventChangeMark(BaseModel):
+    """One applied change an attendee should see, dated so registration can ignore earlier ones."""
+
+    at: datetime
+    date: bool = False
+    time: bool = False
+    venue: bool = False
+
+
 class OpenEventOut(BaseModel):
     eventId: str
     eventName: str
@@ -66,3 +75,4 @@ class OpenEventOut(BaseModel):
     venueName: str = ""
     venueLocation: str = ""
     changedAt: datetime | None = None
+    changeMarks: list[EventChangeMark] = Field(default_factory=list)

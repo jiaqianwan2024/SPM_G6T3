@@ -217,6 +217,7 @@ class TestFollowUp(EventCase):
         self.assertEqual(ids, ["e-open"])
         self.assertEqual(listed[0].venueName, "Marina Hall A")
         self.assertIsNotNone(listed[0].changedAt)
+        self.assertTrue(any(mark.date and mark.time for mark in listed[0].changeMarks))
         self.assertFalse(listed[0].full)
         self.count_mock.return_value = 5
         with patch("app.services.event_followup._soft_get", return_value={}):

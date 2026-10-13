@@ -37,6 +37,10 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/app/registrations',
+      redirect: { path: '/app', query: { tab: 'My Registrations' } },
+    },
+    {
       path: '/app/registrations/:id',
       name: 'registration-detail',
       component: RegistrationDetail,
