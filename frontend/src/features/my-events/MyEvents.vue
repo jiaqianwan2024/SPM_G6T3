@@ -18,12 +18,26 @@
         :data-lifecycle="lifecycle(event.status)"
         @click="open(event.eventId)"
       >
-        <div class="event-name">{{ event.eventName || 'Untitled event' }}</div>
-        <div class="event-meta">
-          <span :data-testid="`organiser-event-${event.eventId}-date`">
-            {{ formatRange(event.proposedStartAt, event.proposedEndAt) }}
-          </span>
-          ·
+        <h3 class="event-name">{{ event.eventName || 'Untitled event' }}</h3>
+        <dl class="event-facts">
+          <div>
+            <dt>Category:</dt>
+            <dd>{{ event.category || '—' }}</dd>
+          </div>
+          <div>
+            <dt>Date:</dt>
+            <dd :data-testid="`organiser-event-${event.eventId}-date`">{{ dateLabel(event) }}</dd>
+          </div>
+          <div>
+            <dt>Time:</dt>
+            <dd :data-testid="`organiser-event-${event.eventId}-time`">{{ timeLabel(event) }}</dd>
+          </div>
+          <div>
+            <dt>Location:</dt>
+            <dd :data-testid="`organiser-event-${event.eventId}-venue`">{{ event.preferredLocation || '—' }}</dd>
+          </div>
+        </dl>
+        <p class="status">
           <span class="status-pill" :data-testid="`organiser-event-${event.eventId}-status`">
             {{ eventStatusLabel(event.status) }}
           </span>
@@ -33,7 +47,7 @@
               {{ safetyNote(event) }}
             </span>
           </template>
-        </div>
+        </p>
       </div>
     </div>
   </div>
@@ -70,10 +84,34 @@ function safetyNote(event) {
   return SAFETY_NOTES[event.safetyReviewStatus] || ''
 }
 
-function formatRange(start, end) {
+function datePart(value) {
+  return value ? new Date(value).toLocaleDateString() : ''
+}
+
+function timePart(value) {
+  return value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+}
+
+function sameDay(start, end) {
+  const a = new Date(start)
+  const b = new Date(end)
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+}
+
+function dateLabel(event) {
+  const start = event.proposedStartAt
+  const end = event.proposedEndAt
   if (!start && !end) return 'No date set yet'
   if (!start || !end) return 'Date incomplete'
-  return `${new Date(start).toLocaleString()} – ${new Date(end).toLocaleString()}`
+  if (sameDay(start, end)) return datePart(start)
+  return `${datePart(start)} – ${datePart(end)}`
+}
+
+function timeLabel(event) {
+  const start = event.proposedStartAt
+  const end = event.proposedEndAt
+  if (!start || !end) return '—'
+  return `${timePart(start)} – ${timePart(end)}`
 }
 
 function open(eventId) {
@@ -118,7 +156,18 @@ onMounted(load)
   padding: 18px 20px;
   cursor: pointer;
 }
-.event-name { font-size: 15px; color: var(--text); }
-.event-meta { margin-top: 6px; font-size: 13px; color: var(--muted); }
+.event-name {
+  margin: 0 0 12px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -.02em;
+  color: var(--text);
+}
+.event-facts { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.event-facts div { display: flex; gap: 8px; font-size: 14px; line-height: 1.4; }
+.event-facts dt { margin: 0; min-width: 84px; color: var(--muted); }
+.event-facts dd { margin: 0; color: var(--body); }
+.status { margin: 12px 0 0; font-size: 14px; color: var(--text); }
 .safety-note { color: #FFD9A8; }
 </style>
