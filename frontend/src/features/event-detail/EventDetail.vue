@@ -92,8 +92,20 @@
         </header>
 
         <p v-if="event.status === 'reconsidering'" class="notice attention" data-testid="event-reconsidering">
-          Some planning details changed after this event was confirmed, so its venue and equipment
-          arrangements are being re-checked. It will show as confirmed again once they are re-verified.
+          <span data-testid="reverify-flag">
+            Some planning details changed after this event was confirmed, so its venue and equipment
+            arrangements are being re-checked. It will show as confirmed again once they are re-verified.
+          </span>
+        </p>
+        <p
+          v-if="venueReleased || (event.status === 'reconsidering' && !venue.venueName)"
+          class="notice attention"
+          data-testid="search-venue-again"
+        >
+          A venue booking was released because it no longer fits. Search for a venue again.
+          <button v-if="canChooseVenue" type="button" class="btn btn-outline" @click="router.push(`/app/events/${event.eventId}/venues`)">
+            Choose venues
+          </button>
         </p>
         <!-- SPM-69 AC3: the organiser sees the outcome and any note on their event. -->
         <div
@@ -382,7 +394,7 @@ import {
   getEventDecision,
   getInternalNotes,
 } from '../../api/eventService.js'
-import { getPublicVenue } from '../../api/venueService.js'
+import { getPublicVenue, getVenueBookings } from '../../api/venueService.js'
 import {
   IN_REVIEW_EVENT_STATUSES,
   LOCKED_EVENT_STATUSES,
@@ -472,6 +484,7 @@ const CONTACT_ROLES = ['organiser', 'coordinator', 'coordinatorlead', 'venue', '
 const outcomes = ref([])
 const reservations = ref([])
 const venue = ref({ venueName: '', location: '' })
+const venueReleased = ref(false)
 
 const releasedOutcome = computed(() => outcomes.value.find((row) => row.status === 'released') || null)
 
@@ -598,6 +611,16 @@ async function loadArrangements() {
     reservations.value = data
   } catch {
     reservations.value = outcomes.value.filter((row) => row.reservationId)
+  }
+  if (session.role === 'coordinator' || session.role === 'venue') {
+    try {
+      const { data } = await getVenueBookings({ eventId })
+      venueReleased.value = data.some(
+        (row) => row.status === 'cancelled' && /Released after re-verification/i.test(row.reverificationNote || ''),
+      )
+    } catch {
+      venueReleased.value = false
+    }
   }
 }
 

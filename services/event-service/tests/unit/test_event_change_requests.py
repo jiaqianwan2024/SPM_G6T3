@@ -336,6 +336,18 @@ class TestDecision(ChangeRequestCase):
         self.assertIn("was accepted", self.last_email()[1])
         self.assertIn("Reason: Agreed with the venue The event now shows the new details.", body)
 
+    def test_accepting_a_new_date_tells_registered_attendees(self):
+        self.event()
+        raised = self.raise_(proposedStartAt=START + timedelta(days=1), proposedEndAt=END + timedelta(days=1))
+        with patch(
+            "app.services.event_service.registered_attendees",
+            return_value=[{"userId": "att-1", "attendeeEmail": "amy@example.com", "status": "registered"}],
+        ):
+            self.accept(raised.changeRequestId)
+        attendee = [call.args for call in self.mocks["inbox"].call_args_list if call.args[2] == "event.changed"]
+        self.assertEqual(attendee[0][0], "att-1")
+        self.assertIn("date or time", attendee[0][4])
+
     def test_accepting_without_a_reason_says_none(self):
         self.event()
         raised = self.raise_()

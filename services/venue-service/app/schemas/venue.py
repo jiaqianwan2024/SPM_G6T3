@@ -311,6 +311,27 @@ class VenueArrangementOut(BaseModel):
     )
 
 
+class BookingRecheck(BaseModel):
+    """SPM-86 AC04: try the event's new date and time against this booking. Nothing is saved."""
+
+    proposedStartAt: datetime | None = None
+    proposedEndAt: datetime | None = None
+
+
+class BookingRecheckOut(BaseModel):
+    """The booking stays where it is. `conflict` is true when the new occupied window is not free
+    or the venue no longer suits the event."""
+
+    bookingId: str
+    movedSilently: bool = False
+    status: str
+    conflict: bool
+    verdict: str
+    reasons: list[str] = []
+    startsAt: datetime
+    endsAt: datetime
+
+
 class BookingReverificationRequest(BaseModel):
     """SPM-71 AC4: event-service asks for an event's confirmed bookings to be re-verified."""
 

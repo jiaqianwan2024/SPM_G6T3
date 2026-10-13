@@ -64,6 +64,22 @@ def list_equipment(service: EquipmentService = Depends(get_equipment_service)):
     return service.list_equipment()
 
 
+@router.get(
+    "/queue",
+    response_model=list[EquipmentReservationOut],
+    summary="Reservations waiting for re-verification",
+    description="SPM-86. Technical support. Held reservations whose event changed, including a quantity "
+    "the extra units cannot cover. Nothing here has been reserved beyond what was already held.",
+    responses=error_responses(403),
+)
+def reverification_queue(
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EquipmentService = Depends(get_equipment_service),
+):
+    _technical_support(authorization)
+    return service.reverification_queue()
+
+
 def _technical_support(authorization: str | None) -> dict:
     return resolve_caller(authorization, settings.user_service_url, allowed_roles={"techsupport"})
 
@@ -159,6 +175,24 @@ def reservation_summary(
     return service.outcome_summary(eventId)
 
 
+@router.post(
+    "/reservations/{reservation_id}/reconfirm",
+    response_model=EquipmentReservationOut,
+    summary="Re-confirm a flagged equipment reservation",
+    description="SPM-86. Technical support only. Clears the flag when the held quantity still covers the "
+    "event, or when any extra units the event now needs are free. Does not raise the reserved quantity. "
+    "When the extra units are unavailable the flag stays and nothing is reserved.",
+    responses=error_responses(403, 404, 409),
+)
+def reconfirm_reservation(
+    reservation_id: str,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EquipmentService = Depends(get_equipment_service),
+):
+    _technical_support(authorization)
+    return service.reconfirm_reservation(reservation_id, authorization)
+
+
 @router.get("/reservations/{reservation_id}", response_model=EquipmentReservationOut)
 def get_reservation(
     reservation_id: str,
@@ -197,7 +231,7 @@ def flag_reservations_for_reverification(
     service: EquipmentService = Depends(get_equipment_service),
 ):
     resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator", "safety"})
-    return service.flag_for_reverification(body.eventId, body.reason)
+    return service.flag_for_reverification(body.eventId, body.reason, authorization)
 
 
 @router.get(

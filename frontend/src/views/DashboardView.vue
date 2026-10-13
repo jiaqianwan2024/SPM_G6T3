@@ -32,7 +32,10 @@
         v-else-if="activeTab === 'Dashboard' && session.role === 'coordinatorlead'"
         @open-tab="activeTab = $event"
       />
-      <DashboardHome v-else-if="activeTab === 'Dashboard'" :cards="currentData.cards" />
+      <template v-else-if="activeTab === 'Dashboard'">
+        <TechReverificationQueue v-if="session.role === 'techsupport'" />
+        <DashboardHome :cards="currentData.cards" />
+      </template>
       <VenueCatalogue v-else-if="activeTab === 'Venue Catalogue'" />
       <VenueCalendar
         v-else-if="activeTab === 'Venue Calendar'"
@@ -67,6 +70,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { signOut } from 'firebase/auth'
 import AppLogo from '../components/shared/AppLogo.vue'
 import DashboardHome from '../features/dashboard/DashboardHome.vue'
+import TechReverificationQueue from '../features/dashboard/TechReverificationQueue.vue'
 import VenueCatalogue from '../features/venue-catalogue/VenueCatalogue.vue'
 import VenueCalendar from '../features/venue-calendar/VenueCalendar.vue'
 import UnavailabilityList from '../features/unavailability/UnavailabilityList.vue'

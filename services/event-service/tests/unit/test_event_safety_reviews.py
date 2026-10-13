@@ -205,13 +205,16 @@ class TestAvailableOnlyWhenArranged(SafetyCase):
         self.assertEqual(error.status_code, 409)
         self.assertIn("from planning", error.detail)
 
-    def test_a_flagged_booking_still_counts_and_the_officer_sees_the_flag(self):
+    def test_a_flagged_booking_does_not_count_until_venue_staff_reconfirm(self):
         self.event()
         self.mocks["bookings"].return_value = [{**BOOKING, "needsReverification": True, "reverificationNote": "Start moved"}]
 
-        venue = self.submit().package.venues[0]
+        error = self.refused(self.submit)
 
-        self.assertEqual((venue.needsReverification, venue.reverificationNote), (True, "Start moved"))
+        self.assertEqual(error.status_code, 409)
+        self.assertEqual(error.detail["missing"], ["venue"])
+        self.assertIn("needs re-verification", error.detail["message"])
+        self.assertEqual(self.status(), "planning")
 
     def test_unreachable_arrangements_submit_nothing(self):
         self.event()
@@ -252,16 +255,26 @@ class TestWhatTheOfficerSees(SafetyCase):
 
         self.assertEqual(self.submit().package.accessibilityRequirements, ["Ramp"])
 
-    def test_equipment_lines_with_names_placement_and_flags(self):
+    def test_equipment_lines_with_names_and_placement(self):
         self.event()
         self.with_equipment()
-        self.mocks["reservations"].return_value = [{**RESERVATION, "needsReverification": True}]
 
         package = self.submit(data=SafetySubmission(crowdMovement="x", equipmentPlacement=" Back wall ")).package
 
         [line] = package.equipment
-        self.assertEqual((line.name, line.quantity, line.technicalRequirements, line.needsReverification), ("Projector", 2, "HDMI at the lectern", True))
+        self.assertEqual((line.name, line.quantity, line.technicalRequirements, line.needsReverification), ("Projector", 2, "HDMI at the lectern", False))
         self.assertEqual(package.equipmentPlacement, "Back wall")
+
+    def test_a_flagged_reservation_does_not_count_until_technical_support_reconfirm(self):
+        self.event()
+        self.with_equipment()
+        self.mocks["reservations"].return_value = [{**RESERVATION, "needsReverification": True}]
+
+        error = self.refused(self.submit, data=SafetySubmission(crowdMovement="x", equipmentPlacement="Back wall"))
+
+        self.assertEqual(error.status_code, 409)
+        self.assertIn("needs re-verification", error.detail["message"])
+        self.assertEqual(self.status(), "planning")
 
     def test_the_queue_lists_pending_reviews_longest_waiting_first(self):
         self.event()

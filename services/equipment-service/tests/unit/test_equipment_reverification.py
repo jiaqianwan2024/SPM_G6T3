@@ -5,6 +5,8 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.schemas.equipment import EquipmentAvailabilityIn, EquipmentQuantityReserve
 from shared.auth.deps import require_authenticated_user
+from fastapi import HTTPException
+
 from shared.exceptions.http import forbidden
 from tests.unit.support import CALLER, COORDINATOR, END, START, EquipmentCase, equipment_create
 
@@ -103,3 +105,75 @@ class TestReservationReverificationRoutes(ReverificationCase):
 
         self.assertEqual(denied.status_code, 403)
         self.assertFalse(self.service.list_event_reservations("e1")[0].needsReverification)
+
+    def test_technical_support_see_the_queue_and_can_reconfirm(self):
+        reservation_id = self.reserve()
+        self.service.flag_for_reverification("e1", "Quantity rose")
+
+        with (
+            patch("app.routers.equipment.resolve_caller", return_value=CALLER),
+            patch("app.services.equipment_service._event_record", return_value={}),
+            patch("app.services.equipment_service._settle_reverification"),
+        ):
+            queue = self.client.get("/equipment/queue", headers=self.headers)
+            saved = self.client.post(f"/equipment/reservations/{reservation_id}/reconfirm", headers=self.headers)
+
+        self.assertEqual(queue.status_code, 200)
+        self.assertEqual(queue.json()[0]["reservationId"], reservation_id)
+        self.assertEqual(saved.status_code, 200)
+        self.assertFalse(saved.json()["needsReverification"])
+        self.assertEqual(saved.json()["quantity"], 1)
+
+
+class TestReservationReconfirm(ReverificationCase):
+    def test_reconfirm_clears_the_flag_without_raising_the_quantity(self):
+        reservation_id = self.reserve(quantity=1)
+        self.service.flag_for_reverification("e1", "Equipment requirements changed")
+
+        saved = self.service.reconfirm_reservation(reservation_id)
+
+        self.assertFalse(saved.needsReverification)
+        self.assertEqual(saved.quantity, 1)
+        self.assertEqual(saved.status, "active")
+        self.assertEqual(self.service.reverification_queue(), [])
+
+    def test_unavailable_extra_units_stay_flagged_and_are_not_reserved(self):
+        reservation_id = self.reserve(quantity=1)
+        self.service.flag_for_reverification("e1", "Quantity rose")
+        event = {"equipmentLines": [{"equipmentId": self.equipment_id, "quantity": 40}]}
+
+        with patch("app.services.equipment_service._event_record", return_value=event):
+            with self.assertRaises(HTTPException) as raised:
+                self.service.reconfirm_reservation(reservation_id, "Bearer token")
+
+        kept = self.service.get_reservation(reservation_id)
+        self.assertIn("unavailable", str(raised.exception.detail))
+        self.assertTrue(kept.needsReverification)
+        self.assertEqual(kept.quantity, 1)
+        self.assertEqual(len(self.service.reverification_queue()), 1)
+
+    def test_a_reservation_that_is_not_flagged_cannot_be_reconfirmed(self):
+        reservation_id = self.reserve()
+        with self.assertRaises(HTTPException):
+            self.service.reconfirm_reservation(reservation_id)
+
+    def test_notices_and_settling_are_best_effort(self):
+        from app.services.equipment_service import _notify_role, _settle_reverification
+
+        users = patch("app.services.equipment_service.httpx.get")
+        posted = patch("app.services.equipment_service.httpx.post")
+        with users as get, posted as post:
+            get.return_value.status_code = 200
+            get.return_value.json.return_value = [
+                {"userId": "u4", "email": "tia@x.com", "role": "techsupport"},
+                {"userId": "u9", "email": "other@x.com", "role": "venue"},
+            ]
+            post.return_value.status_code = 201
+            _notify_role("techsupport", "e1", "Equipment needs re-verification", "Check it", "Bearer token", "equipment.reverification")
+            _settle_reverification("e1", "Bearer token")
+            get.return_value.status_code = 503
+            _notify_role("techsupport", "e1", "Equipment needs re-verification", "Check it", "Bearer token", "equipment.reverification")
+            post.side_effect = __import__("httpx").ConnectError("down")
+            _settle_reverification("e1", "Bearer token")
+            get.return_value.status_code = 200
+            _notify_role("techsupport", "e1", "Equipment needs re-verification", "Check it", "Bearer token", "equipment.reverification")

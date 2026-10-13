@@ -125,6 +125,52 @@ def _event_record(event_id: str, authorization: str | None) -> dict | None:
     return response.json()
 
 
+def _notify_role(role: str, event_id: str, title: str, body: str, authorization: str | None, notice_type: str) -> None:
+    """Email a role and store the same notice in each inbox. Best effort."""
+    if not authorization:
+        return
+    try:
+        users = httpx.get(
+            f"{settings.user_service_url}/users", headers={"Authorization": authorization}, timeout=5.0
+        )
+    except httpx.HTTPError:
+        return
+    if users.status_code != 200:
+        return
+    for user in users.json():
+        if user.get("role") != role:
+            continue
+        _notify_people(title, body, [user.get("email") or ""], authorization)
+        try:
+            httpx.post(
+                f"{settings.notification_service_url}/notifications/records",
+                headers={"Authorization": authorization},
+                json={
+                    "userId": user.get("userId"),
+                    "eventId": event_id,
+                    "type": notice_type,
+                    "title": title,
+                    "body": body,
+                },
+                timeout=5.0,
+            )
+        except httpx.HTTPError:
+            continue
+
+
+def _settle_reverification(event_id: str, authorization: str | None) -> None:
+    if not authorization:
+        return
+    try:
+        httpx.post(
+            f"{settings.event_service_url}/events/{event_id}/reverification/settle",
+            headers={"Authorization": authorization},
+            timeout=5.0,
+        )
+    except httpx.HTTPError:
+        return
+
+
 def _notify_people(subject: str, body: str, emails: list[str], authorization: str | None) -> None:
     if not authorization:
         return
@@ -584,15 +630,59 @@ class EquipmentService(BaseService):
             )
         return outcomes
 
-    def flag_for_reverification(self, event_id: str, reason: str) -> list[EquipmentReservationOut]:
+    def flag_for_reverification(
+        self, event_id: str, reason: str, authorization: str | None = None
+    ) -> list[EquipmentReservationOut]:
         """SPM-71 AC4: mark the event's reservations that still hold stock as
-        needing re-verification. Their status is unchanged, so the stock stays held."""
+        needing re-verification. Their status is unchanged, so the stock stays held.
+        SPM-86 AC03: technical support are told. The reserved quantity is not raised."""
         rows = self.reservation_dao.list_active_for_event(event_id)
         for row in rows:
             row.needsReverification = True
             row.reverificationNote = reason
         self.db.commit()
+        if rows:
+            _notify_role(
+                "techsupport",
+                event_id,
+                "Equipment needs re-verification",
+                f"A reservation for {event_id} needs re-verification. {reason}",
+                authorization,
+                "equipment.reverification",
+            )
         return [_reservation_to_out(row) for row in rows]
+
+    def reverification_queue(self) -> list[EquipmentReservationOut]:
+        """SPM-86 AC02 and AC07: held reservations technical support still have to re-check."""
+        return [_reservation_to_out(row) for row in self.reservation_dao.list_needing_reverification()]
+
+    def reconfirm_reservation(
+        self, reservation_id: str, authorization: str | None = None
+    ) -> EquipmentReservationOut:
+        """SPM-86: technical support accept the held quantity. Extra units that are not free
+        leave the flag in place and do not increase what is reserved."""
+        row = self._require(self.reservation_dao.get_by_id(reservation_id), "Reservation not found")
+        if row.status not in ("active", "reserved") or not row.needsReverification:
+            raise conflict("This reservation does not need re-verification.")
+        event = _event_record(row.eventId, authorization) or {}
+        wanted = 0
+        for line in event.get("equipmentLines") or []:
+            if line.get("equipmentId") == row.equipmentId and not line.get("notRequired"):
+                wanted = max(wanted, int(line.get("quantity") or 0))
+        if wanted > row.quantity:
+            equipment = self._require_equipment(row.equipmentId)
+            coverable = self._available_for(equipment, row.startsAt, row.endsAt, ignore_id=row.reservationId)
+            if wanted > coverable:
+                raise conflict(
+                    f"Only {coverable} can be covered for that period and the reservation stays at {row.quantity}. "
+                    "The extra units are unavailable, so the line stays flagged for technical support."
+                )
+        row.needsReverification = False
+        row.reverificationNote = None
+        self.db.commit()
+        self.db.refresh(row)
+        _settle_reverification(row.eventId, authorization)
+        return _reservation_to_out(row)
 
     def release_reservation(
         self, reservation_id: str, caller: dict, reason: str = "", authorization: str | None = None

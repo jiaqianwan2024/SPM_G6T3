@@ -1,6 +1,6 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Path, Query, Request
+from fastapi import APIRouter, Body, Depends, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -42,6 +42,7 @@ from app.schemas.event import (
     EventDraftUpsert,
     EventInternalNotesOut,
     EventOut,
+    AttendeeChangeNotice,
     EventUpdate,
     OrganiserDraftPatch,
     RequirementOptionsOut,
@@ -49,6 +50,7 @@ from app.schemas.event import (
     RegistrationAccessOut,
     RegistrationSettingsOut,
     RegistrationSettingsUpdate,
+    ReverificationSettleOut,
     SafetyApproval,
     SafetyChangeRequest,
     SafetyRejection,
@@ -467,6 +469,42 @@ def registration_access(
     return service.registration_access(event_id, caller)
 
 
+@router.post(
+    "/{event_id}/reverification/settle",
+    response_model=ReverificationSettleOut,
+    summary="Return a reconsidering event to confirmed when every flag is clear",
+    description="SPM-86 AC10. Venue staff, technical support, or the assigned coordinator. A reconsidering "
+    "event becomes confirmed only when no venue booking or equipment reservation still needs re-verification "
+    "and the venue and equipment rules pass. Any other status, including safety approved, is left unchanged.",
+    responses=error_responses(403, 404, 503),
+)
+def settle_reverification(
+    event_id: str,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    caller = resolve_caller(
+        authorization, settings.user_service_url, allowed_roles={"venue", "techsupport", "coordinator"}
+    )
+    return service.settle_reverification(event_id, caller["userId"], authorization)
+
+
+@router.post(
+    "/{event_id}/attendee-notice",
+    summary="Tell registered attendees the date, time, or venue changed",
+    description="SPM-86 AC09. Venue staff or the assigned coordinator. Best effort for each attendee.",
+    responses=error_responses(403, 404),
+)
+def notify_attendees_of_change(
+    event_id: str,
+    body: AttendeeChangeNotice,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    resolve_caller(authorization, settings.user_service_url, allowed_roles={"venue", "coordinator"})
+    return service.notify_attendees_of_change(event_id, body.change, authorization)
+
+
 @router.patch(
     "/{event_id}",
     response_model=EventUpdateOut,
@@ -480,13 +518,15 @@ def registration_access(
     "be edited. 503 when the arrangements cannot be checked; nothing is saved then.",
     responses=error_responses(403, 404, 409, 503),
 )
-async def update_event(
-    request: Request,
+def update_event(
     event_id: str = Path(..., description="Event id, e.g. `e1`."),
+    payload: dict = Body(...),
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
-    payload = await request.json()
+    # Sync on purpose. Telling registered attendees calls registration-service, and that
+    # call comes back to this process. An async handler would block the event loop, so
+    # the callback could not run until the attendee call had already timed out.
     caller = resolve_caller(authorization, settings.user_service_url)
     if caller.get("role") == "organiser":
         try:

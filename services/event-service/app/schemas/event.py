@@ -457,6 +457,20 @@ class EventUpdateOut(EventOut):
     )
 
 
+class ReverificationSettleOut(BaseModel):
+    """SPM-86 AC10: only a `reconsidering` event can return to `confirmed`, and only when nothing is still flagged."""
+
+    eventId: str
+    status: str
+    restored: bool = False
+
+
+class AttendeeChangeNotice(BaseModel):
+    """SPM-86 AC09: `schedule` is a new date or time; `venue` is a released or replaced venue."""
+
+    change: Literal["schedule", "venue"]
+
+
 # SPM-106 AC3: what an organiser can ask to change. The date is part of the
 # start and end.
 CHANGEABLE_FIELDS = (

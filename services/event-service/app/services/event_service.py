@@ -986,9 +986,11 @@ class EventService(BaseService):
         event = self._require_event(event_id)
         if event.coordinatorId != coordinator_id:
             raise forbidden("Only the event's assigned coordinator can edit it")
-        flagged = self._apply_changes(event, data, coordinator_id, authorization)
+        flagged, schedule_changed = self._apply_changes(event, data, coordinator_id, authorization)
         self.db.commit()
         self.db.refresh(event)
+        if schedule_changed:
+            self._tell_registered_attendees(event, "schedule", authorization)
         return _to_out(
             event,
             authorization,
@@ -1018,7 +1020,7 @@ class EventService(BaseService):
                 detail="The end must be after the start",
             )
         if not changes:
-            return []
+            return [], False
 
         significant = [field for field in SIGNIFICANT_FIELDS if field in changes]
         flagged: list[dict] = []
@@ -1045,7 +1047,7 @@ class EventService(BaseService):
             # SPM-120: arrangements sent before the change must be sent again.
             self.handoff_dao.delete(handoff)
         self._log_and_set(event, changes, changed_by, now)
-        return flagged
+        return flagged, "proposedStartAt" in changes or "proposedEndAt" in changes
 
     def _log_and_set(self, event: Event, changes: dict, changed_by: str, now: datetime) -> None:
         """Write each change to the activity log (SPM-71 AC5, SPM-90 AC7), then apply it."""
@@ -1372,10 +1374,12 @@ class EventService(BaseService):
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="This request's proposed values cannot be applied. Decline it and ask for a new one.",
             )
-        flagged = self._apply_changes(event, update, coordinator_id, authorization)
+        flagged, schedule_changed = self._apply_changes(event, update, coordinator_id, authorization)
         self._close_change_request(change_request, "accepted", coordinator_id, data.reason.strip() or None)
         self.db.commit()
         self.db.refresh(change_request)
+        if schedule_changed:
+            self._tell_registered_attendees(event, "schedule", authorization)
         self._notify_decision(event, change_request, authorization)
         return _change_request_out(change_request, flagged)
 
@@ -2139,9 +2143,9 @@ class EventService(BaseService):
     ) -> dict:
         """AC1's gate, then AC2's facts. Every requested venue must be approved
         for the event's date and time, and every equipment line reserved or
-        recorded as not required. A booking flagged for re-checking still counts
-        while it covers the event's time, because nothing can clear the flag
-        yet (SPM-86); the flag is shown to the officer instead."""
+        recorded as not required. A booking or reservation flagged for
+        re-verification is a gap (SPM-86), so it cannot be sent for review or
+        confirmed until staff re-confirm it. The flag is still shown on the package."""
         if arrangements is None:
             arrangements = self._check_arrangements(event, authorization)
         if arrangements.gaps:
@@ -2453,6 +2457,61 @@ class EventService(BaseService):
         arrangements = self._check_arrangements(event, authorization)
         safety = self._safety_gap(event)
         return arrangements.gaps + ([safety] if safety else []), arrangements
+
+    def settle_reverification(self, event_id: str, changed_by: str, authorization: str | None) -> "ReverificationSettleOut":
+        """SPM-86 AC10: a reconsidering event reads as confirmed again only when every
+        flagged arrangement has been re-verified and the venue and equipment rules pass.
+        Planning and safety approved are left as they are."""
+        from app.schemas.event import ReverificationSettleOut
+
+        event = self._require_event(event_id)
+        if event.status != RECONSIDERING:
+            return ReverificationSettleOut(eventId=event.eventId, status=event.status, restored=False)
+        arrangements = self._check_arrangements(event, authorization)
+        if arrangements.gaps:
+            return ReverificationSettleOut(eventId=event.eventId, status=event.status, restored=False)
+        now = datetime.utcnow()
+        self._record_status_change(event, "confirmed", changed_by, "Arrangements re-verified", now)
+        event.status = "confirmed"
+        event.updatedAt = now
+        self.db.commit()
+        return ReverificationSettleOut(eventId=event.eventId, status=event.status, restored=True)
+
+    def notify_attendees_of_change(self, event_id: str, change: str, authorization: str | None) -> dict:
+        """SPM-86 AC09: registered attendees hear when the date, time, or venue changed."""
+        event = self._require_event(event_id)
+        told = self._tell_registered_attendees(event, change, authorization)
+        return {"eventId": event.eventId, "notified": told}
+
+    def _tell_registered_attendees(self, event: Event, change: str, authorization: str | None) -> int:
+        try:
+            attendees = registered_attendees(event.eventId, authorization)
+        except Exception:
+            logger.warning("could not list attendees for %s", event.eventId)
+            return 0
+        if change == "venue":
+            title = f"The venue for {event.eventName} has changed"
+            body = (
+                f"The venue arrangement for {event.eventName} ({event.eventId}) has changed. "
+                "Please check the event for the venue that will be used."
+            )
+        else:
+            start = _setting_text(event.proposedStartAt)
+            end = _setting_text(event.proposedEndAt)
+            title = f"{event.eventName} has a new date or time"
+            body = (
+                f"The date or time of {event.eventName} ({event.eventId}) has changed. "
+                f"It now runs from {start} to {end}."
+            )
+        told = 0
+        for row in attendees:
+            user_id = row.get("userId")
+            email = row.get("attendeeEmail") or row.get("email")
+            if user_id and record_notification(user_id, event.eventId, "event.changed", title, body, authorization):
+                told += 1
+            if email:
+                send_notification(email, title, body, authorization)
+        return told
 
     def _safety_gap(self, event: Event) -> dict | None:
         """SPM-121 AC4: confirm stays unavailable while the safety check is

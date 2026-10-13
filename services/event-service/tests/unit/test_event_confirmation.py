@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from fastapi import HTTPException
@@ -10,7 +10,7 @@ from app.models.event import Event
 from app.models.event_field_change import EventFieldChange
 from app.models.event_safety_review import EventSafetyReview
 from app.models.event_status_history import EventStatusHistory
-from app.schemas.event import EquipmentNotRequired
+from app.schemas.event import EquipmentNotRequired, EventUpdate
 from app.services.arrangements import covers, equipment_gaps, venue_gaps
 from shared.auth.deps import require_authenticated_user
 from shared.exceptions.http import service_unavailable
@@ -71,6 +71,13 @@ class TestVenueRule(ServiceTestCase):
         self.assertFalse(covers(BOOKING, None, END))
         self.assertTrue(covers({**BOOKING, "startsAt": START, "endsAt": END}, START, END))
 
+    def test_a_flagged_booking_does_not_count_until_it_is_reconfirmed(self):
+        flagged = {**BOOKING, "needsReverification": True}
+
+        [gap] = venue_gaps([flagged], START, END)
+
+        self.assertIn("needs re-verification", gap["message"])
+
     def test_times_with_and_without_an_offset_compare_in_utc(self):
         offset = {**BOOKING, "startsAt": START.isoformat() + "+08:00", "endsAt": END.isoformat() + "+08:00"}
         self.assertFalse(covers(offset, START, END))
@@ -126,6 +133,14 @@ class TestEquipmentRule(ServiceTestCase):
 
         gaps = equipment_gaps([line], [{**REQUEST, "status": "pending"}], [], {})
         self.assertEqual([gap["message"] for gap in gaps], ["2 × eq1 is waiting for technical support to review it."])
+
+    def test_a_flagged_reservation_does_not_count_as_held(self):
+        flagged = {**RESERVATION, "needsReverification": True}
+
+        [gap] = equipment_gaps([], [], [flagged], NAMES)
+
+        self.assertIn("needs re-verification", gap["message"])
+        self.assertEqual(gap["equipmentId"], "eq1")
 
 
 class ConfirmationCase(EventCase):
@@ -371,6 +386,65 @@ class TestNotRequired(ConfirmationCase):
             EquipmentNotRequired(reason="  ")
 
 
+class TestReverificationSettle(ConfirmationCase):
+    def test_reconsidering_returns_to_confirmed_only_when_nothing_is_flagged(self):
+        self.event(status="reconsidering")
+
+        settled = self.service.settle_reverification("e1", "venue-1", "Bearer token")
+
+        self.assertTrue(settled.restored)
+        self.assertEqual(settled.status, "confirmed")
+
+    def test_a_flagged_booking_keeps_the_event_reconsidering(self):
+        self.event(status="reconsidering")
+        self.mocks["bookings"].return_value = [{**BOOKING, "needsReverification": True}]
+
+        settled = self.service.settle_reverification("e1", "venue-1", "Bearer token")
+
+        self.assertFalse(settled.restored)
+        self.assertEqual(settled.status, "reconsidering")
+
+    def test_safety_approved_is_not_restored_by_clearing_flags(self):
+        self.event(status="safety approved")
+
+        settled = self.service.settle_reverification("e1", "venue-1", "Bearer token")
+
+        self.assertFalse(settled.restored)
+        self.assertEqual(settled.status, "safety approved")
+
+    def test_a_date_change_tells_registered_attendees(self):
+        self.event(status="planning")
+        attendees = [{"userId": "att-1", "attendeeEmail": "amy@example.com", "status": "registered"}]
+        with (
+            patch("app.services.event_service.registered_attendees", return_value=attendees),
+            patch("app.services.event_service.flag_arrangements", return_value=[]),
+        ):
+            self.service.update_event(
+                "e1",
+                EventUpdate(
+                    proposedStartAt=START + timedelta(days=1),
+                    proposedEndAt=END + timedelta(days=1),
+                    confirmSignificantChange=True,
+                ),
+                "coord-1",
+                "Bearer token",
+            )
+
+        self.mocks["inbox"].assert_called()
+        self.assertIn("date or time", self.mocks["inbox"].call_args.args[4])
+
+    def test_a_released_venue_tells_registered_attendees(self):
+        self.event(status="reconsidering")
+        with patch(
+            "app.services.event_service.registered_attendees",
+            return_value=[{"userId": "att-1", "attendeeEmail": "amy@example.com", "status": "registered"}],
+        ):
+            told = self.service.notify_attendees_of_change("e1", "venue", "Bearer token")
+
+        self.assertEqual(told["notified"], 1)
+        self.assertIn("venue", self.mocks["inbox"].call_args.args[4])
+
+
 class TestConfirmationRoutes(ServiceTestCase):
     def setUp(self):
         super().setUp()
@@ -427,3 +501,21 @@ class TestConfirmationRoutes(ServiceTestCase):
         self.assertEqual(confirmed.status_code, 200)
         self.assertEqual((confirmed.json()["status"], confirmed.json()["decidedBy"]), ("confirmed", "coord-1"))
         self.assertTrue(confirmed.json()["decidedAt"])
+
+    def test_settle_and_attendee_notice_routes(self):
+        insert_event(
+            self.db, eventId="e1", status="reconsidering", coordinatorId="coord-1",
+            proposedStartAt=START, proposedEndAt=END, eventName="Summit",
+        )
+        with patch(
+            "app.services.event_service.registered_attendees",
+            return_value=[{"userId": "att-1", "attendeeEmail": "amy@example.com", "status": "registered"}],
+        ):
+            notice = self.client.post("/events/e1/attendee-notice", headers=HEADERS, json={"change": "schedule"})
+        settled = self.client.post("/events/e1/reverification/settle", headers=HEADERS)
+
+        self.assertEqual(notice.status_code, 200)
+        self.assertEqual(notice.json()["notified"], 1)
+        self.assertEqual(settled.status_code, 200)
+        self.assertTrue(settled.json()["restored"])
+        self.assertEqual(settled.json()["status"], "confirmed")

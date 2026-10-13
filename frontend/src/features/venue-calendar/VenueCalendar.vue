@@ -17,6 +17,9 @@
     <div v-else class="layout">
       <div class="calendar-column">
         <div class="calendar-shell">
+          <p v-if="needsRecheck" class="reverify-banner" data-testid="calendar-reverify">
+            A booking on this calendar needs re-verification.
+          </p>
           <div class="calendar-bar">
             <ul class="legend">
               <li><span class="swatch pending"></span>Pending <span class="count">{{ counts.pending }}</span></li>
@@ -164,6 +167,7 @@ const venueId = ref(props.focusVenue || (typeof route.params.id === 'string' ? r
 const venues = ref([])
 const venue = ref(null)
 const entries = ref([])
+const needsRecheck = computed(() => entries.value.some((entry) => entry.reverificationNote))
 const visibleRange = ref(null)
 const loadError = ref('')
 const calendarRef = ref(null)
@@ -682,6 +686,14 @@ h1 { margin: 0; font-size: 28px; line-height: 1.15; }
 }
 .layout:has(.panel) { grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr); }
 .calendar-column { min-width: 0; }
+.reverify-banner {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.9rem;
+}
 .calendar-bar {
   display: flex;
   align-items: center;

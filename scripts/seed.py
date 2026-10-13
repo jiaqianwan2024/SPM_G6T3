@@ -712,11 +712,11 @@ def _ensure_equipment_requests(conn, now: datetime, day: timedelta) -> None:
             "quantity": 1,
             "technical_requirements": "Re-check after venue date move",
             "requested_by": "u2",
-            "status": "approved",
+            "status": "reserved",
             "starts_at": now + 21 * day,
             "ends_at": now + 21 * day + timedelta(hours=4),
             "reviewed_by": "u4",
-            "review_note": "Needs re-verification",
+            "review_note": "Reserved for the workshop",
             "created_at": now - 4 * day,
         },
         {
@@ -771,7 +771,9 @@ def _ensure_equipment_requests(conn, now: datetime, day: timedelta) -> None:
             "quantity": 1,
             "starts_at": now + 21 * day,
             "ends_at": now + 21 * day + timedelta(hours=4),
-            "status": "reverify",
+            "status": "active",
+            "needs_reverification": True,
+            "reverification_note": "Significant change. Check this reservation again.",
         },
         {
             "reservation_id": "er-e3",
@@ -793,13 +795,32 @@ def _ensure_equipment_requests(conn, now: datetime, day: timedelta) -> None:
         conn.execute(
             text(
                 "INSERT INTO equipment_reservations ("
-                "reservation_id, request_id, event_id, equipment_id, quantity, starts_at, ends_at, status"
+                "reservation_id, request_id, event_id, equipment_id, quantity, starts_at, ends_at, status, "
+                "needs_reverification, reverification_note"
                 ") VALUES ("
-                ":reservation_id, :request_id, :event_id, :equipment_id, :quantity, :starts_at, :ends_at, :status"
+                ":reservation_id, :request_id, :event_id, :equipment_id, :quantity, :starts_at, :ends_at, :status, "
+                ":needs_reverification, :reverification_note"
                 ")"
             ),
-            row,
+            {
+                **row,
+                "needs_reverification": row.get("needs_reverification", False),
+                "reverification_note": row.get("reverification_note"),
+            },
         )
+    conn.execute(
+        text(
+            "UPDATE equipment_reservations SET status = 'active', needs_reverification = 1, "
+            "reverification_note = 'Significant change. Check this reservation again.' "
+            "WHERE reservation_id = 'er-e2' AND status = 'reverify'"
+        )
+    )
+    conn.execute(
+        text(
+            "UPDATE equipment_requests SET status = 'reserved', review_note = 'Reserved for the workshop' "
+            "WHERE request_id = 'eq-reverify' AND status = 'approved'"
+        )
+    )
 
 
 # Fifteen catalogue types. eq1–eq3 keep the ids that equipment requests already use.
