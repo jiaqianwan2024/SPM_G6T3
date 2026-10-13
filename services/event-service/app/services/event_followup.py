@@ -12,13 +12,15 @@ from app.dao.event_readiness_dao import EventReadinessDAO
 from app.models.event import Event
 from app.models.event_readiness import EventReadinessItem
 from app.orchestration.clients import list_users, registration_count
-from app.schemas.followup import OpenEventOut, ReadinessCreate, ReadinessItemOut, ReadinessPatch
+from app.schemas.followup import EventChangeMark, OpenEventOut, ReadinessCreate, ReadinessItemOut, ReadinessPatch
 from app.services.arrangements import equipment_status as _equipment_status
 from shared.exceptions.http import forbidden, not_found
 from shared.services.base import BaseService
 
 DUE_SOON = timedelta(days=3)
 DATE_FIELDS = {"proposedStartAt", "proposedEndAt", "layoutPreference"}
+SCHEDULE_FIELDS = ("proposedStartAt", "proposedEndAt")
+VENUE_FIELDS = {"venueName", "venueLocation", "venueId"}
 
 
 def _naive(value: datetime | None) -> datetime | None:
@@ -56,6 +58,25 @@ def _person(user_id: str, authorization: str | None) -> tuple[str, str, str]:
                 user.get("phone") or "",
             )
     return "", "", ""
+
+
+def _clock(value) -> datetime | None:
+    if isinstance(value, datetime):
+        return _naive(value)
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return _naive(datetime.fromisoformat(value.replace("Z", "")))
+    except ValueError:
+        return None
+
+
+def _schedule_aspects(old, new) -> tuple[bool, bool]:
+    """A start or end change is a date change, a time change, or both."""
+    before, after = _clock(old), _clock(new)
+    if before and after:
+        return before.date() != after.date(), (before.hour, before.minute) != (after.hour, after.minute)
+    return True, True
 
 
 def _flags(due_at: datetime | None, now: datetime) -> tuple[bool, bool]:
@@ -251,16 +272,46 @@ class EventFollowUp(BaseService):
         self.db.delete(row)
         self.db.commit()
 
+    def _applied_changes(self, event_id: str):
+        return [
+            change
+            for change in self.changes.list_by_event(event_id)
+            if change.status in ("accepted", "applied")
+        ]
+
     def _changed_at(self, event_id: str) -> datetime | None:
         moments = []
-        for change in self.changes.list_by_event(event_id):
-            if change.status not in ("accepted", "applied"):
-                continue
+        for change in self._applied_changes(event_id):
             proposed = change.proposedChanges or {}
             if not (DATE_FIELDS & set(proposed)):
                 continue
             moments.append(change.reviewedAt or change.createdAt)
         return max(moments) if moments else None
+
+    def _change_marks(self, event_id: str) -> list[EventChangeMark]:
+        marks = []
+        for change in self._applied_changes(event_id):
+            proposed = change.proposedChanges or {}
+            current = change.currentValues or {}
+            date = time = False
+            for field in SCHEDULE_FIELDS:
+                if field not in proposed:
+                    continue
+                moved_date, moved_time = _schedule_aspects(current.get(field), proposed.get(field))
+                date = date or moved_date
+                time = time or moved_time
+            venue = bool(VENUE_FIELDS & set(proposed))
+            if not (date or time or venue):
+                continue
+            marks.append(
+                EventChangeMark(
+                    at=change.reviewedAt or change.createdAt,
+                    date=date,
+                    time=time,
+                    venue=venue,
+                )
+            )
+        return marks
 
     def _card(self, event: Event, authorization: str | None) -> OpenEventOut:
         count = registration_count(event.eventId, authorization)
@@ -291,6 +342,7 @@ class EventFollowUp(BaseService):
             venueName=venue.get("venueName") or "",
             venueLocation=venue.get("location") or "",
             changedAt=self._changed_at(event.eventId),
+            changeMarks=self._change_marks(event.eventId),
         )
 
     def _open(self, event: Event, now: datetime) -> bool:

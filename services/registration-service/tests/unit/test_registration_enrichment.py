@@ -29,6 +29,7 @@ class TestRegistrationEnrichment(ServiceTestCase):
     def test_a_card_adds_the_event_and_a_missing_card_leaves_the_row_alone(self):
         card = {
             "eventName": "AI in Events Summit",
+            "category": "conference",
             "status": "cancelled",
             "proposedStartAt": "2026-11-01T09:00:00",
             "proposedEndAt": "2026-11-01T17:00:00",
@@ -37,22 +38,34 @@ class TestRegistrationEnrichment(ServiceTestCase):
             "venueName": "Marina Hall A",
             "venueLocation": "HarbourFront Centre",
             "changedAt": "2026-10-01T00:00:00",
+            "changeMarks": [{"at": "2026-10-01T00:00:00", "date": True, "time": True, "venue": False}],
         }
         ok = MagicMock(status_code=200)
         ok.json.return_value = card
         with patch("app.routers.registration.httpx.get", return_value=ok):
             enriched = _enrich(_row(), "Bearer token")
         self.assertEqual(enriched.eventName, "AI in Events Summit")
+        self.assertEqual(enriched.category, "conference")
         self.assertTrue(enriched.cancelled)
         self.assertTrue(enriched.changed)
+        self.assertTrue(enriched.dateChanged)
+        self.assertTrue(enriched.timeChanged)
+        self.assertFalse(enriched.venueChanged)
         self.assertEqual(enriched.venueName, "Marina Hall A")
         self.assertIsNotNone(enriched.startsAt)
 
-        earlier = dict(card, changedAt="2026-08-01T00:00:00", status="confirmed")
+        earlier = dict(
+            card,
+            changedAt="2026-08-01T00:00:00",
+            changeMarks=[{"at": "2026-08-01T00:00:00", "date": True, "time": False, "venue": True}],
+            status="confirmed",
+        )
         ok.json.return_value = earlier
         with patch("app.routers.registration.httpx.get", return_value=ok):
             quiet = _enrich(_row(), "Bearer token")
         self.assertFalse(quiet.changed)
+        self.assertFalse(quiet.dateChanged)
+        self.assertFalse(quiet.venueChanged)
         self.assertFalse(quiet.cancelled)
 
         aware = _row(createdAt=datetime(2026, 9, 1, tzinfo=timezone.utc))

@@ -50,7 +50,7 @@ def _event_card(event_id: str, authorization: str | None) -> dict | None:
         response = httpx.get(
             f"{settings.event_service_url}/events/{event_id}/attendee-card",
             headers={"Authorization": authorization},
-            timeout=0.8,
+            timeout=8.0,
         )
     except httpx.HTTPError:
         return None
@@ -66,10 +66,19 @@ def _enrich(row, authorization: str | None) -> AttendeeOut:
         return base
     changed_at = _parse_time(card.get("changedAt"))
     created = row.createdAt.replace(tzinfo=None) if row.createdAt and row.createdAt.tzinfo else row.createdAt
-    changed = bool(changed_at and created and changed_at > created)
+    date_changed = time_changed = venue_changed = False
+    for mark in card.get("changeMarks") or []:
+        at = _parse_time(mark.get("at"))
+        if not at or not created or at <= created:
+            continue
+        date_changed = date_changed or bool(mark.get("date"))
+        time_changed = time_changed or bool(mark.get("time"))
+        venue_changed = venue_changed or bool(mark.get("venue"))
+    changed = bool(changed_at and created and changed_at > created) or date_changed or time_changed or venue_changed
     return base.model_copy(
         update={
             "eventName": card.get("eventName") or "",
+            "category": card.get("category") or "",
             "proposedStartAt": _parse_time(card.get("proposedStartAt")),
             "startsAt": _parse_time(card.get("startsAt") or card.get("proposedStartAt")),
             "proposedEndAt": _parse_time(card.get("proposedEndAt")),
@@ -78,6 +87,9 @@ def _enrich(row, authorization: str | None) -> AttendeeOut:
             "venueLocation": card.get("venueLocation") or "",
             "cancelled": card.get("status") == "cancelled",
             "changed": changed,
+            "dateChanged": date_changed,
+            "timeChanged": time_changed,
+            "venueChanged": venue_changed,
         }
     )
 

@@ -10,7 +10,7 @@ from app.models.event_change_request import EventChangeRequest
 from app.schemas.followup import ReadinessCreate, ReadinessPatch
 from app.orchestration.clients import release_event_holds
 from app.schemas.event import OrganiserDraftPatch
-from app.services.event_followup import EventFollowUp, _equipment_status, _person, _soft_get
+from app.services.event_followup import EventFollowUp, _clock, _equipment_status, _person, _schedule_aspects, _soft_get
 from pydantic import ValidationError
 from shared.auth.deps import require_authenticated_user
 from shared.testing.cases import ServiceTestCase
@@ -217,6 +217,7 @@ class TestFollowUp(EventCase):
         self.assertEqual(ids, ["e-open"])
         self.assertEqual(listed[0].venueName, "Marina Hall A")
         self.assertIsNotNone(listed[0].changedAt)
+        self.assertTrue(any(mark.date and mark.time for mark in listed[0].changeMarks))
         self.assertFalse(listed[0].full)
         self.count_mock.return_value = 5
         with patch("app.services.event_followup._soft_get", return_value={}):
@@ -242,6 +243,57 @@ class TestFollowUp(EventCase):
         self.assertEqual(card.eventName, "AI in Events Summit")
         with self.assertRaises(HTTPException):
             self.follow.attendee_card("missing", None)
+
+    def test_a_schedule_change_is_a_date_change_a_time_change_or_both(self):
+        aware = datetime(2026, 12, 1, 9, 0, tzinfo=timezone.utc)
+        self.assertEqual(_clock(aware), datetime(2026, 12, 1, 9, 0))
+        self.assertEqual(_clock(datetime(2026, 12, 1, 9, 30)), datetime(2026, 12, 1, 9, 30))
+        self.assertIsNone(_clock("not-a-time"))
+        self.assertEqual(
+            _schedule_aspects("2026-12-01T09:00:00", "2026-12-02T09:00:00"),
+            (True, False),
+        )
+        self.assertEqual(
+            _schedule_aspects("2026-12-01T09:00:00", "2026-12-01T09:01:00"),
+            (False, True),
+        )
+        self.assertEqual(
+            _schedule_aspects("2026-12-01T09:00:00", "2026-12-01T09:00:59"),
+            (False, False),
+        )
+        self.assertEqual(_schedule_aspects(aware, "2026-12-02T11:30:00Z"), (True, True))
+        self.assertEqual(_schedule_aspects("2026-12-01T09:00:00", "soon"), (True, True))
+
+        _open_event(self.db, eventId="e-marks", eventName="Marks")
+        self.db.add(
+            EventChangeRequest(
+                changeRequestId="cr-date",
+                eventId="e-marks",
+                requestedBy="org-1",
+                status="applied",
+                currentValues={"proposedStartAt": "2026-12-01T09:00:00"},
+                proposedChanges={"proposedStartAt": "2026-12-02T09:00:00"},
+                reviewedAt=NOW,
+                createdAt=NOW - timedelta(days=1),
+            )
+        )
+        self.db.add(
+            EventChangeRequest(
+                changeRequestId="cr-time",
+                eventId="e-marks",
+                requestedBy="org-1",
+                status="accepted",
+                currentValues={"proposedEndAt": "2026-12-01T09:00:00"},
+                proposedChanges={"proposedEndAt": "2026-12-01T09:01:00", "venueName": "Hall B"},
+                reviewedAt=NOW,
+                createdAt=NOW,
+            )
+        )
+        self.db.commit()
+        with patch("app.services.event_followup._soft_get", return_value={}):
+            card = self.follow.attendee_card("e-marks", "Bearer token")
+        flags = {(mark.date, mark.time, mark.venue) for mark in card.changeMarks}
+        self.assertEqual(flags, {(True, False, False), (False, True, True)})
 
     def test_equipment_status_and_person_lookup(self):
         self.assertEqual(_equipment_status([{"status": "complete", "quantity": 1, "reviewNote": ""}], []), "ready")

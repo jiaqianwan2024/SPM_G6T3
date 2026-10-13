@@ -9,10 +9,10 @@
       </button>
     </div>
     <template v-else>
-      <section data-testid="my-registrations-upcoming">
-        <h3>Upcoming</h3>
+      <section v-for="group in groups" :key="group.id" :data-testid="group.id">
+        <h3>{{ group.title }}</h3>
         <button
-          v-for="row in upcoming"
+          v-for="row in group.rows"
           :key="row.attendeeRegistrationId"
           type="button"
           class="event-card"
@@ -21,27 +21,39 @@
           :data-changed="row.changed ? 'true' : 'false'"
           @click="open(row.attendeeRegistrationId)"
         >
-          <div class="event-name">{{ row.eventName || row.eventId }}</div>
-          <div class="event-meta">
-            <span data-testid="reg-date">{{ datePart(row.proposedStartAt || row.startsAt) }}</span>
-            · <span data-testid="reg-start">{{ timePart(row.proposedStartAt || row.startsAt) }}</span>
-            – <span data-testid="reg-end">{{ timePart(row.proposedEndAt || row.endsAt) }}</span>
-          </div>
-          <p>{{ row.venueName }} · {{ row.venueLocation }}</p>
-          <p>{{ row.cancelled ? 'Cancelled' : row.status }}<template v-if="row.changed"> · Changed</template></p>
-        </button>
-      </section>
-      <section v-if="past.length" data-testid="my-registrations-past">
-        <h3>Past</h3>
-        <button
-          v-for="row in past"
-          :key="row.attendeeRegistrationId"
-          type="button"
-          class="event-card"
-          :data-testid="`my-registration-${row.eventId}`"
-          @click="open(row.attendeeRegistrationId)"
-        >
-          <div class="event-name">{{ row.eventName || row.eventId }}</div>
+          <span class="event-name">{{ row.eventName || row.eventId }}</span>
+          <span class="event-facts">
+            <span class="fact">
+              <span class="fact-label">Category:</span>
+              <span>{{ row.category }}</span>
+            </span>
+            <span class="fact" :class="{ flagged: row.dateChanged }">
+              <span class="fact-label">Date:</span>
+              <span class="fact-value">
+                <span data-testid="reg-date">{{ datePart(row.proposedStartAt || row.startsAt) }}</span>
+                <span v-if="row.dateChanged" class="change-flag">Date changed</span>
+              </span>
+            </span>
+            <span class="fact" :class="{ flagged: row.timeChanged }">
+              <span class="fact-label">Time:</span>
+              <span class="fact-value">
+                <span data-testid="reg-start">{{ timePart(row.proposedStartAt || row.startsAt) }}</span>
+                – <span data-testid="reg-end">{{ timePart(row.proposedEndAt || row.endsAt) }}</span>
+                <span v-if="row.timeChanged" class="change-flag">Time changed</span>
+              </span>
+            </span>
+            <span class="fact" :class="{ flagged: row.venueChanged }">
+              <span class="fact-label">Location:</span>
+              <span class="fact-value">
+                <span>{{ row.venueName }} · {{ row.venueLocation }}</span>
+                <span v-if="row.venueChanged" class="change-flag">Location changed</span>
+              </span>
+            </span>
+          </span>
+          <span class="status">
+            {{ row.cancelled ? 'Cancelled' : row.status }}
+            <template v-if="row.changed && !row.dateChanged && !row.timeChanged && !row.venueChanged"> · Changed</template>
+          </span>
         </button>
       </section>
     </template>
@@ -60,6 +72,10 @@ const error = ref('')
 
 const upcoming = computed(() => rows.value.filter((row) => !isPast(row)))
 const past = computed(() => rows.value.filter((row) => isPast(row)))
+const groups = computed(() => [
+  { id: 'my-registrations-upcoming', title: 'Upcoming', rows: upcoming.value },
+  { id: 'my-registrations-past', title: 'Past', rows: past.value },
+])
 
 function isPast(row) {
   const end = row.proposedEndAt || row.endsAt || row.proposedStartAt || row.startsAt
@@ -107,15 +123,37 @@ onMounted(async () => {
   padding: 11px 14px;
 }
 .event-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
   text-align: left;
   background: var(--glass);
   border: 1px solid var(--hairline);
   border-radius: 14px;
-  padding: 16px 18px;
+  padding: 18px 20px;
   cursor: pointer;
   color: inherit;
   font: inherit;
 }
-.event-name { font-size: 15px; }
-.event-meta { margin-top: 6px; font-size: 13px; color: var(--muted); }
+.event-name {
+  margin: 0 0 12px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -.02em;
+  color: var(--text);
+}
+.event-facts { display: flex; flex-direction: column; gap: 6px; }
+.fact { display: flex; gap: 8px; font-size: 14px; line-height: 1.4; }
+.fact-label { min-width: 84px; color: var(--muted); }
+.fact-value { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.fact.flagged .fact-label { color: #FFD59A; }
+.change-flag {
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #FFD59A;
+}
+.status { margin-top: 12px; font-size: 14px; color: var(--text); }
 </style>
