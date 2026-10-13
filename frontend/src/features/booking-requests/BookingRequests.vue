@@ -111,7 +111,18 @@
             Approved by {{ booking.reviewedByName || booking.reviewedBy }} on {{ moment(booking.reviewedAt) }}
           </p>
           <p class="locked">Confirmed. The venue is reserved for the occupied window above.</p>
+          <p v-if="booking.reverificationNote" class="note">{{ booking.reverificationNote }}</p>
           <p v-if="booking.decisionReason" class="note">Note: {{ booking.decisionReason }}</p>
+          <button
+            v-if="booking.needsReverification"
+            type="button"
+            class="btn btn-solid"
+            :disabled="busyId === booking.bookingId"
+            data-testid="booking-reconfirm"
+            @click="reconfirm(booking)"
+          >
+            {{ busyId === booking.bookingId ? 'Re-confirming…' : 'Re-confirm' }}
+          </button>
         </div>
 
         <div v-else-if="booking.status === 'pending'" class="actions">
@@ -142,14 +153,17 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { approveVenueBooking, getVenueBookings, getVenues } from '../../api/venueService.js'
+import { useRoute } from 'vue-router'
+import { approveVenueBooking, getVenueBookings, getVenues, reconfirmVenueBooking } from '../../api/venueService.js'
+
+const route = useRoute()
 
 const STATUSES = [
   { value: 'pending', label: 'Pending' },
   { value: 'approved', label: 'Approved' },
 ]
 
-const status = ref('pending')
+const status = ref(route.query.booking ? 'approved' : 'pending')
 const venueId = ref('')
 const venues = ref([])
 const bookings = ref([])
@@ -254,6 +268,22 @@ async function loadVenues() {
     venues.value = data
   } catch {
     venues.value = []
+  }
+}
+
+async function reconfirm(booking) {
+  busyId.value = booking.bookingId
+  errors[booking.bookingId] = ''
+  notice.value = ''
+  try {
+    const { data } = await reconfirmVenueBooking(booking.bookingId)
+    notice.value = `Re-confirmed. ${data.venueName || data.venueId} stays reserved for ${eventName(data)}.`
+    await load()
+  } catch (err) {
+    errors[booking.bookingId] = message(err, 'Unable to re-confirm this booking. Please try again.')
+    await load()
+  } finally {
+    busyId.value = ''
   }
 }
 

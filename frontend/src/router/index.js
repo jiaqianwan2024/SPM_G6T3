@@ -67,6 +67,13 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/app/venues/bookings/:id',
+      redirect: (to) => ({
+        name: 'dashboard',
+        query: { tab: 'Booking Requests', booking: String(to.params.id) }
+      })
+    },
+    {
       path: '/app/venues/:id/calendar',
       redirect: (to) => ({
         name: 'dashboard',

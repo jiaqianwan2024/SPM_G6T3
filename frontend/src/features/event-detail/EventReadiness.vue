@@ -9,6 +9,7 @@
       </div>
     </header>
 
+    <p v-if="reverifyNote" class="notice attention" data-testid="readiness-reverify">{{ reverifyNote }}</p>
     <p v-if="loading" class="empty-note">Loading readiness…</p>
     <p v-else-if="error" class="form-error">{{ error }}</p>
     <template v-else>
@@ -216,7 +217,9 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createReadinessItem, deleteReadinessItem, getReadiness, updateReadinessItem } from '../../api/eventService.js'
+import { getEventReservations } from '../../api/equipmentService.js'
 import { getUsers } from '../../api/userService.js'
+import { getVenueBookings } from '../../api/venueService.js'
 import { session } from '../../store/session.js'
 import { formatUtc } from '../../utils/datetime.js'
 
@@ -304,6 +307,25 @@ function toLocalInput(value) {
 function attachmentsFrom(line, existing = []) {
   if (!line.attachmentUrl) return existing
   return [{ name: line.attachmentName || line.attachmentUrl, url: line.attachmentUrl }]
+}
+
+const reverifyNote = ref('')
+
+async function loadReverification() {
+  const eventId = route.params.id
+  try {
+    const [bookings, reservations] = await Promise.all([
+      getVenueBookings({ eventId }).then((response) => response.data),
+      getEventReservations(eventId).then((response) => response.data),
+    ])
+    const venueFlag = bookings.some((row) => row.needsReverification)
+    const equipmentFlag = reservations.some((row) => row.needsReverification)
+    if (venueFlag || equipmentFlag) {
+      reverifyNote.value = 'A venue booking or equipment reservation needs re-verification before this event is fully ready.'
+    }
+  } catch {
+    reverifyNote.value = ''
+  }
 }
 
 async function load() {
@@ -462,6 +484,7 @@ async function createLine() {
 onMounted(() => {
   load()
   loadPeople()
+  loadReverification()
 })
 </script>
 

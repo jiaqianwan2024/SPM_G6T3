@@ -76,9 +76,10 @@ def covers(booking: dict, starts_at: datetime | None, ends_at: datetime | None) 
 
 
 def venue_gaps(bookings: list, starts_at: datetime | None, ends_at: datetime | None) -> list[dict]:
-    """SPM-72 AC1, SPM-121 AC2: every requested venue is approved by venue staff,
-    and every approved booking is for the event's date and time. A booking left
-    at an earlier time after the event moved does not count."""
+    """SPM-72 AC1, SPM-121 AC2, SPM-86: every requested venue is approved by venue
+    staff, every approved booking is for the event's date and time, and a booking
+    flagged for re-verification does not count until Venue Staff re-confirm it.
+    A booking left at an earlier time after the event moved does not count."""
     live = [row for row in bookings if row.get("status") in LIVE_BOOKINGS]
     if not live:
         return [{"kind": "venue", "message": "No venue has been booked for this event yet."}]
@@ -96,13 +97,22 @@ def venue_gaps(bookings: list, starts_at: datetime | None, ends_at: datetime | N
                     "and request the venue for the event's time.",
                 }
             )
+        elif row.get("needsReverification"):
+            gaps.append(
+                {
+                    "kind": "venue",
+                    "message": f"The booking at {name} needs re-verification. It does not count until Venue Staff "
+                    "re-confirm it.",
+                }
+            )
     return gaps
 
 
 def equipment_gaps(lines: list, requests: list, reservations: list, names: dict[str, str]) -> list[dict]:
-    """SPM-72 AC1, SPM-121 AC2: every equipment request is reserved by technical
-    support, and every equipment line on the event is either covered by held
-    stock or recorded as not required (only those can be marked)."""
+    """SPM-72 AC1, SPM-121 AC2, SPM-86: every equipment request is reserved by
+    technical support, every equipment line on the event is either covered by held
+    stock or recorded as not required, and a reservation flagged for re-verification
+    does not count until technical support re-confirm it."""
     gaps = []
     pending_types = set()
     for row in requested_lines(requests):
@@ -120,8 +130,20 @@ def equipment_gaps(lines: list, requests: list, reservations: list, names: dict[
         )
     held: dict[str, int] = {}
     for row in reservations:
-        if row.get("status") in HOLDING_RESERVATIONS:
-            held[row["equipmentId"]] = held.get(row["equipmentId"], 0) + int(row.get("quantity") or 0)
+        if row.get("status") not in HOLDING_RESERVATIONS:
+            continue
+        name = names.get(row["equipmentId"], row["equipmentId"])
+        if row.get("needsReverification"):
+            gaps.append(
+                {
+                    "kind": "equipment",
+                    "equipmentId": row["equipmentId"],
+                    "message": f"{row.get('quantity')} × {name} needs re-verification. It does not count until "
+                    "technical support re-confirm it.",
+                }
+            )
+            continue
+        held[row["equipmentId"]] = held.get(row["equipmentId"], 0) + int(row.get("quantity") or 0)
     # Completed or accepted short: the request settled the line whatever is held.
     settled = {row["equipmentId"] for row in requested_lines(requests) if row.get("status") in ("complete", "resolved")}
     for line in lines:

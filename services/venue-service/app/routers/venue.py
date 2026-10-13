@@ -12,6 +12,8 @@ from app.db.session import get_db
 from app.orchestration.clients import fetch_event_facts, notify_coordinator, notify_venue_staff
 from app.schemas.venue import (
     BookingClashOut,
+    BookingRecheck,
+    BookingRecheckOut,
     BookingReleaseRequest,
     BookingReverificationRequest,
     HoldRequest,
@@ -479,7 +481,7 @@ def flag_bookings_for_reverification(
     service: VenueService = Depends(get_venue_service),
 ):
     resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator", "safety"})
-    return service.flag_for_reverification(body.eventId, body.reason)
+    return service.flag_for_reverification(body.eventId, body.reason, authorization)
 
 
 @router.post(
@@ -616,6 +618,46 @@ def release_hold(
 ):
     resolve_caller(authorization, settings.user_service_url, allowed_roles={"venue"})
     return service.release_hold(booking_id)
+
+
+@router.post(
+    "/bookings/{booking_id}/recheck",
+    response_model=BookingRecheckOut,
+    summary="Re-check a booking against a new date and time",
+    description="SPM-86 AC04. Reports whether the venue still suits the event and is free for the new "
+    "occupied window. The booking is not moved.",
+    responses=error_responses(403, 404, 409, 503),
+)
+def recheck_booking(
+    body: BookingRecheck,
+    booking_id: str = Path(..., description="Booking id."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator", "venue"})
+    booking = service.get_booking(booking_id)
+    event = fetch_event_facts(booking.eventId, authorization)
+    return service.recheck_booking(booking_id, event, body.proposedStartAt, body.proposedEndAt)
+
+
+@router.post(
+    "/bookings/{booking_id}/reconfirm",
+    response_model=VenueBookingOut,
+    summary="Re-confirm a flagged booking at the event's current details",
+    description="SPM-86 AC05 and AC06. Venue staff only. When the venue still suits the event and is free, "
+    "the booking takes the event's current start and end and the re-verification flag clears. When it does "
+    "not, that booking is released and the coordinator is asked to search again. Other bookings stay.",
+    responses=error_responses(403, 404, 409, 503),
+)
+def reconfirm_booking(
+    booking_id: str = Path(..., description="Booking id."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    resolve_caller(authorization, settings.user_service_url, allowed_roles={"venue"})
+    booking = service.get_booking(booking_id)
+    event = fetch_event_facts(booking.eventId, authorization)
+    return service.reconfirm_booking(booking_id, event, authorization)
 
 
 @router.post(

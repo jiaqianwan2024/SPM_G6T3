@@ -15,6 +15,7 @@ from app.models.venue_info import VenueInfo
 from app.models.venue_unavailability import VenueUnavailability
 from app.schemas.venue import (
     BookingClashOut,
+    BookingRecheckOut,
     ClashingBooking,
     EventFacts,
     HoldOut,
@@ -32,13 +33,14 @@ from app.schemas.venue import (
     VenueSearchResult,
     VenueUpdate,
 )
+from app.orchestration.clients import notify_attendees, notify_coordinator, notify_role, settle_reverification
 from app.services import occupancy, suitability, venue_search
 from shared.exceptions.http import conflict, forbidden
 from shared.services.base import BaseService
 
 # SPM-63 AC1: "Planning" is the stage after approval. Event approval (SPM-69)
 # writes `planning`; events approved before that may still read `approved`. Both count.
-PLANNING_STATUSES = ("approved", "planning")
+PLANNING_STATUSES = ("approved", "planning", "reconsidering")
 # MySQL's error number for SIGNAL, which the SPM-64 trigger raises on an overlapping approval.
 SIGNALLED_ERROR = 1644
 APPROVED_ELSEWHERE = (
@@ -619,7 +621,8 @@ class VenueService(BaseService):
     def request_booking(self, data: VenueBookingCreate, caller: dict, event: EventFacts) -> VenueBookingOut:
         """SPM-63: a coordinator's venue booking request. Every rule below is
         checked before anything is saved, so a refused request leaves no trace."""
-        # AC1: only the event's assigned coordinator, only once it is in planning.
+        # AC1: only the event's assigned coordinator, once it is in planning.
+        # SPM-86: a reconsidering event can request a venue again after a booking is released.
         if event.coordinatorId != caller["userId"]:
             raise forbidden("Only the coordinator assigned to this event can request a venue for it.")
         if event.status not in PLANNING_STATUSES:
@@ -890,15 +893,108 @@ class VenueService(BaseService):
         self.db.refresh(created)
         return _booking_to_out(created)
 
-    def flag_for_reverification(self, event_id: str, reason: str) -> list[VenueBookingOut]:
+    def flag_for_reverification(
+        self, event_id: str, reason: str, authorization: str | None = None
+    ) -> list[VenueBookingOut]:
         """SPM-71 AC4: mark the event's confirmed bookings as needing
-        re-verification. They stay approved, so the venue stays held."""
+        re-verification. They stay approved, so the venue stays held.
+        SPM-86 AC03: Venue Staff who approved them are told."""
         rows = self.booking_dao.list("approved", event_id, None)
         for row in rows:
             row.needsReverification = True
             row.reverificationNote = reason
         self.db.commit()
+        if authorization and rows:
+            notify_role(
+                "venue",
+                event_id,
+                "A booking needs re-verification",
+                f"A confirmed booking for {event_id} needs re-verification. {reason}",
+                authorization,
+                "venue.reverification",
+            )
         return [_booking_to_out(row) for row in rows]
+
+    def _arrangement_verdict(self, row: VenueBooking, event: EventFacts, start, end) -> tuple[str, list[str]]:
+        """Suitability plus the occupied-window clash check, excluding this event's own bookings."""
+        if start is None or end is None or end <= start:
+            return "not suitable", ["The event's end time must be after its start time."]
+        checked = self.check_suitability(
+            SuitabilityRequest(eventId=row.eventId, venueId=row.venueId, startsAt=start, endsAt=end),
+            event,
+        )
+        failures = [reason.message for reason in checked.reasons if reason.severity == "failure"]
+        return checked.verdict, failures
+
+    def recheck_booking(
+        self, booking_id: str, event: EventFacts, proposed_start: datetime | None, proposed_end: datetime | None
+    ) -> BookingRecheckOut:
+        """SPM-86 AC04: report whether the booking still fits a proposed window. The row is not moved."""
+        row = self._require_booking(booking_id)
+        if row.status != "approved":
+            raise conflict(f"Only an approved booking can be re-checked. This booking is already {row.status}.")
+        start = suitability._utc(proposed_start) or suitability._utc(event.proposedStartAt)
+        end = suitability._utc(proposed_end) or suitability._utc(event.proposedEndAt)
+        kept = (row.startsAt, row.endsAt, row.setupStartsAt, row.teardownEndsAt, row.status)
+        verdict, failures = self._arrangement_verdict(row, event, start, end)
+        row.startsAt, row.endsAt, row.setupStartsAt, row.teardownEndsAt, row.status = kept
+        return BookingRecheckOut(
+            bookingId=row.bookingId,
+            movedSilently=False,
+            status=row.status,
+            conflict=bool(failures),
+            verdict=verdict,
+            reasons=failures,
+            startsAt=row.startsAt,
+            endsAt=row.endsAt,
+        )
+
+    def reconfirm_booking(self, booking_id: str, event: EventFacts, authorization: str | None) -> VenueBookingOut:
+        """SPM-86 AC05 and AC06: one action by Venue Staff. A venue that still suits and is free
+        takes the event's current times and the flag clears. One that does not is released;
+        the event's other bookings are left alone."""
+        row = self._require_booking(booking_id)
+        if row.status != "approved" or not row.needsReverification:
+            raise conflict("This booking does not need re-verification.")
+        start = suitability._utc(event.proposedStartAt)
+        end = suitability._utc(event.proposedEndAt)
+        verdict, failures = self._arrangement_verdict(row, event, start, end)
+        if failures or verdict == "not suitable":
+            reason = " ".join(failures) or "The venue is not suitable at the event's current details."
+            row.status = "cancelled"
+            row.needsReverification = False
+            row.reverificationNote = f"Released after re-verification. {reason}"
+            self.db.commit()
+            if authorization:
+                if event.coordinatorId:
+                    notify_coordinator(
+                        event.coordinatorId,
+                        row.eventId,
+                        "Search for a venue again",
+                        f"The booking at {row.venue.name if row.venue else row.venueId} for {event.eventName or row.eventId} "
+                        f"was released because it no longer fits. {reason} Search for a venue again.",
+                        authorization,
+                        "venue.reverification",
+                    )
+                notify_attendees(row.eventId, "venue", authorization)
+                settle_reverification(row.eventId, authorization)
+            raise conflict(
+                "This venue is not suitable or not free for the event's current details, so the booking was "
+                f"released. Search for a venue again. {reason}"
+            )
+        venue = self._require_venue(row.venueId)
+        if suitability._utc(row.startsAt) != start or suitability._utc(row.endsAt) != end:
+            row.startsAt, row.endsAt = start, end
+            row.setupStartsAt, row.teardownEndsAt = occupancy.occupied_window(
+                start, end, venue.setupMinutes, venue.turnaroundMinutes
+            )
+        row.needsReverification = False
+        row.reverificationNote = None
+        self.db.commit()
+        self.db.refresh(row)
+        if authorization:
+            settle_reverification(row.eventId, authorization)
+        return _booking_to_out(row)
 
     def withdraw_booking(self, booking_id: str, caller: dict, event_coordinator_id: str | None) -> VenueBookingOut:
         """SPM-63 AC8. A withdrawn request no longer counts anywhere: the
