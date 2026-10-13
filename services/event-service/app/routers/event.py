@@ -343,11 +343,12 @@ def list_open_for_registration(
     search: str = Query("", description="Match on the event name."),
     category: str = Query("", description="Category, matched exactly."),
     fromDate: str = Query("", alias="from", description="YYYY-MM-DD. Events starting on or after this date."),
+    toDate: str = Query("", alias="to", description="YYYY-MM-DD. Events starting on or before this date."),
     authorization: str | None = Depends(forwarded_bearer),
     followup: EventFollowUp = Depends(get_followup),
 ):
     resolve_caller(authorization, settings.user_service_url)
-    return followup.list_open(authorization, search, category, fromDate)
+    return followup.list_open(authorization, search, category, fromDate, toDate)
 
 
 @router.get(

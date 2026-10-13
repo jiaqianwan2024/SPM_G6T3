@@ -230,6 +230,14 @@ class TestFollowUp(EventCase):
         self.assertEqual(narrowed, [])
         dated = self.follow.list_open("Bearer token", from_date=(NOW + timedelta(days=30)).date().isoformat())
         self.assertEqual(dated, [])
+        before = self.follow.list_open("Bearer token", to_date=(NOW + timedelta(days=1)).date().isoformat())
+        self.assertEqual(before, [])
+        spanned = self.follow.list_open(
+            "Bearer token",
+            from_date=(NOW + timedelta(days=1)).date().isoformat(),
+            to_date=(NOW + timedelta(days=20)).date().isoformat(),
+        )
+        self.assertEqual([row.eventId for row in spanned], ["e-open"])
         card = self.follow.attendee_card("e-open", None)
         self.assertEqual(card.eventName, "AI in Events Summit")
         with self.assertRaises(HTTPException):
