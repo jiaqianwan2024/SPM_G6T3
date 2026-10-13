@@ -126,6 +126,7 @@ def _booking_to_out(row: VenueBooking) -> VenueBookingOut:
         requirementsSnapshot=row.requirementsSnapshot,
         decisionReason=row.decisionReason,
         reviewedBy=row.reviewedBy,
+        reviewedByName=row.reviewedByName,
         reviewedAt=row.reviewedAt,
         createdAt=row.createdAt,
         eventSnapshot=row.eventSnapshot,
@@ -1040,7 +1041,9 @@ class VenueService(BaseService):
             "expires and the venue becomes available to other requests.",
         )
 
-    def approve_booking(self, booking_id: str, reviewer_id: str, reason: str | None) -> VenueBookingOut:
+    def approve_booking(
+        self, booking_id: str, reviewer_id: str, reason: str | None, reviewer_name: str | None = None
+    ) -> VenueBookingOut:
         """Approval is where a venue becomes committed, so it applies the SPM-64
         rule: refused when a confirmed booking or unavailability overlaps the
         occupied window (AC3, AC4). The nearby bookings are read with a lock, which
@@ -1062,7 +1065,8 @@ class VenueService(BaseService):
         _end_hold(row, "approved")
         row.status = "approved"
         row.decisionReason = reason
-        row.reviewedBy = reviewer_id
+        # SPM-8 AC5: who approved it and when; the row is never deleted, so this stays.
+        row.reviewedBy, row.reviewedByName = reviewer_id, reviewer_name
         row.reviewedAt = datetime.utcnow()
         try:
             self.db.commit()

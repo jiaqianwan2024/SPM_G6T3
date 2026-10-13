@@ -41,6 +41,10 @@ export const withdrawVenueBooking = (bookingId) => axiosClient.post(`/venues/boo
 
 export const cancelVenueBooking = (bookingId) => axiosClient.post(`/venues/bookings/${bookingId}/cancel`);
 
+// SPM-8: Venue Staff approve a pending request; `reason` is an optional note kept on the booking.
+export const approveVenueBooking = (bookingId, reason = null) =>
+  axiosClient.post(`/venues/bookings/${bookingId}/approve`, { reason });
+
 // SPM-115: another venue for an approved booking affected by an unavailability block.
 // The server keeps the booking's time and the event's details, then cancels the original.
 export const requestVenueReplacement = (bookingId, body) =>

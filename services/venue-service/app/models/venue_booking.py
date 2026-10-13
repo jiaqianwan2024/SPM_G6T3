@@ -41,6 +41,8 @@ class VenueBooking(Base):
     holdEndReason: Mapped[str | None] = mapped_column("hold_end_reason", String(32), nullable=True)
     decisionReason: Mapped[str | None] = mapped_column("decision_reason", Text, nullable=True)
     reviewedBy: Mapped[str | None] = mapped_column("reviewed_by", String(64), nullable=True)
+    # SPM-8 AC5: who approved it, by name, kept with the booking.
+    reviewedByName: Mapped[str | None] = mapped_column("reviewed_by_name", String(255), nullable=True)
     reviewedAt: Mapped[datetime | None] = mapped_column("reviewed_at", DateTime, nullable=True)
     createdAt: Mapped[datetime] = mapped_column("created_at", DateTime, default=datetime.utcnow)
 

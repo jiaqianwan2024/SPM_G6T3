@@ -343,10 +343,11 @@ The suitability check (SPM-62) reads this table: an overlapping period makes a v
 | hold_placed_at | DATETIME nullable | SPM-116: when the hold was placed |
 | hold_ended_at | DATETIME nullable | SPM-116: when the hold ended before its expiry |
 | hold_end_reason | VARCHAR(32) nullable | SPM-116: `released`, `approved`, `rejected`, `withdrawn`, or `cancelled` |
-| decision_reason | TEXT nullable | |
-| reviewed_by | VARCHAR(64) nullable | |
-| reviewed_at | DATETIME nullable | |
-| created_at | DATETIME | |
+| decision_reason | TEXT nullable | Venue Staff's optional note on approval or rejection |
+| reviewed_by | VARCHAR(64) nullable | SPM-8: the Venue Staff user who approved or rejected it |
+| reviewed_by_name | VARCHAR(255) nullable | SPM-8: that user's name when they approved it (migration `c7e2a9f4b815`) |
+| reviewed_at | DATETIME nullable | SPM-8: when it was approved or rejected. Booking rows are never deleted, so the approval record stays after the event is completed |
+| created_at | DATETIME | When the request was submitted; requests are listed oldest first (SPM-8 AC11) |
 
 Index: `(venue_id, starts_at, ends_at)`.
 
@@ -677,8 +678,14 @@ erDiagram
     json warnings
     boolean needs_reverification
     text reverification_note
+    datetime hold_expires_at
+    string hold_placed_by FK
+    datetime hold_placed_at
+    datetime hold_ended_at
+    string hold_end_reason
     text decision_reason
     string reviewed_by FK
+    string reviewed_by_name
     datetime reviewed_at
     datetime created_at
   }

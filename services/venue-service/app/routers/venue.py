@@ -622,7 +622,13 @@ def release_hold(
     "/bookings/{booking_id}/approve",
     response_model=VenueBookingOut,
     summary="Approve a venue booking",
-    description="Venue staff only. Fails with 409 if the booking is no longer `pending`.",
+    description=(
+        "SPM-8. Venue staff only. Turns a pending request into a confirmed booking that reserves the venue for "
+        "its occupied window (event start minus setup time to event end plus turnaround time), and records who "
+        "approved it and when. Refused with 409, leaving the request pending, when the booking is no longer "
+        "`pending` or the window overlaps a confirmed booking, an active tentative hold, or an unavailability "
+        "period. An expired hold does not block approval."
+    ),
     responses=error_responses(403, 404, 409, 503),
 )
 def approve_booking(
@@ -632,7 +638,7 @@ def approve_booking(
     service: VenueService = Depends(get_venue_service),
 ):
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"venue"})
-    return service.approve_booking(booking_id, caller["userId"], body.reason)
+    return service.approve_booking(booking_id, caller["userId"], body.reason, caller.get("userName"))
 
 
 @router.post(

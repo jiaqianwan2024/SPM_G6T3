@@ -40,6 +40,7 @@
         :focus-at="calendarFocus.at"
       />
       <UnavailabilityList v-else-if="activeTab === 'Unavailability'" />
+      <BookingRequests v-else-if="activeTab === 'Booking Requests'" />
       <BrowseEvents v-else-if="activeTab === 'Browse Events'" />
       <CreateEvent v-else-if="activeTab === 'New Request'" />
       <UpcomingEventsCalendar v-else-if="activeTab === 'Upcoming Events'"/>
@@ -69,6 +70,7 @@ import DashboardHome from '../features/dashboard/DashboardHome.vue'
 import VenueCatalogue from '../features/venue-catalogue/VenueCatalogue.vue'
 import VenueCalendar from '../features/venue-calendar/VenueCalendar.vue'
 import UnavailabilityList from '../features/unavailability/UnavailabilityList.vue'
+import BookingRequests from '../features/booking-requests/BookingRequests.vue'
 import BrowseEvents from '../features/browse-events/BrowseEvents.vue'
 import CreateEvent from '../features/create-event/CreateEvent.vue'
 import { roles } from '../config/roles.js'

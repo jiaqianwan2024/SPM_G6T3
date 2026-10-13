@@ -270,3 +270,73 @@ class TestVenueHoldWorkflow(TestVenueBookingWorkflow):
         rejected = self.as_(VENUE).post(f"/venues/bookings/{d}/reject", headers=self.headers, json={"reason": "No"})
         self.assertEqual(rejected.json()["hold"]["state"], "rejected")
         self.assertEqual((self.stored(d).holdEndReason, self.stored(d).status), ("rejected", "rejected"))
+
+
+class TestVenueApprovalWorkflow(TestVenueBookingWorkflow):
+    """SPM-8: Venue Staff read the queue oldest first, an unavailability block refuses
+    approval and leaves the request pending, and an approval is recorded with the
+    approver's name and time and then stays locked. The rows are read back from SQL."""
+
+    test_search_check_request_approve_withdraw_and_flag_clashes = None  # run once, in its own class
+
+    def test_queue_block_approve_record_and_lock(self):
+        created = self.as_(VENUE).post(
+            "/venues",
+            headers=self.headers,
+            json={
+                "name": "Harbour Hall",
+                "location": "HarbourFront Centre",
+                "layouts": [{"name": "Theatre", "capacity": 100}],
+                "operatingHours": [
+                    {"day": day, "opens": "00:00", "closes": "24:00"}
+                    for day in ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+                ],
+                "setupMinutes": 30,
+                "turnaroundMinutes": 45,
+            },
+        )
+        self.venue_id = created.json()["venueId"]
+        a, b = self.request("e-a"), self.request("e-b")
+
+        # AC1 and AC11: the pending queue shows each request's facts, oldest first.
+        queue = self.as_(VENUE).get(
+            "/venues/bookings", headers=self.headers, params={"status": "pending", "venueId": self.venue_id}
+        ).json()
+        self.assertEqual([row["bookingId"] for row in queue], [a, b])
+        self.assertEqual(
+            (queue[0]["startsAt"], queue[0]["setupStartsAt"], queue[0]["eventSnapshot"]["layout"]),
+            ("2030-01-07T10:00:00", "2030-01-07T09:30:00", "Theatre"),
+        )
+
+        # AC6: maintenance inside A's turnaround refuses approval; A stays pending, approved by nobody.
+        blocked = self.as_(VENUE).post(
+            f"/venues/{self.venue_id}/unavailability",
+            headers=self.headers,
+            json={"startsAt": "2030-01-07T12:30:00", "endsAt": "2030-01-07T13:00:00", "reason": "maintenance"},
+        )
+        self.assertEqual(blocked.status_code, 201, blocked.text)
+        refused = self.approve(a)
+        self.assertEqual(refused.status_code, 409)
+        self.assertIn("is unavailable from", refused.json()["detail"])
+        row = self.stored(a)
+        self.assertEqual((row.status, row.reviewedBy, row.reviewedByName, row.reviewedAt), ("pending", None, None, None))
+
+        # AC10 and AC5: once the block is removed, A is approved with who and when.
+        removed = self.as_(VENUE).delete(
+            f"/venues/{self.venue_id}/unavailability/{blocked.json()['unavailabilityId']}", headers=self.headers
+        )
+        self.assertEqual(removed.status_code, 204, removed.text)
+        before = datetime.utcnow()
+        approved = self.approve(a)
+        self.assertEqual(approved.status_code, 200, approved.text)
+        row = self.stored(a)
+        self.assertEqual((row.status, row.reviewedBy, row.reviewedByName), ("approved", "u-venue", "Carol"))
+        self.assertGreaterEqual(row.reviewedAt, before.replace(microsecond=0))
+
+        # AC4 and AC7: A is locked, and B (set up from 11:30) is refused and stays pending.
+        self.assertEqual(self.approve(a).status_code, 409)
+        rejected = self.as_(VENUE).post(f"/venues/bookings/{a}/reject", headers=self.headers, json={"reason": "No"})
+        self.assertEqual(rejected.status_code, 409)
+        self.assertEqual(self.approve(b).status_code, 409)
+        self.assertEqual([self.stored(booking).status for booking in (a, b)], ["approved", "pending"])
+        self.assertEqual(self.stored(a).reviewedByName, "Carol")
