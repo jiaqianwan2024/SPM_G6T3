@@ -160,6 +160,33 @@ def _insert_event(conn, row: dict, now: datetime, assign_coordinator: bool = Tru
     )
 
 
+def _refresh_demo_windows(conn, now: datetime, day: timedelta) -> None:
+    """The browse fixtures are dated from the moment they were first inserted.
+    Later runs move e1 and e2 back into an open registration window, and keep
+    e4 opening in the future, so the attendee list stays the one the tests expect.
+    """
+    schedules = [
+        ("e1", now + 14 * day, timedelta(hours=8), now - 5 * day, now + 3 * day),
+        ("e2", now + 21 * day, timedelta(hours=4), now - 2 * day, now + 10 * day),
+        ("e4", now + 45 * day, timedelta(hours=2), now + 2 * day, now + 20 * day),
+    ]
+    for event_id, start, length, opens, closes in schedules:
+        conn.execute(
+            text(
+                "UPDATE events SET proposed_start_at = :start, proposed_end_at = :end, "
+                "registration_opens_at = :opens, registration_closes_at = :closes "
+                "WHERE event_id = :event_id"
+            ),
+            {
+                "event_id": event_id,
+                "start": start,
+                "end": start + length,
+                "opens": opens,
+                "closes": closes,
+            },
+        )
+
+
 def seed_event() -> None:
     engine = create_engine(URLS["event"])
     now = datetime.utcnow()
@@ -383,6 +410,7 @@ def seed_event() -> None:
                 ),
                 {"created_at": now - 1 * day},
             )
+        _refresh_demo_windows(conn, now, day)
 
 
 def _ensure_change_requests(conn, now: datetime, day: timedelta) -> None:
@@ -635,6 +663,16 @@ def seed_venue() -> None:
                         "created_at": now,
                     },
                 )
+        for venue_id, location, address in (
+            ("v1", "HarbourFront Centre", "1 HarbourFront Walk, Singapore 098585"),
+            ("v2", "HarbourFront Centre", "1 HarbourFront Walk, Singapore 098585"),
+        ):
+            conn.execute(
+                text(
+                    "UPDATE venues SET location = :location, address = :address WHERE venue_id = :venue_id"
+                ),
+                {"venue_id": venue_id, "location": location, "address": address},
+            )
         _ensure_venue_safety_details(conn)
         _ensure_venue_bookings(conn, now, day)
 

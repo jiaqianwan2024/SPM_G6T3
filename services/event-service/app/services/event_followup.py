@@ -302,7 +302,14 @@ class EventFollowUp(BaseService):
             return False
         return True
 
-    def list_open(self, authorization: str | None, search: str = "", category: str = "", from_date: str = "") -> list[OpenEventOut]:
+    def list_open(
+        self,
+        authorization: str | None,
+        search: str = "",
+        category: str = "",
+        from_date: str = "",
+        to_date: str = "",
+    ) -> list[OpenEventOut]:
         now = datetime.utcnow()
         rows = []
         for event in self.events.list_by_status("confirmed"):
@@ -312,7 +319,10 @@ class EventFollowUp(BaseService):
                 continue
             if category and (event.category or "").lower() != category.lower():
                 continue
-            if from_date and event.proposedStartAt and event.proposedStartAt.date().isoformat() < from_date:
+            start = event.proposedStartAt.date().isoformat() if event.proposedStartAt else ""
+            if from_date and start and start < from_date:
+                continue
+            if to_date and start and start > to_date:
                 continue
             rows.append(self._card(event, authorization))
         return rows
