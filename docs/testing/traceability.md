@@ -110,7 +110,7 @@
 | SPM-62 | Tight fit is a warning | TC-SPM62-AC06 | `e2e/spm62.spec.js` | Automated |
 | SPM-62 | Pending overlap is a warning | TC-SPM62-AC07 | `e2e/spm62.spec.js` | Automated |
 | SPM-62 | Failures block submit; warnings do not | TC-SPM62-AC08 | `e2e/spm62.spec.js` | Automated |
-| SPM-62 | Shared suitability rule | TC-SPM62-AC09 | `e2e/spm62.spec.js`; `services/venue-service/tests/unit/test_venue_search.py` | Automated (API and UI): a search for an event gives each venue the same verdict as checking it directly, and booking requests run the same check. Re-verification after a change (SPM-86) is to call it when built |
+| SPM-62 | Shared suitability rule | TC-SPM62-AC09 | `e2e/spm62.spec.js`; `services/venue-service/tests/unit/test_venue_search.py` | Automated (API and UI): a search for an event gives each venue the same verdict as checking it directly, and booking requests run the same check. Re-verification (SPM-86) uses the same suitability check when Venue Staff re-confirm a flagged booking |
 | SPM-63 | Request venue for planning event | TC-SPM63-AC01 | `e2e/spm63.spec.js` | Automated |
 | SPM-63 | Request carries event facts | TC-SPM63-AC02 | `e2e/spm63.spec.js` | Automated |
 | SPM-63 | Failed suitability blocks submit | TC-SPM63-AC03 | `e2e/spm63.spec.js` | Automated |
@@ -125,7 +125,7 @@
 | SPM-115 | Original booking remains readable | TC-SPM115-AC03 | `e2e/spm115.spec.js` | Automated. After a replacement is accepted, the original booking can still be opened and its status is cancelled. |
 | SPM-115 | Event details stay unchanged | TC-SPM115-AC04 | `e2e/spm115.spec.js` | Automated. The replacement uses the booking's existing time. The event's name, attendance, layout, times, and status are not written. |
 | SPM-115 | Recording a block leaves the event status unchanged | TC-SPM115-AC05 | `e2e/spm115.spec.js` | Automated. Venue Staff record the block. The event status stays the same, and the approved booking stays approved until a replacement is requested. |
-| SPM-64 | Shared conflict rule | TC-SPM64-AC01 | `e2e/spm64.spec.js` | Automated (search, suitability, approval); venue blocking (SPM-9) finds affected bookings with the same occupied window and active-hold rule; rescheduling and re-verification use it when SPM-87 and SPM-86 are built |
+| SPM-64 | Shared conflict rule | TC-SPM64-AC01 | `e2e/spm64.spec.js` | Automated (search, suitability, approval); venue blocking (SPM-9) finds affected bookings with the same occupied window and active-hold rule; rescheduling (SPM-87) and re-verification (SPM-86) use the same occupied window |
 | SPM-64 | Occupied window adds setup and turnaround | TC-SPM64-AC02 | `e2e/spm64.spec.js` | Automated |
 | SPM-64 | Confirmed bookings never overlap, also in the database | TC-SPM64-AC03 | `e2e/spm64.spec.js`; `services/venue-service/tests/integration/test_double_booking_mysql.py` | Automated |
 | SPM-64 | Conflicts with unavailability and active holds | TC-SPM64-AC04 | `e2e/spm64.spec.js` | Automated: active hold, and an unavailability block recorded through SPM-9 |
@@ -134,7 +134,7 @@
 | SPM-64 | Simultaneous approvals: one winner | TC-SPM64-AC07 | `e2e/spm64.spec.js`; `services/venue-service/tests/integration/test_double_booking_mysql.py` | Automated |
 | SPM-64 | Cancel, reject, complete, or withdraw releases the hold | TC-SPM64-AC08 | `e2e/spm64.spec.js` | Withdraw, single-booking cancel, and event release (SPM-114) automated; rejecting (SPM-70) and completing (SPM-72/73) are to call the same release |
 | SPM-112 | Occupied window is start minus setup through end plus turnaround, from the venue's current times | TC-SPM112-AC01 | `e2e/spm112.spec.js`; `services/venue-service/tests/unit/test_venue_occupied_window.py` | Automated |
-| SPM-112 | Search, suitability, approval and unavailability use the same window | TC-SPM112-AC02 | `e2e/spm112.spec.js`; `services/venue-service/tests/unit/test_venue_occupied_window.py` | Search, suitability, request and approval automated, with a confirmed booking (AC02) and with unavailability blocks recorded through SPM-9 (AC02c); rescheduling (SPM-87) and re-verification (SPM-86) are to call the same rule when built |
+| SPM-112 | Search, suitability, approval and unavailability use the same window | TC-SPM112-AC02 | `e2e/spm112.spec.js`; `services/venue-service/tests/unit/test_venue_occupied_window.py` | Search, suitability, request and approval automated, with a confirmed booking (AC02) and with unavailability blocks recorded through SPM-9 (AC02c); rescheduling (SPM-87) and re-verification (SPM-86) call the same occupied window |
 | SPM-112 | The coordinator's venue screen applies the same window | TC-SPM112-AC02b | `e2e/spm112.spec.js` | Automated (browser) |
 | SPM-112 | Windows that only touch do not conflict | TC-SPM112-AC03 | `e2e/spm112.spec.js`; `services/venue-service/tests/integration/test_double_booking_mysql.py` | Automated |
 | SPM-122 | Every pair of confirmed bookings whose windows overlap under the venue's current times is listed | TC-SPM122-AC01 | `e2e/spm122.spec.js`; `services/venue-service/tests/unit/test_venue_booking_clashes.py` | Automated |
