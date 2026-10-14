@@ -580,7 +580,11 @@ async function load() {
     const { data } = await getEvent(route.params.id)
     event.value = data
   } catch (err) {
-    error.value = err.response?.data?.detail || 'Could not load this event. Please try again.'
+    const status = err.response?.status
+    error.value =
+      status === 403 || status === 404
+        ? 'This event is no longer available to you.'
+        : err.response?.data?.detail || 'Could not load this event. Please try again.'
   } finally {
     loading.value = false
   }
