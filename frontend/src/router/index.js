@@ -10,6 +10,8 @@ import EventVenueSelect from '../features/venue-request/EventVenueSelect.vue'
 import BrowseEvent from '../features/browse-events/BrowseEvent.vue'
 import EventReadiness from '../features/event-detail/EventReadiness.vue'
 import EquipmentDetail from '../features/equipment-catalogue/EquipmentDetail.vue'
+import NotificationsPage from '../features/notifications/NotificationsPage.vue'
+import NotificationFollow from '../features/notifications/NotificationFollow.vue'
 import { session } from '../store/session.js'
 
 const router = createRouter({
@@ -18,6 +20,18 @@ const router = createRouter({
     { path: '/', name: 'landing', component: LandingView },
     { path: '/login', name: 'login', component: LoginView },
     { path: '/app', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
+    {
+      path: '/app/notifications',
+      name: 'notifications',
+      component: NotificationsPage,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/app/notifications/:id',
+      name: 'notification-follow',
+      component: NotificationFollow,
+      meta: { requiresAuth: true }
+    },
     {
       path: '/app/events/:id',
       name: 'event-detail',

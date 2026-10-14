@@ -17,7 +17,7 @@
         />
         <path d="M10.2 19.5a1.9 1.9 0 0 0 3.6 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
       </svg>
-      <span v-if="unreadCount > 0" class="badge" data-testid="notification-unread-badge">
+      <span v-if="unreadCount > 0" class="badge" data-testid="notification-unread-count">
         {{ unreadCount > 9 ? '9+' : unreadCount }}
       </span>
     </button>
@@ -27,6 +27,7 @@
     <div v-if="open" class="panel" data-testid="notification-panel" role="dialog" aria-label="Notifications">
       <div class="panel-head">
         <h3>Notifications</h3>
+        <button type="button" class="mark-all-btn" data-testid="notification-see-all" @click="seeAll">See all</button>
         <button
           class="mark-all-btn"
           type="button"
@@ -68,33 +69,19 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  getNotifications,
-  getUnreadNotificationCount,
-  markAllNotificationsRead,
-  markNotificationRead,
-} from '../../api/notificationService.js'
+import { getNotifications, markAllNotificationsRead } from '../../api/notificationService.js'
 import { formatUtc } from '../../utils/datetime.js'
+import { refreshUnreadCount, unreadCount } from '../../features/notifications/unreadCount.js'
 
 const router = useRouter()
 
 const open = ref(false)
 const items = ref([])
-const unreadCount = ref(0)
 const loading = ref(false)
 const error = ref('')
 const markingAll = ref(false)
 
 let pollTimer = null
-
-async function refreshCount() {
-  try {
-    const { data } = await getUnreadNotificationCount()
-    unreadCount.value = data.unreadCount
-  } catch {
-    // Best effort - the badge just won't update this cycle.
-  }
-}
 
 async function loadList() {
   loading.value = true
@@ -118,24 +105,16 @@ function close() {
   open.value = false
 }
 
-// AC3/AC5: opening a notification marks it read and takes the user to what
-// it concerns. If that event is no longer there or no longer theirs to see,
-// EventDetail's own load() already shows a plain "Could not load this event"
-// message instead of a crash - nothing extra needed here for that case.
-async function openItem(item) {
+// AC3/AC5: the follow route marks the notification read and goes to what it
+// concerns, or says plainly that it is no longer available.
+function openItem(item) {
   close()
-  if (!item.isRead) {
-    item.isRead = true
-    unreadCount.value = Math.max(0, unreadCount.value - 1)
-    try {
-      await markNotificationRead(item.notificationId)
-    } catch {
-      // Best effort - a stale unread badge is the worst case, not a crash.
-    }
-  }
-  if (item.eventId) {
-    router.push({ name: 'event-detail', params: { id: item.eventId } })
-  }
+  router.push({ name: 'notification-follow', params: { id: item.notificationId } })
+}
+
+function seeAll() {
+  close()
+  router.push({ name: 'notifications' })
 }
 
 async function markAll() {
@@ -152,8 +131,8 @@ async function markAll() {
 }
 
 onMounted(() => {
-  refreshCount()
-  pollTimer = setInterval(refreshCount, 30000)
+  refreshUnreadCount()
+  pollTimer = setInterval(refreshUnreadCount, 30000)
 })
 onUnmounted(() => clearInterval(pollTimer))
 </script>
