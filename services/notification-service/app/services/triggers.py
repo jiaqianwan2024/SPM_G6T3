@@ -86,6 +86,19 @@ TRIGGERS: dict[str, Trigger] = {
             recipient_roles=_EQUIPMENT_RECIPIENTS,
             required_context=("eventName", "reason"),
         ),
+        # SPM-6: the organiser answered a clarification. The link opens the event,
+        # where the thread is shown. reviewStatus is set only once the request
+        # has left review, so the coordinator is not left thinking it still waits.
+        Trigger(
+            key="clarification.replied",
+            title="New reply on {eventName}",
+            body="{eventName} ({eventId}) has a new clarification reply: {message}",
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "eventId", "message"),
+            extras=(
+                ("reviewStatus", "This request is no longer awaiting review; it is now {reviewStatus}."),
+            ),
+        ),
         # SPM-77 AC3: a line marked unavailable or only partly fulfilled.
         Trigger(
             key="equipment.shortfall",

@@ -1836,7 +1836,8 @@ class EventService(BaseService):
     ) -> ClarificationOut:
         """SPM-68 AC3: the organiser (or a colleague in their organisation) or
         the assigned coordinator adds to an open thread. The other side is
-        emailed after the save, best effort."""
+        emailed after the save. An organiser reply also lands in the assigned
+        coordinator's inbox (SPM-6), best effort."""
         event = self._require_event(event_id)
         clarification = self._require_clarification(event.eventId, clarification_id)
         coordinator = caller.get("role") == "coordinator" and caller.get("userId") == event.coordinatorId
@@ -1844,26 +1845,45 @@ class EventService(BaseService):
             raise forbidden("Only the event's organiser or its assigned coordinator can reply to a clarification")
         if clarification.status == RESOLVED:
             raise conflict("This clarification is resolved, so it can no longer be replied to")
-        self.review_dao.add(
-            EventClarificationReply(
-                replyId=str(uuid4()),
-                reviewId=clarification.reviewId,
-                authorId=caller["userId"],
-                authorRole=caller["role"],
-                message=data.message,
-                createdAt=datetime.utcnow(),
-            )
+        reply = EventClarificationReply(
+            replyId=str(uuid4()),
+            reviewId=clarification.reviewId,
+            authorId=caller["userId"],
+            authorRole=caller["role"],
+            message=data.message,
+            createdAt=datetime.utcnow(),
         )
+        self.review_dao.add(reply)
         self.db.commit()
         self.db.refresh(clarification)
         users = self._directory(authorization)
-        recipient = self._recipient(users, event.organiserId if coordinator else event.coordinatorId, event)
+        recipient_id = event.organiserId if coordinator else event.coordinatorId
+        recipient = self._recipient(users, recipient_id, event)
+        past_review = not coordinator and event.status not in IN_REVIEW_STATUSES
         if recipient is not None:
-            body = f"There is a new reply about {event.eventName}: {data.message}"
-            if not coordinator and event.status not in IN_REVIEW_STATUSES:
-                # SPM-06 AC4: a late answer still reaches the coordinator, flagged as such.
+            body = f"There is a new reply about {event.eventName} ({event.eventId}): {data.message}"
+            if past_review:
+                # SPM-6 AC4: a late answer still reaches the coordinator, and says
+                # the request is no longer waiting on review.
                 body += f" This request is no longer awaiting review; it is now {event.status}."
-            send_notification(recipient["email"], f"New reply on a clarification for {event.eventName}", body, authorization)
+            send_notification(
+                recipient["email"], f"New reply on a clarification for {event.eventName}", body, authorization
+            )
+        if not coordinator and event.coordinatorId:
+            # The organiser's own token cannot write the coordinator's inbox, so this
+            # goes through the service-key publish, which also stores the event link.
+            context = {"eventName": event.eventName, "eventId": event.eventId, "message": data.message}
+            if past_review:
+                context["reviewStatus"] = event.status
+            publish_notification(
+                "clarification.replied",
+                event.eventId,
+                reply.replyId,
+                [{"userId": event.coordinatorId, "role": "coordinator"}],
+                context,
+                actor_id=caller["userId"],
+                resource={"type": "clarification", "id": clarification.reviewId},
+            )
         return self._clarification_out(clarification, users)
 
     def resolve_clarification(
