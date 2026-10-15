@@ -43,7 +43,7 @@ class EventCreate(BaseModel):
                 "eventName": "AI in Events Summit",
                 "purpose": "Share AI practices for event operations.",
                 "description": "A one-day summit for ConnectSphere clients.",
-                "category": "conference",
+                "category": "Conference",
                 "proposedStartAt": "2026-10-06T09:00:00",
                 "proposedEndAt": "2026-10-06T17:00:00",
                 "expectedAttendance": 120,

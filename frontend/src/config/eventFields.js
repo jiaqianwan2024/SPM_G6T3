@@ -26,7 +26,7 @@ export const CHANGEABLE_FIELDS = [
   'expectedAttendance', 'layoutPreference', 'accessibilityNeeds', 'equipmentRequirements',
 ]
 
-export const EVENT_CATEGORIES = ['conference', 'workshop', 'networking', 'meeting']
+export const EVENT_CATEGORIES = ['Conference', 'Workshop', 'Networking', 'Meeting']
 
 // Same guided list as the venue form; any other layout can still be typed.
 export const LAYOUT_TYPES = [

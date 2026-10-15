@@ -4,6 +4,22 @@
       <button v-if="canWrite" type="button" class="btn btn-outline add-btn" @click="startCreate">
         + Add venue
       </button>
+      <label class="search">
+        Search
+        <input v-model="query" type="search" placeholder="Name, code, or location" data-testid="venue-search" />
+      </label>
+      <div class="sorts" role="group" aria-label="Sort venues">
+        <button
+          v-for="option in sortOptions"
+          :key="option.id"
+          type="button"
+          class="sort"
+          :class="{ active: sort === option.id }"
+          @click="sort = option.id"
+        >
+          {{ option.label }}
+        </button>
+      </div>
       <label class="show-retired">
         <input type="checkbox" v-model="showRetired" @change="onToggleRetired" />
         Show retired venues
@@ -22,8 +38,9 @@
           {{ venue.venueName }}: {{ venue.count }} {{ venue.count === 1 ? 'clash' : 'clashes' }}
         </button>
       </div>
+      <p v-if="!loading && venues.length && !visible.length" class="empty-list">No venues match this search.</p>
       <div
-        v-for="venue in venues"
+        v-for="venue in visible"
         :key="venue.venueId"
         class="venue-row"
         :class="{ active: selected?.venueId === venue.venueId, retired: !venue.isActive }"
@@ -160,11 +177,29 @@ const error = ref('')
 const mode = ref('view') // 'view' | 'create' | 'edit'
 const showLog = ref(false)
 const showRetired = ref(false)
+const query = ref('')
+const sort = ref('name-asc')
+const sortOptions = [
+  { id: 'name-asc', label: 'A–Z' },
+  { id: 'name-desc', label: 'Z–A' },
+]
 const confirmingRetire = ref(false)
 const retireWarning = ref('')
 const loadingDetail = ref(false)
 
 const canWrite = computed(() => session.role === 'venue')
+
+const visible = computed(() => {
+  const term = query.value.trim().toLowerCase()
+  const rows = venues.value.filter((venue) => {
+    if (!term) return true
+    return [venue.name, venue.code, venue.location].some((value) =>
+      String(value || '').toLowerCase().includes(term),
+    )
+  })
+  const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })
+  return [...rows].sort((a, b) => (sort.value === 'name-desc' ? byName(b, a) : byName(a, b)))
+})
 
 // SPM-122: every clashing pair, loaded for Venue Staff and again after a venue
 // edit, since a new setup or turnaround time is what makes bookings clash.
@@ -344,7 +379,7 @@ onMounted(async () => {
     // userHasActed may already be true here if the user clicked Add/Edit/a
     // venue row while refreshList() was still in flight. In that case the
     // user's own action owns the view now, so the auto-pick must not run.
-    if (venues.value.length && !userHasActed) await selectVenue(venues.value[0].venueId)
+    if (visible.value.length && !userHasActed) await selectVenue(visible.value[0].venueId)
   } catch {
     error.value = 'Unable to load venues. Please try again.'
   } finally {
@@ -354,9 +389,52 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.catalogue { display: grid; grid-template-columns: 270px 1fr; gap: 20px; align-items: start; }
+.catalogue { display: grid; grid-template-columns: 300px 1fr; gap: 20px; align-items: start; }
 
 .venue-list { display: flex; flex-direction: column; gap: 8px; }
+.search {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.search input {
+  width: 100%;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
+  padding: 9px 12px;
+  color-scheme: dark;
+}
+.search input:focus {
+  outline: none;
+  border-color: rgba(167, 139, 250, .5);
+}
+.sorts { display: flex; flex-wrap: wrap; gap: 6px; }
+.sort {
+  background: var(--glass);
+  border: 1px solid var(--hairline);
+  color: var(--body);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sort.active {
+  color: var(--text);
+  border-color: rgba(167, 139, 250, .55);
+  background: rgba(124, 77, 255, .16);
+}
+.empty-list { margin: 0; font-size: 13px; color: var(--muted); }
 .venue-row {
   background: var(--glass);
   border: 1px solid var(--hairline);
