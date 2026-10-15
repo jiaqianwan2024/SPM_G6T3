@@ -344,6 +344,41 @@ def record_notification(
     return True
 
 
+def _service_get(url: str, params: dict | None = None):
+    """GET with the service key, for a job with no user token. None on any failure."""
+    try:
+        response = httpx.get(
+            url, params=params, headers=service_key_headers(settings.internal_service_key), timeout=5.0
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("service call %s raised %r", url, exc)
+        return None
+    if response.status_code != 200:
+        logger.warning("service call %s got status %s", url, response.status_code)
+        return None
+    return response.json()
+
+
+def arrangement_inputs(event_id: str) -> tuple[list, list, dict] | None:
+    """SPM-95: an event's equipment requests, equipment reservations and venue summary, as
+    the readiness view reads them. None when either service cannot be read, so an outage is
+    never mistaken for "nothing arranged"."""
+    equipment = _service_get(f"{settings.equipment_service_url}/internal/equipment/events/{event_id}/arrangements")
+    venue = _service_get(f"{settings.venue_service_url}/internal/venues/bookings/public-summary", {"eventId": event_id})
+    if not isinstance(equipment, dict) or not isinstance(venue, dict):
+        return None
+    return equipment.get("requests", []), equipment.get("reservations", []), venue
+
+
+def users_with_roles(roles: list[str]) -> dict[str, dict] | None:
+    """SPM-95: everyone holding one of the roles, as {userId: {"role": ...}}. None when
+    user-service cannot be read."""
+    users = _service_get(f"{settings.user_service_url}/internal/users", {"roles": ",".join(roles)})
+    if not isinstance(users, list):
+        return None
+    return {user["userId"]: user for user in users}
+
+
 def publish_notification(
     trigger: str,
     event_id: str,

@@ -577,6 +577,16 @@ def _layouts(pairs: list[tuple[str, int]]) -> list[dict]:
     return [{"name": name, "capacity": cap} for name, cap in pairs]
 
 
+# Demo venues created before layouts carried a capacity were stored as plain
+# names. GET /venues derives capacity from those objects, so the old rows 500.
+DEMO_LAYOUTS = {
+    "v1": _layouts([("Theatre", 300), ("Classroom", 180), ("Banquet", 220)]),
+    "v2": _layouts([("Boardroom", 20), ("Classroom", 80)]),
+    "v3": _layouts([("Exhibition", 500), ("Theatre", 350)]),
+    "v4": _layouts([("Boardroom", 20)]),
+}
+
+
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 ALL_DAYS = WEEKDAYS + ["Sat", "Sun"]
 
@@ -674,7 +684,7 @@ def seed_venue() -> None:
                 "ConnectSphere's largest multipurpose hall.",
                 ["Projector", "PA system", "Video-conferencing", "Stage"],
                 ["Wheelchair accessible", "Accessible restrooms nearby"],
-                _layouts([("Theatre", 300), ("Classroom", 180), ("Banquet", 220)]),
+                DEMO_LAYOUTS["v1"],
                 _hours(ALL_DAYS, "08:00", "22:00"),
                 60,
                 30,
@@ -685,7 +695,7 @@ def seed_venue() -> None:
                 "Mid-sized meeting room.",
                 ["Projector", "Whiteboard"],
                 ["Wheelchair accessible"],
-                _layouts([("Boardroom", 20), ("Classroom", 80)]),
+                DEMO_LAYOUTS["v2"],
                 _hours(WEEKDAYS + ["Sat"], "08:00", "20:00"),
                 30,
                 15,
@@ -696,7 +706,7 @@ def seed_venue() -> None:
                 "Large exhibition space with loading dock access.",
                 ["Loading dock", "PA system", "Booth power points"],
                 ["Wheelchair accessible", "Accessible restrooms nearby"],
-                _layouts([("Exhibition", 500), ("Theatre", 350)]),
+                DEMO_LAYOUTS["v3"],
                 _hours(ALL_DAYS, "07:00", "23:00"),
                 120,
                 45,
@@ -707,7 +717,7 @@ def seed_venue() -> None:
                 "Executive boardroom with skyline views.",
                 ["Video-conferencing", "Smart TV"],
                 ["Wheelchair accessible"],
-                _layouts([("Boardroom", 20)]),
+                DEMO_LAYOUTS["v4"],
                 _hours(WEEKDAYS, "08:00", "18:00"),
                 15,
                 10,
@@ -750,8 +760,27 @@ def seed_venue() -> None:
                 ),
                 {"venue_id": venue_id, "location": location, "address": address},
             )
+        _ensure_venue_layouts(conn)
         _ensure_venue_safety_details(conn)
         _ensure_venue_bookings(conn, now, day)
+
+
+def _ensure_venue_layouts(conn) -> None:
+    """Upgrade demo venues whose layouts are still a list of names."""
+    for venue_id, layouts in DEMO_LAYOUTS.items():
+        raw = conn.execute(
+            text("SELECT layouts FROM venues WHERE venue_id = :venue_id"),
+            {"venue_id": venue_id},
+        ).scalar()
+        if raw is None:
+            continue
+        current = json.loads(raw) if isinstance(raw, str) else raw
+        if current and all(isinstance(item, dict) and "capacity" in item for item in current):
+            continue
+        conn.execute(
+            text("UPDATE venues SET layouts = CAST(:layouts AS JSON) WHERE venue_id = :venue_id"),
+            {"venue_id": venue_id, "layouts": json.dumps(layouts)},
+        )
 
 
 def _ensure_venue_safety_details(conn) -> None:

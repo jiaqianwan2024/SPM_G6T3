@@ -217,6 +217,43 @@ class TestPublish(ServiceTestCase):
             "AI in Events Summit (e1) has a new clarification reply: Attendance stays at 80.",
         )
 
+    REMINDER = {"eventName": "AI in Events Summit", "eventDate": "21 Oct 2026", "outstanding": "Venue (outstanding)"}
+
+    def test_each_reminder_goes_to_its_own_audience_and_names_the_event_and_date(self):
+        audiences = {
+            "readiness.reminder": "coordinator",
+            "readiness.reminder.venue": "venue",
+            "readiness.reminder.equipment": "techsupport",
+            "readiness.reminder.unassigned": "coordinatorlead",
+        }
+        for key, role in audiences.items():
+            with self.subTest(trigger=key):
+                self.publish(
+                    trigger=key,
+                    recipients=[{"userId": f"u-{role}", "role": role}],
+                    context=self.REMINDER,
+                    occurrence=key,
+                )
+        bodies = {row.type: row.body for row in self.rows()}
+        self.assertEqual(len(bodies), 4)
+        for body in bodies.values():
+            self.assertIn("AI in Events Summit", body)
+            self.assertIn("21 Oct 2026", body)
+        self.assertIn("Still outstanding: Venue (outstanding).", bodies["readiness.reminder"])
+        self.assertIn("has no coordinator assigned", bodies["readiness.reminder.unassigned"])
+
+    def test_a_reminder_is_refused_for_a_role_it_is_not_meant_for(self):
+        with self.assertRaises(PublishError):
+            self.publish(
+                trigger="readiness.reminder.venue",
+                recipients=[COORD],
+                context=self.REMINDER,
+            )
+
+    def test_a_reminder_needs_the_date(self):
+        with self.assertRaisesRegex(PublishError, "readiness.reminder needs: eventDate"):
+            self.publish(context={"eventName": "AI in Events Summit", "outstanding": "Venue"}, trigger="readiness.reminder")
+
     def test_a_recipient_listed_twice_is_notified_once(self):
         result = self.publish(recipients=[COORD, COORD])
 

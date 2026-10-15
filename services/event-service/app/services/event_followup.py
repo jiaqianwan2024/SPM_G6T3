@@ -18,6 +18,8 @@ from shared.exceptions.http import forbidden, not_found
 from shared.services.base import BaseService
 
 DUE_SOON = timedelta(days=3)
+# Readiness statuses that mean nothing is left to do. Anything else is still outstanding (SPM-95).
+READY_STATUSES = frozenset({"ready", "in place", "confirmed"})
 DATE_FIELDS = {"proposedStartAt", "proposedEndAt", "layoutPreference"}
 SCHEDULE_FIELDS = ("proposedStartAt", "proposedEndAt")
 VENUE_FIELDS = {"venueName", "venueLocation", "venueId"}
@@ -77,6 +79,15 @@ def _schedule_aspects(old, new) -> tuple[bool, bool]:
     if before and after:
         return before.date() != after.date(), (before.hour, before.minute) != (after.hour, after.minute)
     return True, True
+
+
+def derived_statuses(requests: list, reservations: list, bookings: dict) -> dict[str, str]:
+    """Status of the venue and equipment lines the readiness view derives for an event.
+    `requests` are the event's own equipment requests; `bookings` is its venue summary."""
+    return {
+        "derived-venue": "in place" if bookings.get("venueName") else "outstanding",
+        "derived-equipment": _equipment_status(requests, reservations),
+    }
 
 
 def _flags(due_at: datetime | None, now: datetime) -> tuple[bool, bool]:
@@ -146,7 +157,7 @@ class EventFollowUp(BaseService):
             authorization,
             {"eventId": event.eventId},
         ) or {}
-        venue_status = "in place" if bookings.get("venueName") else "outstanding"
+        statuses = derived_statuses(requests, reservations if isinstance(reservations, list) else [], bookings)
         assigned = event.updatedAt or event.createdAt or now
         venue = ReadinessItemOut(
             itemId="derived-venue",
@@ -157,7 +168,7 @@ class EventFollowUp(BaseService):
             personnel=name,
             handlerEmail=email,
             handlerPhone=phone,
-            status=venue_status,
+            status=statuses["derived-venue"],
             assignedAt=assigned,
             attachments=[{"name": "Arrangement summary", "url": f"/app/events/{event.eventId}"}],
         )
@@ -165,7 +176,7 @@ class EventFollowUp(BaseService):
             update={
                 "itemId": "derived-equipment",
                 "category": "equipment",
-                "status": _equipment_status(requests, reservations if isinstance(reservations, list) else []),
+                "status": statuses["derived-equipment"],
                 "attachments": [],
             }
         )
@@ -180,6 +191,19 @@ class EventFollowUp(BaseService):
         if due_soon:
             return [row for row in rows if row.dueSoon]
         return rows
+
+    def not_ready(self, event_id: str, requests: list, reservations: list, bookings: dict) -> list[dict]:
+        """SPM-95: what the readiness view still shows as outstanding for an event, as
+        {category, status}. Stored lines count as they are; the derived venue and
+        equipment lines count unless a stored line stands in for them."""
+        stored = self.readiness.list_for_event(event_id)
+        lines = [(row.category, row.status) for row in stored]
+        derived = derived_statuses(requests, reservations, bookings)
+        stored_ids = {row.itemId for row in stored}
+        for item_id, category in (("derived-venue", "venue"), ("derived-equipment", "equipment")):
+            if item_id not in stored_ids:
+                lines.append((category, derived[item_id]))
+        return [{"category": category, "status": status} for category, status in lines if status not in READY_STATUSES]
 
     def get_item(self, event_id: str, item_id: str) -> ReadinessItemOut:
         self._event(event_id)

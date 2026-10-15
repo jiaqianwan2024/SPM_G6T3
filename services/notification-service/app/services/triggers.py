@@ -111,6 +111,35 @@ TRIGGERS: dict[str, Trigger] = {
             required_context=("eventName", "equipmentName", "shortfall", "reason"),
             extras=(("alternative", "Suggested alternative: {alternative}"),),
         ),
+        # SPM-95: a scheduled check finds approaching events whose arrangements are still outstanding.
+        Trigger(
+            key="readiness.reminder",
+            title="Event approaching with arrangements outstanding",
+            body="{eventName} is on {eventDate}. Still outstanding: {outstanding}.",
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "eventDate", "outstanding"),
+        ),
+        Trigger(
+            key="readiness.reminder.venue",
+            title="Venue booking still outstanding",
+            body="The venue for {eventName} on {eventDate} is still outstanding.",
+            recipient_roles=frozenset({"venue"}),
+            required_context=("eventName", "eventDate"),
+        ),
+        Trigger(
+            key="readiness.reminder.equipment",
+            title="Equipment still outstanding",
+            body="The equipment for {eventName} on {eventDate} is still outstanding.",
+            recipient_roles=frozenset({"techsupport"}),
+            required_context=("eventName", "eventDate"),
+        ),
+        Trigger(
+            key="readiness.reminder.unassigned",
+            title="Approaching event has no coordinator",
+            body="{eventName} is on {eventDate} and has no coordinator assigned. Still outstanding: {outstanding}.",
+            recipient_roles=frozenset({"coordinatorlead"}),
+            required_context=("eventName", "eventDate", "outstanding"),
+        ),
     )
 }
 

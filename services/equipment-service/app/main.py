@@ -2,6 +2,7 @@ from fastapi import Depends
 
 from app.core.config import settings
 from app.routers.equipment import router as equipment_router
+from app.routers.internal import router as internal_router
 from shared.auth.deps import require_authenticated_user
 from shared.config import parse_origins
 from shared.openapi import create_service_app
@@ -25,3 +26,5 @@ Coordinators file requests. Technical support reviews (approve/reject) and reser
 )
 
 app.include_router(equipment_router, dependencies=[Depends(require_authenticated_user)])
+# Service-key routes for jobs with no user token (SPM-95); the key is checked in the route.
+app.include_router(internal_router)

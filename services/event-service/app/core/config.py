@@ -11,6 +11,9 @@ class Settings(ServiceSettings):
     # A proposed date this many days out or less is flagged in the review
     # queue. Single source: read from here, not re-hard-coded per screen.
     event_proposed_date_near_days: int = 14
+    # SPM-95: an event starting this many days out or less, with an arrangement still
+    # outstanding, is reminded about. Single source: the check reads it from here.
+    event_reminder_lead_days: int = 7
 
 
 settings = Settings()
