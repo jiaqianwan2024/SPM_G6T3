@@ -144,9 +144,10 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { createEvent, getEvent, getRequirementOptions, saveDraft, submitDraft, updateDraft } from '../../api/eventService.js'
+import { EVENT_CATEGORIES } from '../../config/eventFields.js'
 import { consumeEditingId, setDirty } from '../../store/draftEditor.js'
 
-const categories = ['conference', 'workshop', 'networking', 'meeting']
+const categories = EVENT_CATEGORIES
 const layouts = ref(['No preference', 'Theatre', 'Boardroom', 'Classroom', 'Banquet'])
 const facilities = ref(['Projector', 'PA system', 'Video-conferencing', 'Stage'])
 const accessibility = ref(['Wheelchair accessible', 'Hearing loop'])
@@ -251,7 +252,7 @@ function populateFormFromEvent(data) {
   form.eventName = data.eventName || ''
   form.purpose = data.purpose || ''
   form.description = data.description || ''
-  form.category = data.category ?? null
+  form.category = categories.find((option) => option.toLowerCase() === String(data.category || '').toLowerCase()) ?? data.category ?? null
   form.proposedStartAt = toInputDatetime(data.proposedStartAt)
   form.proposedEndAt = toInputDatetime(data.proposedEndAt)
   form.expectedAttendance = data.expectedAttendance ?? null

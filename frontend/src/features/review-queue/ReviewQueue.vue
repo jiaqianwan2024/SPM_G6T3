@@ -21,11 +21,18 @@
           Unassigned only
         </button>
         <button
-          class="filter-btn sort-btn"
-          :class="{ active: sortMode === 'proposedStartAt' }"
-          @click="toggleSort"
+          class="filter-btn"
+          :class="{ active: sortMode === 'name-asc' }"
+          @click="setSort('name-asc')"
         >
-          {{ sortMode === 'proposedStartAt' ? 'Sorted by event date' : 'Sort by event date' }}
+          A–Z
+        </button>
+        <button
+          class="filter-btn"
+          :class="{ active: sortMode === 'name-desc' }"
+          @click="setSort('name-desc')"
+        >
+          Z–A
         </button>
       </div>
     </div>
@@ -204,7 +211,7 @@ const isLead = computed(() => session.role === 'coordinatorlead')
 // userId -> name, so the Lead sees who each request is with. Display only.
 const coordinatorNames = ref({})
 const query = ref('')
-// 'waiting' (default, server-side longest-wait-first) | 'proposedStartAt'
+// 'waiting' keeps the server order (longest-waiting first).
 const sortMode = ref('waiting')
 const myUserId = ref(null)
 
@@ -275,12 +282,22 @@ const filteredEvents = computed(() => {
   let list = events.value
   if (filter.value === 'unassigned') list = list.filter((event) => !event.coordinatorId)
   const term = query.value.trim().toLowerCase()
-  if (!term) return list
-  return list.filter((event) => {
-    const name = (event.eventName || '').toLowerCase()
-    const organisation = (event.organisationName || '').toLowerCase()
-    return name.includes(term) || organisation.includes(term)
-  })
+  if (term) {
+    list = list.filter((event) => {
+      const name = (event.eventName || '').toLowerCase()
+      const organisation = (event.organisationName || '').toLowerCase()
+      return name.includes(term) || organisation.includes(term)
+    })
+  }
+  if (sortMode.value === 'name-asc' || sortMode.value === 'name-desc') {
+    const direction = sortMode.value === 'name-asc' ? 1 : -1
+    list = [...list].sort(
+      (a, b) =>
+        direction *
+        String(a.eventName || '').localeCompare(String(b.eventName || ''), undefined, { sensitivity: 'base' }),
+    )
+  }
+  return list
 })
 
 const emptyMessage = computed(() => {
@@ -294,9 +311,8 @@ function toggleFilter(mode) {
   filter.value = filter.value === mode ? 'all' : mode
 }
 
-async function toggleSort() {
-  sortMode.value = sortMode.value === 'proposedStartAt' ? 'waiting' : 'proposedStartAt'
-  await loadEvents()
+function setSort(mode) {
+  sortMode.value = sortMode.value === mode ? 'waiting' : mode
 }
 
 function detailRows(event) {
@@ -351,13 +367,10 @@ async function loadEvents() {
   error.value = ''
   try {
     // Server filters to submitted/under review/changes requested and orders
-    // by submittedAt ascending (longest-waiting first) by default, or by
-    // proposedStartAt when sortMode is 'proposedStartAt'. A coordinator gets
+    // by submittedAt ascending (longest-waiting first). A coordinator gets
     // only their own requests; the Lead's "unassigned" filter is applied
     // client-side below (filteredEvents) against this list.
-    const { data } = await getSubmissionQueue({
-      sort: sortMode.value === 'proposedStartAt' ? 'proposedStartAt' : undefined,
-    })
+    const { data } = await getSubmissionQueue()
     events.value = data
   } catch (err) {
     error.value = err.response?.data?.detail || 'Could not load the review queue. Please try again.'
@@ -482,7 +495,6 @@ onUnmounted(() => clearInterval(ticker))
   border-color: rgba(167, 139, 250, .6);
   background: rgba(124, 77, 255, .18);
 }
-.sort-btn { margin-left: auto; }
 
 .empty-note { font-size: 14px; color: var(--muted); }
 
@@ -645,7 +657,6 @@ onUnmounted(() => clearInterval(ticker))
 @media (max-width: 900px) {
   .event-list { grid-template-columns: 1fr; }
   .details-body dl { grid-template-columns: 1fr; }
-  .sort-btn { margin-left: 0; }
 }
 @media (max-width: 560px) {
   .detail-row { grid-template-columns: 1fr; }

@@ -120,9 +120,12 @@ const CLEARABLE = ['category', 'layoutPreference']
 // datetime-local inputs need "YYYY-MM-DDTHH:mm"; the API returns full ISO strings.
 const toInputDatetime = (iso) => (iso ? iso.slice(0, 16) : '')
 
+const knownCategory = (value) =>
+  CATEGORIES.find((option) => option.toLowerCase() === String(value || '').toLowerCase()) || value || ''
+
 const original = {
   eventName: props.event.eventName || '',
-  category: props.event.category || '',
+  category: knownCategory(props.event.category),
   organiserContact: props.event.organiserContact || '',
   purpose: props.event.purpose || '',
   description: props.event.description || '',

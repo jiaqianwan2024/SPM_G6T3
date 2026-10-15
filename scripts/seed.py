@@ -199,7 +199,7 @@ def seed_event() -> None:
         "name": "Beacon Q4 Showcase",
         "purpose": "Private planning for Beacon Media.",
         "description": "Internal client showcase. Must stay invisible to Apex organisers.",
-        "category": "meeting",
+        "category": "Meeting",
         "proposed_start_at": now + 18 * day,
         "proposed_end_at": now + 18 * day + timedelta(hours=3),
         "expected_attendance": 30,
@@ -225,7 +225,7 @@ def seed_event() -> None:
                 "name": "AI in Events Summit",
                 "purpose": "Share AI practices for event operations.",
                 "description": "A one-day summit for ConnectSphere clients.",
-                "category": "conference",
+                "category": "Conference",
                 "proposed_start_at": now + 14 * day,
                 "proposed_end_at": now + 14 * day + timedelta(hours=8),
                 "expected_attendance": 120,
@@ -248,7 +248,7 @@ def seed_event() -> None:
                 "name": "Venue Ops Workshop",
                 "purpose": "Train venue staff on turnaround procedures.",
                 "description": "Hands-on workshop.",
-                "category": "workshop",
+                "category": "Workshop",
                 "proposed_start_at": now + 21 * day,
                 "proposed_end_at": now + 21 * day + timedelta(hours=4),
                 "expected_attendance": 40,
@@ -271,7 +271,7 @@ def seed_event() -> None:
                 "name": "Partner Networking Night",
                 "purpose": "Informal networking for partner organisations.",
                 "description": "Evening reception. Registration not yet enabled.",
-                "category": "networking",
+                "category": "Networking",
                 "proposed_start_at": now + 30 * day,
                 "proposed_end_at": now + 30 * day + timedelta(hours=3),
                 "expected_attendance": 80,
@@ -294,7 +294,7 @@ def seed_event() -> None:
                 "name": "Q1 Client Briefing",
                 "purpose": "Quarterly briefing for Apex Partners.",
                 "description": "Registration opens in the future.",
-                "category": "meeting",
+                "category": "Meeting",
                 "proposed_start_at": now + 45 * day,
                 "proposed_end_at": now + 45 * day + timedelta(hours=2),
                 "expected_attendance": 20,
@@ -325,7 +325,7 @@ def seed_event() -> None:
                     "name": "Unassigned Client Brief",
                     "purpose": "Waiting for a coordinator to pick it up.",
                     "description": "Submitted request with no coordinator yet.",
-                    "category": "meeting",
+                    "category": "Meeting",
                     "proposed_start_at": now + 10 * day,
                     "proposed_end_at": now + 10 * day + timedelta(hours=2),
                     "expected_attendance": 16,
@@ -355,7 +355,7 @@ def seed_event() -> None:
                     "name": "Colleague Town Hall",
                     "purpose": "Created by a colleague in Apex Partners.",
                     "description": "Must appear on EO-01's organiser dashboard.",
-                    "category": "meeting",
+                    "category": "Meeting",
                     "proposed_start_at": now + 12 * day,
                     "proposed_end_at": now + 12 * day + timedelta(hours=2),
                     "expected_attendance": 40,
@@ -383,7 +383,7 @@ def seed_event() -> None:
                     "name": "Cancelled Briefing",
                     "purpose": "Cancelled after registrations were taken.",
                     "description": "Attendees who registered must see this as cancelled.",
-                    "category": "meeting",
+                    "category": "Meeting",
                     "proposed_start_at": now + 8 * day,
                     "proposed_end_at": now + 8 * day + timedelta(hours=1),
                     "expected_attendance": 10,
@@ -421,7 +421,73 @@ def seed_event() -> None:
                 ),
                 {"created_at": now - 2 * day},
             )
+        _title_case_event_categories(conn)
         _refresh_demo_windows(conn, now, day)
+
+
+def _title_word(value):
+    """conference -> Conference. A value that already has a capital stays as stored."""
+    if not isinstance(value, str) or not value or value != value.lower():
+        return value
+    return " ".join(part[:1].upper() + part[1:] for part in value.split(" "))
+
+
+def _title_case_event_categories(conn) -> None:
+    rows = conn.execute(text("SELECT event_id, category FROM events WHERE category IS NOT NULL")).all()
+    for event_id, category in rows:
+        titled = _title_word(category)
+        if titled != category:
+            conn.execute(
+                text("UPDATE events SET category = :category WHERE event_id = :event_id"),
+                {"category": titled, "event_id": event_id},
+            )
+    changes = conn.execute(
+        text(
+            "SELECT change_id, old_value, new_value FROM event_field_changes "
+            "WHERE field = 'category'"
+        )
+    ).all()
+    for change_id, old_value, new_value in changes:
+        titled_old, titled_new = _title_word(old_value), _title_word(new_value)
+        if titled_old != old_value or titled_new != new_value:
+            conn.execute(
+                text(
+                    "UPDATE event_field_changes SET old_value = :old_value, new_value = :new_value "
+                    "WHERE change_id = :change_id"
+                ),
+                {"old_value": titled_old, "new_value": titled_new, "change_id": change_id},
+            )
+    requests = conn.execute(
+        text("SELECT change_request_id, proposed_changes, current_values FROM event_change_requests")
+    ).all()
+    for request_id, proposed, current in requests:
+        proposed_dict, current_dict = _json_object(proposed), _json_object(current)
+        changed = False
+        for payload in (proposed_dict, current_dict):
+            if payload is not None and _title_word(payload.get("category")) != payload.get("category"):
+                payload["category"] = _title_word(payload.get("category"))
+                changed = True
+        if changed:
+            conn.execute(
+                text(
+                    "UPDATE event_change_requests SET proposed_changes = :proposed, current_values = :current "
+                    "WHERE change_request_id = :request_id"
+                ),
+                {
+                    "proposed": json.dumps(proposed_dict) if proposed_dict is not None else None,
+                    "current": json.dumps(current_dict) if current_dict is not None else None,
+                    "request_id": request_id,
+                },
+            )
+
+
+def _json_object(value):
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+    return value if isinstance(value, dict) else None
 
 
 def _ensure_change_requests(conn, now: datetime, day: timedelta) -> None:
@@ -904,21 +970,21 @@ def _ensure_equipment_requests(conn, now: datetime, day: timedelta) -> None:
 # Fifteen catalogue types. eq1–eq3 keep the ids that equipment requests already use.
 # Counts are owned, damaged, under maintenance, and retired.
 _EQUIPMENT_CATALOGUE = [
-    ("eq1", "Projector PX-200", "display", "Includes HDMI + VGA adapters", "Marina Hall store", "Keep a spare lamp in the same store.", 4, 0, 0, 0),
-    ("eq2", "Wireless mic set", "audio", "Handheld pair with a rack receiver", "Riverside store", "Two sets are in the workshop.", 6, 0, 2, 0),
-    ("eq3", "LED wall panel", "display", "One panel is damaged and stays in the catalogue", "Exhibition store", "Do not send the damaged panel out.", 2, 1, 0, 0),
-    ("eq4", "Clicker remote", "display", "Slide advancer with a laser pointer", "Marina Hall store", "", 8, 0, 0, 0),
-    ("eq5", "Lapel microphone", "audio", "Clip-on mic for a speaker who walks the room", "Riverside store", "One capsule is damaged.", 10, 1, 0, 0),
-    ("eq6", "PA speaker pair", "audio", "Powered speakers on stands", "Riverside store", "One pair has been retired.", 6, 0, 0, 1),
-    ("eq7", "Stage monitor", "audio", "Wedge monitor for the stage edge", "Exhibition store", "", 4, 0, 0, 0),
-    ("eq8", "LED par can", "lighting", "Wash light for a small stage", "Lighting store", "One unit is in for a lamp change.", 12, 0, 1, 0),
-    ("eq9", "Follow spot", "lighting", "Operator-aimed spotlight", "Lighting store", "", 2, 0, 0, 0),
-    ("eq10", "DMX controller", "lighting", "Desk for the lighting rig", "Lighting store", "", 3, 0, 0, 0),
-    ("eq11", "Flipchart stand", "staging", "Pad and markers stored with the stand", "Marina Hall store", "", 8, 0, 0, 0),
-    ("eq12", "Lectern", "staging", "Floor lectern with a fixed microphone clip", "Marina Hall store", "", 4, 0, 0, 0),
-    ("eq13", "Confidence monitor", "display", "Floor screen facing the speaker", "Exhibition store", "One screen is being repaired.", 3, 0, 1, 0),
-    ("eq14", "HDMI switcher", "video", "Four-input switcher for laptops", "Tech bench", "", 5, 0, 0, 0),
-    ("eq15", "Capture laptop", "video", "Laptop used to record a session", "Tech bench", "One is damaged and one is retired.", 4, 1, 0, 1),
+    ("eq1", "Projector PX-200", "Display", "Includes HDMI + VGA adapters", "Marina Hall store", "Keep a spare lamp in the same store.", 4, 0, 0, 0),
+    ("eq2", "Wireless mic set", "Audio", "Handheld pair with a rack receiver", "Riverside store", "Two sets are in the workshop.", 6, 0, 2, 0),
+    ("eq3", "LED wall panel", "Display", "One panel is damaged and stays in the catalogue", "Exhibition store", "Do not send the damaged panel out.", 2, 1, 0, 0),
+    ("eq4", "Clicker remote", "Display", "Slide advancer with a laser pointer", "Marina Hall store", "", 8, 0, 0, 0),
+    ("eq5", "Lapel microphone", "Audio", "Clip-on mic for a speaker who walks the room", "Riverside store", "One capsule is damaged.", 10, 1, 0, 0),
+    ("eq6", "PA speaker pair", "Audio", "Powered speakers on stands", "Riverside store", "One pair has been retired.", 6, 0, 0, 1),
+    ("eq7", "Stage monitor", "Audio", "Wedge monitor for the stage edge", "Exhibition store", "", 4, 0, 0, 0),
+    ("eq8", "LED par can", "Lighting", "Wash light for a small stage", "Lighting store", "One unit is in for a lamp change.", 12, 0, 1, 0),
+    ("eq9", "Follow spot", "Lighting", "Operator-aimed spotlight", "Lighting store", "", 2, 0, 0, 0),
+    ("eq10", "DMX controller", "Lighting", "Desk for the lighting rig", "Lighting store", "", 3, 0, 0, 0),
+    ("eq11", "Flipchart stand", "Staging", "Pad and markers stored with the stand", "Marina Hall store", "", 8, 0, 0, 0),
+    ("eq12", "Lectern", "Staging", "Floor lectern with a fixed microphone clip", "Marina Hall store", "", 4, 0, 0, 0),
+    ("eq13", "Confidence monitor", "Display", "Floor screen facing the speaker", "Exhibition store", "One screen is being repaired.", 3, 0, 1, 0),
+    ("eq14", "HDMI switcher", "Video", "Four-input switcher for laptops", "Tech bench", "", 5, 0, 0, 0),
+    ("eq15", "Capture laptop", "Video", "Laptop used to record a session", "Tech bench", "One is damaged and one is retired.", 4, 1, 0, 1),
 ]
 
 
@@ -987,6 +1053,7 @@ def seed_equipment() -> None:
     now = datetime.utcnow()
     day = timedelta(days=1)
     with engine.begin() as conn:
+        _title_case_equipment_categories(conn)
         if not _empty(conn, "equipment_info"):
             _ensure_equipment_catalogue(conn)
             _ensure_equipment_requests(conn, now, day)
@@ -1007,6 +1074,17 @@ def seed_equipment() -> None:
                 {"unit_id": unit_id, "equipment_id": equipment_id, "status": status},
             )
         _ensure_equipment_requests(conn, now, day)
+
+
+def _title_case_equipment_categories(conn) -> None:
+    rows = conn.execute(text("SELECT equipment_id, category FROM equipment_info WHERE category IS NOT NULL")).all()
+    for equipment_id, category in rows:
+        titled = _title_word(category)
+        if titled != category:
+            conn.execute(
+                text("UPDATE equipment_info SET category = :category WHERE equipment_id = :equipment_id"),
+                {"category": titled, "equipment_id": equipment_id},
+            )
 
 
 def _ensure_registrations(conn, now: datetime, day: timedelta) -> None:
