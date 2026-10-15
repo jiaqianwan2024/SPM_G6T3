@@ -128,7 +128,7 @@ async function save() {
 </script>
 
 <style scoped>
-.panel { margin-top: 18px; }
+.panel { margin-top: 0; }
 .hint, .form-error { font-size: 13px; color: var(--muted); }
 .form-error { color: #ff8a76; }
 label, legend { display: block; margin-top: 12px; font-size: 13px; color: var(--muted); }

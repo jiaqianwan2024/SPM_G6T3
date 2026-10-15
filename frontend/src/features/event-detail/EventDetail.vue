@@ -10,7 +10,7 @@
       <p v-if="loading" class="empty-note">Loading event…</p>
       <p v-else-if="error" class="form-error">{{ error }}</p>
 
-      <template v-else>
+      <div v-else class="event-body">
         <header class="page-head">
           <div>
             <p class="eyebrow">Event</p>
@@ -314,7 +314,7 @@
         />
 
         <p v-if="discardError" class="form-error">{{ discardError }}</p>
-      </template>
+      </div>
     </div>
 
     <AssignCoordinatorDialog
@@ -799,12 +799,18 @@ onMounted(load)
   margin-top: 16px;
 }
 
+.event-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.event-body :deep(.panel) { margin-top: 0; }
+
 .page-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 20px;
-  margin-bottom: 22px;
 }
 .page-head h1 {
   margin: 6px 0 10px;
@@ -812,7 +818,7 @@ onMounted(load)
   font-weight: 500;
   letter-spacing: -.02em;
 }
-.actions { display: flex; gap: 10px; flex-shrink: 0; }
+.actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 
 .status-pill {
   display: inline-block;
@@ -839,7 +845,13 @@ onMounted(load)
   border: 1px solid rgba(167, 139, 250, .25);
   border-radius: 9px;
   padding: 11px 14px;
-  margin: 0 0 16px;
+  margin: 0;
+}
+button.notice {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
 }
 div.notice p { margin: 0; }
 div.notice p + p { margin-top: 6px; }
@@ -861,6 +873,8 @@ div.notice p + p { margin-top: 6px; }
   padding: 22px 24px;
 }
 .panel h2 { margin: 0 0 16px; font-size: 16px; font-weight: 500; }
+.panel p { margin: 0; }
+.panel p + p { margin-top: 10px; }
 
 .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; margin: 0; }
 .facts .wide { grid-column: 1 / -1; }
