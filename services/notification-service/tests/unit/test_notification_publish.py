@@ -186,6 +186,37 @@ class TestPublish(ServiceTestCase):
             )
         self.assertEqual(self.rows(), [])
 
+    def test_a_clarification_reply_names_the_event_the_answer_and_a_late_review(self):
+        self.publish(
+            trigger="clarification.replied",
+            context={
+                "eventName": "AI in Events Summit",
+                "eventId": "e1",
+                "message": "Attendance stays at 80.",
+                "reviewStatus": "planning",
+            },
+        )
+
+        row = self.rows()[0]
+        self.assertEqual(row.title, "New reply on AI in Events Summit")
+        self.assertEqual(
+            row.body,
+            "AI in Events Summit (e1) has a new clarification reply: Attendance stays at 80. "
+            "This request is no longer awaiting review; it is now planning.",
+        )
+        self.assertEqual(row.link, "/app/events/e1")
+
+    def test_a_clarification_reply_while_still_in_review_does_not_add_the_late_sentence(self):
+        self.publish(
+            trigger="clarification.replied",
+            context={"eventName": "AI in Events Summit", "eventId": "e1", "message": "Attendance stays at 80."},
+        )
+
+        self.assertEqual(
+            self.rows()[0].body,
+            "AI in Events Summit (e1) has a new clarification reply: Attendance stays at 80.",
+        )
+
     def test_a_recipient_listed_twice_is_notified_once(self):
         result = self.publish(recipients=[COORD, COORD])
 

@@ -493,6 +493,7 @@ The schema contains persisted notification records, and seed data inserts one ex
 | Trigger | Sent when | Recipients |
 |---|---|---|
 | `booking.assigned` | a coordinator is assigned or reassigned | the assigned coordinator |
+| `clarification.replied` | the organiser replies to a clarification (SPM-6). When the event is no longer under review, the body also names its current status | the assigned coordinator |
 | `safety.submitted` | the arrangements are submitted for a safety review | all safety officers |
 | `safety.approved`, `safety.changes_requested`, `safety.rejected` | the Safety Officer decides | the coordinator, the organiser, and all venue and technical staff |
 

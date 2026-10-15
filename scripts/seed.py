@@ -410,6 +410,17 @@ def seed_event() -> None:
                 ),
                 {"created_at": now - 1 * day},
             )
+        # SPM-6 AC4: an open clarification on an event that has already left review.
+        if not conn.execute(text("SELECT review_id FROM event_reviews WHERE review_id = 'late-reply'")).first():
+            conn.execute(
+                text(
+                    "INSERT INTO event_reviews "
+                    "(review_id, event_id, reviewer_id, action, comment, field, status, created_at) "
+                    "VALUES ('late-reply', 'e1', 'u2', 'request_clarification', "
+                    "'Please confirm the stage layout.', 'layoutPreference', 'open', :created_at)"
+                ),
+                {"created_at": now - 2 * day},
+            )
         _refresh_demo_windows(conn, now, day)
 
 
