@@ -186,7 +186,6 @@ class TestPublish(ServiceTestCase):
             )
         self.assertEqual(self.rows(), [])
 
-<<<<<<< Updated upstream
     def test_a_clarification_reply_names_the_event_the_answer_and_a_late_review(self):
         self.publish(
             trigger="clarification.replied",
@@ -217,7 +216,7 @@ class TestPublish(ServiceTestCase):
             self.rows()[0].body,
             "AI in Events Summit (e1) has a new clarification reply: Attendance stays at 80.",
         )
-=======
+
     REMINDER = {"eventName": "AI in Events Summit", "eventDate": "21 Oct 2026", "outstanding": "Venue (outstanding)"}
 
     def test_each_reminder_goes_to_its_own_audience_and_names_the_event_and_date(self):
@@ -254,7 +253,6 @@ class TestPublish(ServiceTestCase):
     def test_a_reminder_needs_the_date(self):
         with self.assertRaisesRegex(PublishError, "readiness.reminder needs: eventDate"):
             self.publish(context={"eventName": "AI in Events Summit", "outstanding": "Venue"}, trigger="readiness.reminder")
->>>>>>> Stashed changes
 
     def test_a_recipient_listed_twice_is_notified_once(self):
         result = self.publish(recipients=[COORD, COORD])
