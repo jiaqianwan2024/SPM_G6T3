@@ -56,6 +56,16 @@ class EventDAO(BaseDAO):
             .all()
         )
 
+    def list_approaching(self, start: datetime, end: datetime, excluding_statuses: list[str]) -> list[Event]:
+        """Events that start between `start` and `end` and are not in an excluded status, soonest first."""
+        return (
+            self.db.query(Event)
+            .filter(Event.proposedStartAt >= start, Event.proposedStartAt <= end)
+            .filter(Event.status.notin_(excluding_statuses))
+            .order_by(Event.proposedStartAt.asc())
+            .all()
+        )
+
     def list_drafts_by_organiser(self, organiser_id: str) -> list[Event]:
         return (
             self.db.query(Event)
