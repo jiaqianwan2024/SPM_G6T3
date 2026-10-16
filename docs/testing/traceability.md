@@ -71,13 +71,14 @@
 | SPM-9 | Overlap warning, acknowledge, notify | TC-SPM09-AC06 | `e2e/spm09.spec.js` | Automated |
 | SPM-9 | Cancel block frees the slot | TC-SPM09-AC07 | `e2e/spm09.spec.js` | Automated |
 | SPM-9 | Unavailability changes in activity log | TC-SPM09-AC08 | `e2e/spm09.spec.js` | Automated |
-| SPM-10 | View pending request details | TC-SPM10-AC01 | `e2e/spm10.spec.js` | Automated |
-| SPM-10 | Reject requires a reason | TC-SPM10-AC02 | `e2e/spm10.spec.js` | Automated |
-| SPM-10 | Optional alternative venue | TC-SPM10-AC03 | `e2e/spm10.spec.js` | Automated |
-| SPM-10 | Rejected leaves queue and is read-only | TC-SPM10-AC04 | `e2e/spm10.spec.js` | Automated |
-| SPM-10 | Rejected request holds nothing | TC-SPM10-AC05 | `e2e/spm10.spec.js` | Automated |
-| SPM-10 | Rejecter, reason, and time recorded | TC-SPM10-AC06 | `e2e/spm10.spec.js` | Automated |
-| SPM-10 | Pending requests do not auto-expire | TC-SPM10-AC07 | `e2e/spm10.spec.js` | Automated |
+| SPM-10 | View the full details of a pending request | TC-SPM10-AC01 | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py` | Automated (browser: View full details on Booking Requests) |
+| SPM-10 | Rejecting requires a reason | TC-SPM10-AC02, AC02b | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py` | Automated (API and browser); blank or missing is 422, over 2000 characters is 422; only Venue Staff can reject |
+| SPM-10 | Optional suggested alternative venue | TC-SPM10-AC03 | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py` | Automated (browser and API); unknown, retired, or the same venue is refused; the coordinator sees the reason and suggestion on Choose venues |
+| SPM-10 | Rejected, out of the pending queue, no longer approvable or changeable | TC-SPM10-AC04 | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py` | Automated (browser and API) |
+| SPM-10 | A rejected request reserves nothing; its active hold is released | TC-SPM10-AC05 | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py`; `services/venue-service/tests/integration/test_workflow.py` | Automated |
+| SPM-10 | Who rejected it, the reason, and when are recorded | TC-SPM10-AC06 | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py`; `services/venue-service/tests/integration/test_workflow.py` | Automated (API, browser and SQL) |
+| SPM-10 | A tentative hold expires at its expiry time, frees the venue, is not a confirmed booking | TC-SPM10-AC07 | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py` | Automated (polls until a real hold has expired; the exact expiry boundary is unit-tested) |
+| SPM-10 | A pending request without a hold stays queued until approved or rejected | TC-SPM10-AC08 | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py` | Automated |
 | SPM-17 | Staff list name, location, capacity | TC-SPM17-AC01 | `e2e/spm17.spec.js` | Automated |
 | SPM-17 | Venue detail fields | TC-SPM17-AC02 | `e2e/spm17.spec.js` | Automated |
 | SPM-17 | Retired hidden unless filtered | TC-SPM17-AC03 | `e2e/spm17.spec.js` | Automated |
@@ -96,12 +97,12 @@
 | SPM-61 | Search pre-filled from event | TC-SPM61-AC01 | `e2e/spm61.spec.js` | Automated (UI) |
 | SPM-61 | Published filters | TC-SPM61-AC02 | `e2e/spm61.spec.js` | Automated |
 | SPM-61 | Confirmed booking, unavailability, or active hold excluded (with setup and turnaround) | TC-SPM61-AC03 | `e2e/spm61.spec.js` | Automated: confirmed booking, unavailability (recorded through SPM-9) and active hold, each with setup and turnaround |
-| SPM-61 | Expired hold does not exclude | TC-SPM61-AC04 | `e2e/spm61.spec.js` | Automated (waits for a real hold to expire) |
+| SPM-61 | Expired hold does not exclude | TC-SPM61-AC04 | `e2e/spm61.spec.js` | Automated (polls until a real hold has expired) |
 | SPM-61 | Layout or capacity mismatch excluded | TC-SPM61-AC05 | `e2e/spm61.spec.js` | Automated |
 | SPM-61 | Missing facility or access excluded | TC-SPM61-AC06 | `e2e/spm61.spec.js` | Automated |
 | SPM-61 | Outside hours excluded | TC-SPM61-AC07 | `e2e/spm61.spec.js` | Automated |
 | SPM-61 | Layout capacity and headroom | TC-SPM61-AC08 | `e2e/spm61.spec.js` | Automated (API and UI) |
-| SPM-61 | Pending overlap marked contested | TC-SPM61-AC09 | `e2e/spm61.spec.js` | Automated (API and UI); the "not an active hold" part waits on SPM-116 |
+| SPM-61 | Pending overlap marked contested | TC-SPM61-AC09 | `e2e/spm61.spec.js` | Automated (API and UI); an active hold, unlike a pending request, leaves the venue out (TC-SPM61-AC03b) |
 | SPM-62 | Verdict with reasons | TC-SPM62-AC01 | `e2e/spm62.spec.js` | Automated |
 | SPM-62 | Over-capacity names both numbers | TC-SPM62-AC02 | `e2e/spm62.spec.js` | Automated |
 | SPM-62 | Missing layout, facility, access | TC-SPM62-AC03 | `e2e/spm62.spec.js` | Automated |
@@ -114,12 +115,12 @@
 | SPM-63 | Request venue for planning event | TC-SPM63-AC01 | `e2e/spm63.spec.js` | Automated |
 | SPM-63 | Request carries event facts | TC-SPM63-AC02 | `e2e/spm63.spec.js` | Automated |
 | SPM-63 | Failed suitability blocks submit | TC-SPM63-AC03 | `e2e/spm63.spec.js` | Automated |
-| SPM-63 | Warnings acknowledged and carried | TC-SPM63-AC04 | `e2e/spm63.spec.js` | Automated. The coordinator acknowledges the warning on Choose venues. Venue Staff read that warning from the stored booking. The Venue Staff queue screen is still SPM-8. |
+| SPM-63 | Warnings acknowledged and carried | TC-SPM63-AC04 | `e2e/spm63.spec.js` | Automated (browser). The coordinator acknowledges the warning on Choose venues, and Venue Staff see it with the request on Booking Requests (SPM-8). |
 | SPM-63 | Notify staff and pending queue | TC-SPM63-AC05 | `e2e/spm63.spec.js` | Automated. The booking is in the pending queue. Venue Staff are emailed, but that email is not stored in the in-app notification list. |
-| SPM-63 | Pending does not lock the venue | TC-SPM63-AC06 | `e2e/spm63.spec.js` | Automated. The booking stays pending and the venue still appears in search for that period. The calendar entry is SPM-108. |
+| SPM-63 | Pending does not lock the venue | TC-SPM63-AC06 | `e2e/spm63.spec.js` | Automated. The venue still appears in search for that period, and the venue calendar shows a pending entry; a withdrawn request leaves the calendar (TC-SPM63-AC08b). |
 | SPM-63 | A second venue while the first is pending | TC-SPM63-AC07 | `e2e/spm63.spec.js` | Automated. SPM-114: a different venue is accepted (201). The same venue is refused (409) while that booking is pending or approved. |
 | SPM-63 | Coordinator can withdraw | TC-SPM63-AC08 | `e2e/spm63.spec.js` | Automated. Withdraw returns withdrawn and the booking leaves the pending queue. |
-| SPM-63 | Arrangement not complete while pending | TC-SPM63-AC09 | `e2e/spm63.spec.js` | Automated. Choose venues shows the arrangement as pending and not complete. The event readiness panel is SPM-5. |
+| SPM-63 | Arrangement not complete while pending | TC-SPM63-AC09 | `e2e/spm63.spec.js`; `services/event-service/tests/unit/test_event_followup.py` | Automated (browser). The readiness view's venue line reads in progress while a request is pending (wired into SPM-5's readiness view), and Choose venues shows the arrangement as not complete. |
 | SPM-115 | Search for and request a replacement | TC-SPM115-AC01 | `e2e/spm115.spec.js` | Automated (API and browser). Search leaves out the blocked venue. Choose venues can request another venue for the affected booking. |
 | SPM-115 | Replacement checked on its own | TC-SPM115-AC02 | `e2e/spm115.spec.js` | Automated. An unsuitable venue, or one already booked for that time, is refused and the original booking stays approved. |
 | SPM-115 | Original booking remains readable | TC-SPM115-AC03 | `e2e/spm115.spec.js` | Automated. After a replacement is accepted, the original booking can still be opened and its status is cancelled. |
@@ -129,7 +130,7 @@
 | SPM-64 | Occupied window adds setup and turnaround | TC-SPM64-AC02 | `e2e/spm64.spec.js` | Automated |
 | SPM-64 | Confirmed bookings never overlap, also in the database | TC-SPM64-AC03 | `e2e/spm64.spec.js`; `services/venue-service/tests/integration/test_double_booking_mysql.py` | Automated |
 | SPM-64 | Conflicts with unavailability and active holds | TC-SPM64-AC04 | `e2e/spm64.spec.js` | Automated: active hold, and an unavailability block recorded through SPM-9 |
-| SPM-64 | Expired hold does not conflict | TC-SPM64-AC05 | `e2e/spm64.spec.js` | Automated (waits for a real hold to expire) |
+| SPM-64 | Expired hold does not conflict | TC-SPM64-AC05 | `e2e/spm64.spec.js` | Automated (polls until a real hold has expired) |
 | SPM-64 | Touching windows fine, touching event times can clash | TC-SPM64-AC06 | `e2e/spm64.spec.js` | Automated |
 | SPM-64 | Simultaneous approvals: one winner | TC-SPM64-AC07 | `e2e/spm64.spec.js`; `services/venue-service/tests/integration/test_double_booking_mysql.py` | Automated |
 | SPM-64 | Cancel, reject, complete, or withdraw releases the hold | TC-SPM64-AC08 | `e2e/spm64.spec.js` | Withdraw, single-booking cancel, and event release (SPM-114) automated; rejecting (SPM-70) and completing (SPM-72/73) are to call the same release |

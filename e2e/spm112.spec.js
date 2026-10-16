@@ -3,12 +3,13 @@ import { newVenuePayload } from './support/api-data.js'
 import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { venueRequest } from './support/venue.js'
-import { THEATRE_EVENT, approvedEvent, freshPeriod, requestVenue } from './support/venue-request.js'
+import { THEATRE_EVENT, approvedEvent, requestVenue } from './support/venue-request.js'
+import { period as onDay } from './support/venue-suite.js'
 
 // The customer's example venue: 30 minutes setup and 45 minutes turnaround, open
 // every day, so a 10:00 to 12:00 booking occupies it from 09:30 to 12:45. The
 // suite makes its own venue and retires it afterwards, so seeded venues are
-// never edited. Every test uses its own events on a random day years ahead.
+// never edited. Every test uses its own events on its own fixed day, so every run sends the same inputs.
 
 const MINUTE = 60 * 1000
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -113,7 +114,7 @@ test.describe('SPM-112 Check availability using setup and turnaround', () => {
   })
 
   test('TC-SPM112-AC01 the occupied window runs from start minus setup to end plus turnaround', async () => {
-    const base = freshPeriod() // 10:00 to 12:00
+    const base = onDay(1) // 10:00 to 12:00
     const { booking } = await pending(base)
 
     expect(windowOf(booking)).toEqual([shift(base.startsAt, -30), shift(base.endsAt, 45)]) // 09:30 to 12:45
@@ -140,7 +141,7 @@ test.describe('SPM-112 Check availability using setup and turnaround', () => {
   })
 
   test('TC-SPM112-AC02 search, suitability and approval use the same occupied window', async () => {
-    const base = freshPeriod()
+    const base = onDay(2)
     const held = await pending(base)
     const inside = await candidate(slot(base, 150, 240)) // 12:30 to 14:00, set up from 12:00
     const clear = await candidate(slot(base, 210, 270)) // 13:30 to 14:30, set up from 13:00
@@ -155,7 +156,7 @@ test.describe('SPM-112 Check availability using setup and turnaround', () => {
   })
 
   test('TC-SPM112-AC02b the coordinator venue screen applies the same window', async ({ page }) => {
-    const base = freshPeriod()
+    const base = onDay(3)
     const held = await pending(base)
     expect((await approve(held.booking)).status).toBe(200) // holds 09:30 to 12:45
     await login(page, account('EC-01'))
@@ -174,7 +175,7 @@ test.describe('SPM-112 Check availability using setup and turnaround', () => {
   })
 
   test('TC-SPM112-AC02c unavailability is judged on the same occupied window', async () => {
-    const base = freshPeriod()
+    const base = onDay(4)
     const day = (minutes) => shift(base.startsAt, minutes) // minutes from 10:00 that day
     // Requests sent first, while the hall is free; a block over a pending request needs no confirmation.
     const fits = await candidate(slot(base, 480, 540)) // 18:00 to 19:00: 17:30 to 19:45
@@ -205,7 +206,7 @@ test.describe('SPM-112 Check availability using setup and turnaround', () => {
   })
 
   test('TC-SPM112-AC03 occupied windows that only touch do not conflict', async () => {
-    const base = freshPeriod()
+    const base = onDay(5)
     const held = await pending(base)
     const after = await candidate(slot(base, 195, 240)) // 13:15 to 14:00, set up from 12:45
     const before = await candidate(slot(base, -180, -75)) // 07:00 to 08:45, turned around by 09:30
@@ -216,7 +217,7 @@ test.describe('SPM-112 Check availability using setup and turnaround', () => {
   })
 
   test('TC-SPM112-AC04 event times that only touch still conflict when setup or turnaround overlap', async () => {
-    const base = freshPeriod()
+    const base = onDay(6)
     const held = await pending(base)
     const startsAsItEnds = await candidate(slot(base, 120, 180)) // 12:00 to 13:00, set up from 11:30
     const endsAsItStarts = await candidate(slot(base, -120, 0)) // 08:00 to 10:00, turned around until 10:45

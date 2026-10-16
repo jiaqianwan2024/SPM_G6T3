@@ -4,7 +4,8 @@ import { login } from './support/auth.js'
 import { eventApi } from './support/event.js'
 import { account } from './support/test-data.js'
 import { venueRequest } from './support/venue.js'
-import { THEATRE_EVENT, approvedEvent, freshPeriod, requestVenue } from './support/venue-request.js'
+import { THEATRE_EVENT, approvedEvent, requestVenue } from './support/venue-request.js'
+import { period as onDay } from './support/venue-suite.js'
 
 // The suite makes its own hall with no setup or turnaround and confirms four
 // bookings whose event times only touch, which is allowed then. Venue Staff then
@@ -57,7 +58,7 @@ test.describe('SPM-122 Flag bookings that clash under the new window', () => {
     })
     expect(created.status, JSON.stringify(created.body)).toBe(201)
     hall = created.body
-    base = freshPeriod() // 10:00 to 12:00
+    base = onDay(1) // 10:00 to 12:00
     for (const [key, from, to] of [['A', 0, 120], ['B', 120, 180], ['C', 180, 240], ['D', 315, 360]]) {
       const event = await approvedEvent(HALL_EVENT)
       const period = { startsAt: shift(base.startsAt, from), endsAt: shift(base.startsAt, to) }
@@ -138,14 +139,14 @@ test.describe('SPM-122 Flag bookings that clash under the new window', () => {
   }) => {
     expect((await setTimes(0, 0)).status).toBe(200)
     await login(page, account('VS-01'))
-    await page.locator('.nav-item').getByText('Venue Catalogue', { exact: true }).click()
+    await page.getByRole('navigation').getByText('Venue Catalogue', { exact: true }).click()
     await page.getByText(hall.name, { exact: true }).click()
     await expect(page.getByTestId('venue-clashes-none')).toBeVisible()
     await expect(page.getByTestId(`venue-clash-link-${hall.venueId}`)).toHaveCount(0)
 
     await page.getByRole('button', { name: 'Edit' }).click()
-    await page.locator('#vf-setup').fill('30')
-    await page.locator('#vf-turnaround').fill('45')
+    await page.getByLabel('Setup (minutes)').fill('30')
+    await page.getByLabel('Turnaround (minutes)').fill('45')
     await page.getByRole('button', { name: 'Save changes' }).click()
 
     const listed = page.getByTestId('venue-clash')

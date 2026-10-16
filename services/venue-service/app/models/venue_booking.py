@@ -44,6 +44,9 @@ class VenueBooking(Base):
     # SPM-8 AC5: who approved it, by name, kept with the booking.
     reviewedByName: Mapped[str | None] = mapped_column("reviewed_by_name", String(255), nullable=True)
     reviewedAt: Mapped[datetime | None] = mapped_column("reviewed_at", DateTime, nullable=True)
+    # SPM-10 AC3: another venue Venue Staff suggest when rejecting, kept by name too.
+    suggestedVenueId: Mapped[str | None] = mapped_column("suggested_venue_id", String(64), nullable=True)
+    suggestedVenueName: Mapped[str | None] = mapped_column("suggested_venue_name", String(255), nullable=True)
     createdAt: Mapped[datetime] = mapped_column("created_at", DateTime, default=datetime.utcnow)
 
     venue: Mapped["VenueInfo"] = relationship("VenueInfo", back_populates="bookings")

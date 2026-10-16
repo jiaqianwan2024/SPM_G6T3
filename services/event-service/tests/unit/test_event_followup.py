@@ -163,6 +163,31 @@ class TestFollowUp(EventCase):
         equipment = next(row for row in rows if row.category == "equipment")
         self.assertEqual(equipment.status, "ready")
 
+    def test_a_pending_venue_request_shows_the_venue_line_in_progress(self):
+        """SPM-63 AC9: in progress while a request waits for Venue Staff, in place once a venue is approved."""
+        _open_event(self.db)
+
+        def venue_line(summary, waiting):
+            def answers(url, authorization, params=None):
+                if url.endswith("/venues/bookings"):
+                    self.assertEqual(params, {"eventId": "e-open", "status": "pending"})
+                    return waiting
+                if url.endswith("/public-summary"):
+                    return summary
+                return []
+
+            with patch("app.services.event_followup._soft_get", side_effect=answers):
+                rows = self.follow.list_readiness("e-open", "Bearer token")
+            return next(row.status for row in rows if row.itemId == "derived-venue")
+
+        pending = [{"bookingId": "b1", "status": "pending"}]
+        self.assertEqual(venue_line({}, pending), "in_progress")
+        self.assertEqual(venue_line({"venueName": "Marina Hall A"}, pending), "in place")
+        self.assertEqual(venue_line({}, []), "outstanding")
+        # A reader venue-service will not list requests to (None), or an unexpected reply.
+        self.assertEqual(venue_line({}, None), "outstanding")
+        self.assertEqual(venue_line({}, {"detail": "Forbidden"}), "outstanding")
+
     def test_open_events_exclude_closed_windows_and_keep_a_change_timestamp(self):
         _open_event(self.db)
         _open_event(

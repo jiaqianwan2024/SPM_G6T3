@@ -1,5 +1,5 @@
 <template>
-  <!-- SPM-8: Venue Staff review submitted venue booking requests and approve them. -->
+  <!-- SPM-8 and SPM-10: Venue Staff review submitted venue booking requests, then approve or reject them. -->
   <div class="booking-requests" data-testid="booking-requests">
     <div class="toolbar">
       <div class="filters">
@@ -33,7 +33,7 @@
     <p v-if="loading" class="empty-note">Loading booking requests…</p>
     <p v-else-if="loadError" class="form-error" data-testid="booking-requests-error">{{ loadError }}</p>
     <p v-else-if="!bookings.length" class="empty-note" data-testid="booking-requests-empty">
-      {{ status === 'pending' ? 'No pending booking requests.' : 'No approved bookings.' }}
+      {{ EMPTY[status] }}
     </p>
 
     <div v-else class="booking-list">
@@ -106,6 +106,22 @@
           </div>
         </dl>
 
+        <!-- SPM-10 AC1: every detail the request carries, to read before deciding. -->
+        <button
+          type="button"
+          class="link-btn"
+          :aria-expanded="Boolean(expanded[booking.bookingId])"
+          @click="expanded[booking.bookingId] = !expanded[booking.bookingId]"
+        >
+          {{ expanded[booking.bookingId] ? 'Hide full details' : 'View full details' }}
+        </button>
+        <dl v-if="expanded[booking.bookingId]" class="detail" :data-testid="`booking-detail-${booking.bookingId}`">
+          <div v-for="[label, value] in fullDetails(booking)" :key="label">
+            <dt>{{ label }}</dt>
+            <dd>{{ value }}</dd>
+          </div>
+        </dl>
+
         <div v-if="booking.status === 'approved'" class="approved">
           <p :data-testid="`booking-approved-by-${booking.bookingId}`">
             Approved by {{ booking.reviewedByName || booking.reviewedBy }} on {{ moment(booking.reviewedAt) }}
@@ -125,6 +141,43 @@
           </button>
         </div>
 
+        <div v-else-if="booking.status === 'rejected'" class="rejected">
+          <p :data-testid="`booking-rejected-by-${booking.bookingId}`">
+            Rejected by {{ booking.reviewedByName || booking.reviewedBy }} on {{ moment(booking.reviewedAt) }}
+          </p>
+          <p :data-testid="`booking-rejection-reason-${booking.bookingId}`">Reason: {{ booking.decisionReason }}</p>
+          <p v-if="booking.suggestedVenueName" :data-testid="`booking-suggestion-${booking.bookingId}`">
+            Suggested instead: {{ booking.suggestedVenueName }}
+          </p>
+        </div>
+
+        <div v-else-if="booking.status === 'pending' && rejecting[booking.bookingId]" class="reject-form">
+          <label>
+            Reason for rejecting (required)
+            <textarea v-model="reasons[booking.bookingId]" rows="3" maxlength="2000" />
+          </label>
+          <label>
+            Suggest another venue (optional)
+            <select v-model="suggestions[booking.bookingId]">
+              <option value="">No suggestion</option>
+              <option v-for="venue in alternativesFor(booking)" :key="venue.venueId" :value="venue.venueId">
+                {{ venue.name }}
+              </option>
+            </select>
+          </label>
+          <div class="reject-actions">
+            <button type="button" class="btn btn-ghost" @click="rejecting[booking.bookingId] = false">Cancel</button>
+            <button
+              type="button"
+              class="btn btn-danger"
+              :disabled="!(reasons[booking.bookingId] || '').trim() || busyId === booking.bookingId"
+              @click="reject(booking)"
+            >
+              {{ busyId === booking.bookingId ? 'Rejecting…' : 'Confirm rejection' }}
+            </button>
+          </div>
+        </div>
+
         <div v-else-if="booking.status === 'pending'" class="actions">
           <input
             v-model="notes[booking.bookingId]"
@@ -142,6 +195,14 @@
           >
             {{ busyId === booking.bookingId ? 'Approving…' : 'Approve' }}
           </button>
+          <button
+            type="button"
+            class="btn btn-ghost"
+            :disabled="busyId === booking.bookingId"
+            @click="rejecting[booking.bookingId] = true"
+          >
+            Reject
+          </button>
         </div>
         <p v-if="errors[booking.bookingId]" class="row-error" :data-testid="`booking-error-${booking.bookingId}`">
           {{ errors[booking.bookingId] }}
@@ -154,14 +215,26 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { approveVenueBooking, getVenueBookings, getVenues, reconfirmVenueBooking } from '../../api/venueService.js'
+import {
+  approveVenueBooking,
+  getVenueBookings,
+  getVenues,
+  reconfirmVenueBooking,
+  rejectVenueBooking,
+} from '../../api/venueService.js'
 
 const route = useRoute()
 
 const STATUSES = [
   { value: 'pending', label: 'Pending' },
   { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
 ]
+const EMPTY = {
+  pending: 'No pending booking requests.',
+  approved: 'No approved bookings.',
+  rejected: 'No rejected requests.',
+}
 
 const status = ref(route.query.booking ? 'approved' : 'pending')
 const venueId = ref('')
@@ -173,6 +246,11 @@ const notice = ref('')
 const busyId = ref('')
 const notes = reactive({})
 const errors = reactive({})
+// SPM-10: which cards show their full details or the reject form, and what is typed there.
+const expanded = reactive({})
+const rejecting = reactive({})
+const reasons = reactive({})
+const suggestions = reactive({})
 
 // Booking times are UTC and come without a zone marker.
 const dayFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
@@ -198,6 +276,37 @@ function span(start, end) {
 function eventName(booking) {
   const name = booking.eventSnapshot?.eventName
   return name ? `"${name}"` : `Event ${booking.eventId}`
+}
+
+// SPM-10 AC1: everything on the request, labelled. Empty values say so rather than vanish.
+function fullDetails(booking) {
+  const event = booking.eventSnapshot || {}
+  const or = (value, missing = 'Not given') => (value === null || value === undefined || value === '' ? missing : value)
+  const hold = booking.hold?.state
+    ? `${booking.hold.state}${booking.hold.expiresAt ? `, until ${moment(booking.hold.expiresAt)}` : ''}`
+    : 'None'
+  return [
+    ['Event', or(event.eventName, `Event ${booking.eventId}`)],
+    ['Client organisation', or(event.clientOrganisation)],
+    ['Venue', booking.venueName || booking.venueId],
+    ['Event times', span(booking.startsAt, booking.endsAt)],
+    ['Venue occupied', `${span(booking.setupStartsAt, booking.teardownEndsAt)}, including setup and turnaround`],
+    ['Expected attendance', or(event.expectedAttendance)],
+    ['Layout', or(event.layout)],
+    ['Required facilities', or(event.requiredFacilities)],
+    ['Accessibility needs', or(event.accessibilityNeeds)],
+    ['Request notes', or(booking.requirementsSnapshot)],
+    ['Coordinator notes', or(booking.coordinatorNotes, 'None')],
+    ['Warnings accepted', booking.warnings?.length ? booking.warnings.join(' ') : 'None'],
+    ['Submitted', moment(booking.createdAt)],
+    ['Status', booking.status],
+    ['Tentative hold', hold],
+  ]
+}
+
+// SPM-10 AC3: any other venue still in use can be suggested.
+function alternativesFor(booking) {
+  return venues.value.filter((venue) => venue.isActive !== false && venue.venueId !== booking.venueId)
 }
 
 function requirements(booking) {
@@ -305,6 +414,26 @@ async function approve(booking) {
   }
 }
 
+async function reject(booking) {
+  busyId.value = booking.bookingId
+  errors[booking.bookingId] = ''
+  notice.value = ''
+  try {
+    const { data } = await rejectVenueBooking(
+      booking.bookingId,
+      (reasons[booking.bookingId] || '').trim(),
+      suggestions[booking.bookingId] || null,
+    )
+    notice.value = `Rejected. ${eventName(data)} no longer holds a request for ${data.venueName || data.venueId}.`
+    rejecting[booking.bookingId] = false
+    await load()
+  } catch (err) {
+    errors[booking.bookingId] = message(err, 'Unable to reject this request. Please try again.')
+  } finally {
+    busyId.value = ''
+  }
+}
+
 watch([status, venueId], () => {
   notice.value = ''
   load()
@@ -376,6 +505,20 @@ dd { margin: 0; font-size: 13px; color: var(--body); line-height: 1.5; word-brea
   background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: 9px; padding: 8px 10px;
 }
 .btn:disabled { opacity: .55; cursor: progress; }
+.link-btn {
+  align-self: flex-start; padding: 0; border: 0; background: none; font: inherit; font-size: 13px;
+  color: var(--halo); cursor: pointer; text-decoration: underline;
+}
+dl.detail { padding: 10px 12px; border-radius: 10px; background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); }
+.rejected p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--body); }
+.reject-form { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
+.reject-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
+.reject-form textarea, .reject-form select {
+  font: inherit; font-size: 13px; color: var(--text); color-scheme: dark; background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--hairline); border-radius: 9px; padding: 8px 10px;
+}
+.reject-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.btn-danger { background: rgba(255, 138, 118, .16); color: #FFB4A6; border: 1px solid rgba(255, 138, 118, .45); }
 .row-error { margin: 0; font-size: 13px; color: #FF8A76; }
 .form-error {
   color: #FF8A76; font-size: 13px; background: rgba(255, 138, 118, .08);

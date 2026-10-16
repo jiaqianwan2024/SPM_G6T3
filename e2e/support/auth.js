@@ -58,11 +58,26 @@ export function bearer(token) {
   return { Authorization: `Bearer ${token}` }
 }
 
+// One Firebase sign-in per account per run, reused until five minutes before it
+// expires. Signing in on every call hit Firebase's QUOTA_EXCEEDED limit and failed
+// whole runs (a flaky external service). Tests of sign-in itself call
+// firebaseIdToken directly, so they still get a fresh token each time.
+const cachedTokens = {}
+
+export async function cachedIdToken(accountId) {
+  const cached = cachedTokens[accountId]
+  if (cached && cached.expiresAt - Date.now() > 5 * 60 * 1000) return cached.token
+  const token = await firebaseIdToken(null, account(accountId))
+  const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString())
+  cachedTokens[accountId] = { token, expiresAt: claims.exp * 1000 }
+  return token
+}
+
 export async function authedApi(method, url, accountId, body) {
   const response = await fetch(url, {
     method,
     headers: {
-      ...bearer(await firebaseIdToken(null, account(accountId))),
+      ...bearer(await cachedIdToken(accountId)),
       'Content-Type': 'application/json',
     },
     body: body === undefined ? undefined : JSON.stringify(body),

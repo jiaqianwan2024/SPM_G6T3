@@ -3,12 +3,13 @@ import { newVenuePayload } from './support/api-data.js'
 import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { venueRequest } from './support/venue.js'
-import { THEATRE_EVENT, approvedEvent, freshPeriod, requestVenue } from './support/venue-request.js'
+import { THEATRE_EVENT, approvedEvent, requestVenue } from './support/venue-request.js'
+import { period as onDay, soonExpiry, waitForHoldToExpire } from './support/venue-suite.js'
 
 // The suite makes its own hall (30 minutes setup, 45 minutes turnaround, open every
 // day) and retires it afterwards, so seeded venues are never approved. Each test sends
-// its own requests on a random day years ahead: a 10:00 to 12:00 event occupies the
-// hall from 09:30 to 12:45. All times are UTC.
+// its own requests on its own fixed day (no random dates, so every run sends the same
+// inputs): a 10:00 to 12:00 event occupies the hall from 09:30 to 12:45. All times are UTC.
 
 const MINUTE = 60 * 1000
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -79,8 +80,8 @@ async function pendingQueue() {
 
 async function openBookingRequests(page) {
   await login(page, account('VS-01'))
-  await page.locator('.nav-item').getByText('Booking Requests', { exact: true }).click()
-  await page.getByTestId('booking-venue-filter').selectOption(hall.venueId)
+  await page.getByRole('navigation').getByText('Booking Requests', { exact: true }).click()
+  await page.getByTestId('booking-requests').getByLabel('Venue').selectOption(hall.venueId)
 }
 
 const dayBefore = (base) => shift(base.startsAt, -24 * 60)
@@ -103,7 +104,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC01 venue staff view a submitted request with its timing, requirements and submission time', async ({ page }) => {
-    const base = freshPeriod()
+    const base = onDay(1)
     const { event, booking } = await pending(base)
 
     await openBookingRequests(page)
@@ -127,7 +128,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC01b only venue staff and coordinators can read the requests', async () => {
-    const { booking } = await pending(freshPeriod())
+    const { booking } = await pending(onDay(2))
 
     const organiser = await venueRequest('GET', `/venues/bookings?status=pending&venueId=${hall.venueId}`, 'EO-01')
     expect(organiser.status).toBe(403)
@@ -136,12 +137,12 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC02 venue staff approve a pending request from Booking Requests', async ({ page }) => {
-    const base = freshPeriod()
+    const base = onDay(3)
     const { event, booking } = await pending(base)
 
     await openBookingRequests(page)
-    await page.getByTestId(`booking-approve-note-${booking.bookingId}`).fill('Hall is free that day.')
-    await page.getByTestId(`booking-approve-${booking.bookingId}`).click()
+    await page.getByTestId(`booking-request-${booking.bookingId}`).getByPlaceholder('Note (optional)').fill('Hall is free that day.')
+    await page.getByTestId(`booking-request-${booking.bookingId}`).getByRole('button', { name: 'Approve' }).click()
 
     await expect(page.getByTestId('booking-approved-notice')).toHaveText(
       `Approved. ${hall.name} is reserved for "${event.eventName}" from ${day(base.startsAt)}, 09:30 to 12:45 UTC.`,
@@ -152,7 +153,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC02b only venue staff can approve, and only a booking that exists', async () => {
-    const { booking } = await pending(freshPeriod())
+    const { booking } = await pending(onDay(4))
 
     for (const accountId of ['EC-01', 'EO-01']) {
       const refused = await approve(booking, accountId)
@@ -164,7 +165,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC03 an approved booking can be viewed and reserves the occupied window', async ({ page }) => {
-    const base = freshPeriod()
+    const base = onDay(5)
     const { booking } = await pending(base)
     expect((await approve(booking)).status).toBe(200)
 
@@ -178,7 +179,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
     expect(await hallListed(slot(base, 195, 240))).toBe(true) // 13:15, set up from 12:45: only touches
 
     await openBookingRequests(page)
-    await page.getByTestId('booking-filter-approved').click()
+    await page.getByRole('button', { name: 'Approved', exact: true }).click()
     const card = page.getByTestId(`booking-request-${booking.bookingId}`)
     await expect(card.getByTestId('booking-status')).toHaveText('approved')
     await expect(card.getByTestId('booking-occupied')).toContainText(`${day(base.startsAt)}, 09:30 to 12:45 UTC`)
@@ -186,7 +187,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC04 an approved booking stays locked', async () => {
-    const base = freshPeriod()
+    const base = onDay(6)
     const { booking } = await pending(base)
     expect((await approve(booking)).status).toBe(200)
 
@@ -207,7 +208,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC05 approval records who approved it and when, and the record is kept', async ({ page }) => {
-    const { booking } = await pending(freshPeriod())
+    const { booking } = await pending(onDay(7))
     const before = Date.now()
     const approved = await approve(booking)
     const after = Date.now()
@@ -226,7 +227,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
     ])
 
     await openBookingRequests(page)
-    await page.getByTestId('booking-filter-approved').click()
+    await page.getByRole('button', { name: 'Approved', exact: true }).click()
     await expect(page.getByTestId(`booking-approved-by-${booking.bookingId}`)).toHaveText(
       `Approved by Vinod Kumar on ${day(kept.reviewedAt)}, ${new Intl.DateTimeFormat('en-GB', {
         timeZone: 'UTC',
@@ -238,7 +239,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC06 an overlapping unavailability period blocks approval and the request stays pending', async () => {
-    const base = freshPeriod()
+    const base = onDay(8)
     const { booking } = await pending(base) // occupies 09:30 to 12:45
     await block(slot(base, -60, -15)) // 09:00 to 09:45: inside the setup only
 
@@ -252,7 +253,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC06b unavailability that only touches the occupied window does not block', async () => {
-    const base = freshPeriod()
+    const base = onDay(9)
     const { booking } = await pending(base)
     await block(slot(base, 165, 210)) // 12:45 to 13:30: starts as the turnaround ends
 
@@ -260,12 +261,12 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC06c the refusal is shown on Booking Requests and the request stays pending', async ({ page }) => {
-    const base = freshPeriod()
+    const base = onDay(10)
     const { booking } = await pending(base)
     await block(slot(base, 150, 180)) // 12:30 to 13:00: inside the turnaround
 
     await openBookingRequests(page)
-    await page.getByTestId(`booking-approve-${booking.bookingId}`).click()
+    await page.getByTestId(`booking-request-${booking.bookingId}`).getByRole('button', { name: 'Approve' }).click()
 
     await expect(page.getByTestId(`booking-error-${booking.bookingId}`)).toContainText(
       `${hall.name} is unavailable from`,
@@ -280,7 +281,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC07 an overlapping confirmed booking blocks approval and the request stays pending', async () => {
-    const base = freshPeriod()
+    const base = onDay(11)
     const a = await pending(base) // 10:00 to 12:00, set up from 09:30
     const b = await pending(slot(base, -180, -60)) // 07:00 to 09:00, turned around until 09:45
     expect((await approve(b.booking)).status).toBe(200)
@@ -296,7 +297,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC08 an overlapping active tentative hold blocks approval and the request stays pending', async () => {
-    const base = freshPeriod()
+    const base = onDay(12)
     const a = await pending(base)
     const b = await pending(slot(base, 120, 180)) // 12:00 to 13:00, set up from 11:30
     expect((await hold(b.booking, dayBefore(base))).status).toBe(200)
@@ -310,15 +311,15 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC09 an expired tentative hold does not block approval and is not a confirmed booking', async () => {
-    test.setTimeout(180_000)
-    const base = freshPeriod()
+    test.slow() // waits for a real hold to expire
+    const base = onDay(13)
     const a = await pending(base)
     const b = await pending(slot(base, 120, 180))
-    expect((await hold(b.booking, new Date(Date.now() + 65 * 1000).toISOString())).status).toBe(200)
+    expect((await hold(b.booking, soonExpiry())).status).toBe(200)
     expect((await approve(a.booking)).status).toBe(409) // still active
 
-    // Let the hold run out on its own; nothing releases it.
-    await new Promise((done) => setTimeout(done, 70 * 1000))
+    // Let the hold run out on its own (nothing releases it): wait for the condition, not a fixed time.
+    await waitForHoldToExpire(b.booking.bookingId)
 
     const approved = await approve(a.booking)
     expect([approved.status, approved.body.status]).toEqual([200, 'approved'])
@@ -329,7 +330,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC10 with no overlap, approval confirms the booking for the event and locks the venue', async () => {
-    const base = freshPeriod()
+    const base = onDay(14)
     const a = await pending(base)
     const b = await pending(slot(base, 120, 180)) // 12:00 to 13:00: set up from 11:30, inside A's window
     const c = await pending(slot(base, 195, 240)) // 13:15 to 14:00: set up from 12:45, only touches
@@ -349,13 +350,17 @@ test.describe('SPM-8 Approve a venue booking request', () => {
   })
 
   test('TC-SPM08-AC11 competing requests are shown oldest first and the oldest can be approved first', async ({ page }) => {
-    const base = freshPeriod()
-    // Submission times are stored to the second, so the requests are sent over a second apart.
-    const apart = () => new Promise((done) => setTimeout(done, 1100))
+    const base = onDay(15)
+    // Submission times are stored to the second, so each request is sent only once the
+    // clock has passed the previous one's second: a condition, not a fixed wait.
+    const after = (earlier) =>
+      expect
+        .poll(() => Date.now())
+        .toBeGreaterThanOrEqual((Math.floor(new Date(utc(earlier.booking.createdAt)).getTime() / 1000) + 1) * 1000)
     const first = await pending(base)
-    await apart()
+    await after(first)
     const second = await pending(slot(base, 60, 120)) // 11:00 to 13:00: overlaps the first
-    await apart()
+    await after(second)
     const third = await pending(slot(base, 30, 90)) // 10:30 to 11:30: overlaps both
 
     const queue = (await pendingQueue()).filter((id) =>
@@ -365,7 +370,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
 
     await openBookingRequests(page)
     await expect(page.getByTestId(`booking-request-${third.booking.bookingId}`)).toBeVisible()
-    const ids = await page.locator('[data-testid^="booking-request-"]').evaluateAll((cards) =>
+    const ids = await page.getByTestId(/^booking-request-/).evaluateAll((cards) =>
       cards.map((card) => card.dataset.testid.replace('booking-request-', '')),
     )
     expect(ids.filter((id) => queue.includes(id))).toEqual(queue)
@@ -373,7 +378,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
     await expect(page.getByTestId(`booking-competing-${second.booking.bookingId}`)).toHaveText('Competing request 2 of 3')
     await expect(page.getByTestId(`booking-competing-${third.booking.bookingId}`)).toHaveText('Competing request 3 of 3')
 
-    await page.getByTestId(`booking-approve-${first.booking.bookingId}`).click()
+    await page.getByTestId(`booking-request-${first.booking.bookingId}`).getByRole('button', { name: 'Approve' }).click()
     await expect(page.getByTestId('booking-approved-notice')).toBeVisible()
     await expect(page.getByTestId(`booking-request-${first.booking.bookingId}`)).toHaveCount(0)
     expect((await approve(second.booking)).status).toBe(409)

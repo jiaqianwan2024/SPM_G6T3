@@ -26,6 +26,7 @@ from app.schemas.venue import (
     UnavailabilityUpdate,
     VenueBookingCreate,
     VenueBookingDecision,
+    VenueBookingRejection,
     VenueArrangementOut,
     VenueBookingOut,
     VenueCreate,
@@ -687,14 +688,22 @@ def approve_booking(
     "/bookings/{booking_id}/reject",
     response_model=VenueBookingOut,
     summary="Reject a venue booking",
-    description="Venue staff only. Fails with 409 if the booking is no longer `pending`.",
-    responses=error_responses(403, 404, 409, 503),
+    description=(
+        "SPM-10. Venue staff only. A `reason` is required (422 when blank); `suggestedVenueId` optionally "
+        "names another active venue (422 when it is unknown, retired, or the same venue). The request becomes "
+        "`rejected`, leaves the pending queue, ends any tentative hold so it reserves nothing, and records who "
+        "rejected it, why, and when. Fails with 409 if the booking is no longer `pending`, so a rejected request "
+        "can no longer be approved or changed."
+    ),
+    responses=error_responses(403, 404, 409, 422, 503),
 )
 def reject_booking(
-    body: VenueBookingDecision,
+    body: VenueBookingRejection,
     booking_id: str = Path(..., description="Booking id returned by create booking."),
     authorization: str | None = Depends(forwarded_bearer),
     service: VenueService = Depends(get_venue_service),
 ):
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"venue"})
-    return service.reject_booking(booking_id, caller["userId"], body.reason)
+    return service.reject_booking(
+        booking_id, caller["userId"], body.reason, caller.get("userName"), body.suggestedVenueId
+    )

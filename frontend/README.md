@@ -118,8 +118,12 @@ pattern — don't add it to `components/shared/`.
   their place ("Competing request 1 of 3")
 - "Approve" takes an optional note. A refusal (an overlapping confirmed booking,
   unavailability, or active hold) is shown on the request, which stays pending
-- The Approved view shows who approved each booking and when. Rejecting is
-  SPM-10
+- The Approved view shows who approved each booking and when
+- "View full details" lists everything the request carries (SPM-10 AC1)
+- "Reject" asks for a reason and, optionally, another venue to suggest; Confirm
+  rejection stays disabled until a reason is typed. The Rejected view shows who
+  rejected each request, when, why, and the suggestion (SPM-10). The coordinator's
+  Choose venues page shows the reason and suggestion next to the rejected booking
 
 **Venue suitability (SPM-62)**
 - `features/venue-request/` opens from "Choose a venue" on an event

@@ -45,6 +45,10 @@ export const cancelVenueBooking = (bookingId) => axiosClient.post(`/venues/booki
 export const approveVenueBooking = (bookingId, reason = null) =>
   axiosClient.post(`/venues/bookings/${bookingId}/approve`, { reason });
 
+// SPM-10: Venue Staff reject a pending request. `reason` is required; `suggestedVenueId` is optional.
+export const rejectVenueBooking = (bookingId, reason, suggestedVenueId = null) =>
+  axiosClient.post(`/venues/bookings/${bookingId}/reject`, { reason, suggestedVenueId });
+
 export const reconfirmVenueBooking = (bookingId) =>
   axiosClient.post(`/venues/bookings/${bookingId}/reconfirm`);
 

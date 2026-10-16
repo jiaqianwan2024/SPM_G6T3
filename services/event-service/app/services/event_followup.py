@@ -81,11 +81,21 @@ def _schedule_aspects(old, new) -> tuple[bool, bool]:
     return True, True
 
 
-def derived_statuses(requests: list, reservations: list, bookings: dict) -> dict[str, str]:
+def derived_statuses(
+    requests: list, reservations: list, bookings: dict, venue_requested: bool = False
+) -> dict[str, str]:
     """Status of the venue and equipment lines the readiness view derives for an event.
-    `requests` are the event's own equipment requests; `bookings` is its venue summary."""
+    `requests` are the event's own equipment requests; `bookings` is its venue summary.
+    SPM-63 AC9: `venue_requested` means a venue request is waiting for Venue Staff, so
+    until a venue is approved the venue line shows it as in progress."""
+    if bookings.get("venueName"):
+        venue = "in place"
+    elif venue_requested:
+        venue = "in_progress"
+    else:
+        venue = "outstanding"
     return {
-        "derived-venue": "in place" if bookings.get("venueName") else "outstanding",
+        "derived-venue": venue,
         "derived-equipment": _equipment_status(requests, reservations),
     }
 
@@ -157,7 +167,19 @@ class EventFollowUp(BaseService):
             authorization,
             {"eventId": event.eventId},
         ) or {}
-        statuses = derived_statuses(requests, reservations if isinstance(reservations, list) else [], bookings)
+        # SPM-63 AC9: a pending venue request. Venue-service lists requests to coordinators
+        # and Venue Staff; anyone else gets nothing here and sees the line as before.
+        waiting = _soft_get(
+            f"{settings.venue_service_url}/venues/bookings",
+            authorization,
+            {"eventId": event.eventId, "status": "pending"},
+        )
+        statuses = derived_statuses(
+            requests,
+            reservations if isinstance(reservations, list) else [],
+            bookings,
+            venue_requested=isinstance(waiting, list) and bool(waiting),
+        )
         assigned = event.updatedAt or event.createdAt or now
         venue = ReadinessItemOut(
             itemId="derived-venue",

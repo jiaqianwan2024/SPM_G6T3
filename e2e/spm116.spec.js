@@ -3,11 +3,12 @@ import { newVenuePayload } from './support/api-data.js'
 import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { notificationRequest, venueRequest } from './support/venue.js'
-import { THEATRE_EVENT, approvedEvent, freshPeriod, requestVenue } from './support/venue-request.js'
+import { THEATRE_EVENT, approvedEvent, requestVenue } from './support/venue-request.js'
+import { period as onDay, soonExpiry, waitForHoldToExpire } from './support/venue-suite.js'
 
 // The suite makes its own hall (30 minutes setup, 45 minutes turnaround, open every
 // day) and retires it afterwards, so seeded venues are never held. Each test sends
-// its own requests on a random day years ahead: a 10:00 to 12:00 event occupies
+// its own requests on its own fixed day: a 10:00 to 12:00 event occupies
 // the hall from 09:30 to 12:45. All times are UTC.
 
 const MINUTE = 60 * 1000
@@ -72,7 +73,7 @@ test.describe('SPM-116 Place a tentative hold with an expiry', () => {
   })
 
   test('TC-SPM116-AC01 venue staff hold a pending request until a future time no later than the event start', async () => {
-    const base = freshPeriod()
+    const base = onDay(1)
     const a = await pending(base)
 
     // Negative: a time already past, and one minute after the event starts.
@@ -103,27 +104,28 @@ test.describe('SPM-116 Place a tentative hold with an expiry', () => {
   })
 
   test('TC-SPM116-AC01b venue staff place and release a hold from the venue catalogue', async ({ page }) => {
-    const base = freshPeriod()
+    const base = onDay(2)
     const { booking } = await pending(base)
     const until = dayBefore(base).slice(0, 16) // datetime-local, read as UTC
 
     await login(page, account('VS-01'))
-    await page.locator('.nav-item').getByText('Venue Catalogue', { exact: true }).click()
+    await page.getByRole('navigation').getByText('Venue Catalogue', { exact: true }).click()
     await page.getByText(hall.name, { exact: true }).click()
     await expect(page.getByTestId(`venue-hold-request-${booking.bookingId}`)).toBeVisible()
 
-    await page.getByTestId(`venue-hold-until-${booking.bookingId}`).fill(until)
-    await page.getByTestId(`venue-hold-place-${booking.bookingId}`).click()
+    const row = page.getByTestId(`venue-hold-request-${booking.bookingId}`)
+    await row.getByLabel('Hold until (UTC)').fill(until)
+    await row.getByRole('button', { name: 'Place hold' }).click()
     await expect(page.getByTestId(`venue-hold-state-${booking.bookingId}`)).toContainText('Held until')
 
-    await page.getByTestId(`venue-hold-release-${booking.bookingId}`).click()
-    await expect(page.getByTestId(`venue-hold-place-${booking.bookingId}`)).toBeVisible()
+    await row.getByRole('button', { name: 'Release hold' }).click()
+    await expect(row.getByRole('button', { name: 'Place hold' })).toBeVisible()
     const after = await venueRequest('GET', `/venues/bookings/${booking.bookingId}`, 'VS-01')
     expect(after.body.hold.state).toBe('released')
   })
 
   test('TC-SPM116-AC02 an active hold reserves the venue for its occupied window', async () => {
-    const base = freshPeriod()
+    const base = onDay(3)
     const a = await pending(base) // 10:00 to 12:00, occupies 09:30 to 12:45
     const b = await pending(slot(base, 120, 180)) // 12:00 to 13:00, set up from 11:30
     expect((await hold(a.booking, dayBefore(base))).status).toBe(200)
@@ -153,7 +155,7 @@ test.describe('SPM-116 Place a tentative hold with an expiry', () => {
   })
 
   test('TC-SPM116-AC02b releasing a hold frees the venue', async () => {
-    const base = freshPeriod()
+    const base = onDay(4)
     const a = await pending(base)
     const b = await pending(slot(base, 120, 180))
     expect((await hold(a.booking, dayBefore(base))).status).toBe(200)
@@ -168,16 +170,16 @@ test.describe('SPM-116 Place a tentative hold with an expiry', () => {
   })
 
   test('TC-SPM116-AC03 and AC04 an expired hold reserves nothing and is not a confirmed booking', async () => {
-    test.setTimeout(180_000)
-    const base = freshPeriod()
+    test.slow() // waits for a real hold to expire
+    const base = onDay(5)
     const a = await pending(base)
     const b = await pending(slot(base, 120, 180))
-    const soon = new Date(Date.now() + 65 * 1000).toISOString()
+    const soon = soonExpiry()
     expect((await hold(a.booking, soon)).status).toBe(200)
     expect(await hallListed(slot(base, 120, 180))).toBe(false)
 
     // Let the hold run out on its own; nothing releases it.
-    await new Promise((done) => setTimeout(done, 70 * 1000))
+    await waitForHoldToExpire(a.booking.bookingId) // a condition, not a fixed wait
 
     const expired = await venueRequest('GET', `/venues/bookings/${a.booking.bookingId}`, 'VS-01')
     expect([expired.body.status, expired.body.hold.state]).toEqual(['pending', 'expired'])
@@ -186,7 +188,7 @@ test.describe('SPM-116 Place a tentative hold with an expiry', () => {
   })
 
   test('TC-SPM116-AC05 the assigned coordinator is told until when the venue is held', async ({ page }) => {
-    const base = freshPeriod()
+    const base = onDay(6)
     const { event, booking } = await pending(base)
     expect((await hold(booking, dayBefore(base))).status).toBe(200)
 
@@ -204,7 +206,7 @@ test.describe('SPM-116 Place a tentative hold with an expiry', () => {
   })
 
   test('TC-SPM116-AC06 rejecting a booking request releases its hold', async () => {
-    const base = freshPeriod()
+    const base = onDay(7)
     const a = await pending(base)
     const b = await pending(slot(base, 120, 180))
     expect((await hold(a.booking, dayBefore(base))).status).toBe(200)
@@ -218,7 +220,7 @@ test.describe('SPM-116 Place a tentative hold with an expiry', () => {
   })
 
   test('TC-SPM116-AC01c only venue staff can hold or release', async () => {
-    const base = freshPeriod()
+    const base = onDay(8)
     const { booking } = await pending(base)
 
     expect((await hold(booking, dayBefore(base), 'EC-01')).status).toBe(403)
