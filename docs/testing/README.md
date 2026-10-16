@@ -113,6 +113,24 @@ SPM-51. Use the story commands as their contracts.
 
 Failures: `test-results/`. HTML report: `playwright-report/`.
 
+## Writing reliable specs
+
+The venue booking specs (SPM-8, SPM-61 to SPM-64, SPM-112, SPM-116, SPM-122) follow the
+FIRST principles and the Week 9 advice on flaky tests, through `e2e/support/venue-suite.js`:
+
+- Fresh state: each suite creates the venues it books in `beforeAll` and retires them in
+  `afterAll`, so it never meets bookings that another suite or an earlier run left on the
+  seeded venues.
+- No randomness: each test books its own fixed day (`period(n)`), worked out from a date
+  taken once per run, so every run sends the same inputs and midnight UTC cannot move them.
+- Wait for a condition, never a fixed time: `waitForHoldToExpire` polls until the server
+  reports the hold expired; a slow response is awaited with `page.waitForResponse`.
+- Locators by role, label and text for anything a user clicks or types into; test ids
+  only for cards and values that have no accessible name.
+- Fewer calls to Firebase: `authedApi` and `venueRequest` reuse one token per account
+  until shortly before it expires, instead of signing in on every call, which hit
+  Firebase's `QUOTA_EXCEEDED` limit.
+
 ## Specs
 
 | Story | Cases | Spec |
@@ -131,7 +149,7 @@ Failures: `test-results/`. HTML report: `playwright-report/`.
 | SPM-59 | TC-SPM59-AC01–AC06 | `e2e/spm59.spec.js` |
 | SPM-8 | TC-SPM08-AC01–AC11 (and AC01b, AC02b, AC06b, AC06c) | `e2e/spm08.spec.js` |
 | SPM-9 | TC-SPM09-AC01–AC08 | `e2e/spm09.spec.js` |
-| SPM-10 | TC-SPM10-AC01–AC07 | `e2e/spm10.spec.js` |
+| SPM-10 | TC-SPM10-AC01–AC08 (and AC02b) | `e2e/spm10.spec.js` |
 | SPM-17 | TC-SPM17-AC01–AC06 | `e2e/spm17.spec.js` |
 | SPM-60 | TC-SPM60-AC01–AC09 | `e2e/spm60.spec.js` |
 | SPM-61 | TC-SPM61-AC01–AC08 | `e2e/spm61.spec.js` |

@@ -130,6 +130,8 @@ def _booking_to_out(row: VenueBooking) -> VenueBookingOut:
         reviewedBy=row.reviewedBy,
         reviewedByName=row.reviewedByName,
         reviewedAt=row.reviewedAt,
+        suggestedVenueId=row.suggestedVenueId,
+        suggestedVenueName=row.suggestedVenueName,
         createdAt=row.createdAt,
         eventSnapshot=row.eventSnapshot,
         coordinatorNotes=row.coordinatorNotes or "",
@@ -1174,15 +1176,45 @@ class VenueService(BaseService):
         self.db.refresh(row)
         return _booking_to_out(row)
 
-    def reject_booking(self, booking_id: str, reviewer_id: str, reason: str | None) -> VenueBookingOut:
+    def reject_booking(
+        self,
+        booking_id: str,
+        reviewer_id: str,
+        reason: str | None,
+        reviewer_name: str | None = None,
+        suggested_venue_id: str | None = None,
+    ) -> VenueBookingOut:
+        """SPM-10: Venue Staff turn down a pending request. A reason is required (AC2) and
+        another venue may be suggested (AC3). The request leaves the queue for good, since
+        every action on a booking needs it pending or approved (AC4); its hold ends, so it
+        reserves nothing (AC5, SPM-116 AC6); and who, why and when are kept (AC6)."""
         row = self._require_booking(booking_id)
         if row.status != "pending":
             raise conflict(f"Booking is already {row.status}")
+        reason = (reason or "").strip()
+        if not reason:
+            raise HTTPException(status_code=422, detail="Give a reason for rejecting this request.")
+        suggested = None
+        if suggested_venue_id:
+            suggested = self.venue_dao.get_by_id(suggested_venue_id)
+            if suggested is None or not suggested.isActive:
+                raise HTTPException(
+                    status_code=422,
+                    detail="The suggested venue does not exist or has been retired. "
+                    "Choose another venue, or leave the suggestion empty.",
+                )
+            if suggested.venueId == row.venueId:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Suggest a different venue from the one being rejected, or leave the suggestion empty.",
+                )
         _end_hold(row, "rejected")  # SPM-116 AC6
         row.status = "rejected"
         row.decisionReason = reason
-        row.reviewedBy = reviewer_id
+        row.reviewedBy, row.reviewedByName = reviewer_id, reviewer_name
         row.reviewedAt = datetime.utcnow()
+        row.suggestedVenueId = suggested.venueId if suggested else None
+        row.suggestedVenueName = suggested.name if suggested else None
         self.db.commit()
         self.db.refresh(row)
         return _booking_to_out(row)

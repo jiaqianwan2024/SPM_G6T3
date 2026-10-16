@@ -50,7 +50,7 @@ class SuitabilityCase(VenueCase):
         if status == "approved":
             self.service.approve_booking(booking.bookingId, "u-venue", None)
         elif status == "rejected":
-            self.service.reject_booking(booking.bookingId, "u-venue", None)
+            self.service.reject_booking(booking.bookingId, "u-venue", "Not suitable")
         return booking
 
     def unavailable(self, starts_at, ends_at, reason):

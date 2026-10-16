@@ -340,3 +340,69 @@ class TestVenueApprovalWorkflow(TestVenueBookingWorkflow):
         self.assertEqual(self.approve(b).status_code, 409)
         self.assertEqual([self.stored(booking).status for booking in (a, b)], ["approved", "pending"])
         self.assertEqual(self.stored(a).reviewedByName, "Carol")
+
+
+class TestVenueRejectionWorkflow(TestVenueBookingWorkflow):
+    """SPM-10: Venue Staff reject a held request with a reason and a suggested venue. The
+    request leaves the queue, its hold ends so another event can be approved there, and
+    who, why, when and the suggestion are read back from SQL."""
+
+    test_search_check_request_approve_withdraw_and_flag_clashes = None  # run once, in its own class
+
+    def make_venue(self, name):
+        created = self.as_(VENUE).post(
+            "/venues",
+            headers=self.headers,
+            json={
+                "name": name,
+                "location": "HarbourFront Centre",
+                "layouts": [{"name": "Theatre", "capacity": 100}],
+                "operatingHours": [
+                    {"day": day, "opens": "00:00", "closes": "24:00"}
+                    for day in ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+                ],
+                "setupMinutes": 30,
+                "turnaroundMinutes": 45,
+            },
+        )
+        self.assertEqual(created.status_code, 201, created.text)
+        return created.json()["venueId"]
+
+    def reject(self, booking_id, body):
+        return self.as_(VENUE).post(f"/venues/bookings/{booking_id}/reject", headers=self.headers, json=body)
+
+    def test_reject_with_reason_and_suggestion_then_the_venue_is_free(self):
+        self.venue_id = self.make_venue("Harbour Hall")
+        suggested = self.make_venue("Riverside Room")
+        a, b = self.request("e-a"), self.request("e-b")
+        held = self.as_(VENUE).post(
+            f"/venues/bookings/{a}/hold", headers=self.headers, json={"expiresAt": "2030-01-06T08:00:00Z"}
+        )
+        self.assertEqual(held.status_code, 200, held.text)
+        self.assertEqual(self.approve(b).status_code, 409)  # A's hold covers B's setup
+
+        # AC2: no reason, no rejection.
+        blank = self.reject(a, {"reason": "  "})
+        self.assertEqual((blank.status_code, blank.json()["detail"]), (422, "Give a reason for rejecting this request."))
+        self.assertEqual(self.stored(a).status, "pending")
+
+        # AC3 to AC6: rejected with a reason and a suggestion, recorded with who and when.
+        before = datetime.utcnow()
+        rejected = self.reject(a, {"reason": "The stage is being rebuilt.", "suggestedVenueId": suggested})
+        self.assertEqual(rejected.status_code, 200, rejected.text)
+        row = self.stored(a)
+        self.assertEqual(
+            (row.status, row.decisionReason, row.reviewedBy, row.reviewedByName, row.suggestedVenueId, row.suggestedVenueName),
+            ("rejected", "The stage is being rebuilt.", "u-venue", "Carol", suggested, "Riverside Room"),
+        )
+        self.assertGreaterEqual(row.reviewedAt, before.replace(microsecond=0))
+        self.assertEqual((row.holdEndReason, row.holdEndedAt is not None), ("rejected", True))
+        queue = self.as_(VENUE).get(
+            "/venues/bookings", headers=self.headers, params={"status": "pending", "venueId": self.venue_id}
+        ).json()
+        self.assertEqual([item["bookingId"] for item in queue], [b])
+
+        # AC4 and AC5: it can no longer be approved, and it reserves nothing, so B is approved.
+        self.assertEqual(self.approve(a).status_code, 409)
+        self.assertEqual(self.approve(b).status_code, 200)
+        self.assertEqual([self.stored(booking).status for booking in (a, b)], ["rejected", "approved"])

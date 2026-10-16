@@ -343,9 +343,11 @@ The suitability check (SPM-62) reads this table: an overlapping period makes a v
 | hold_placed_at | DATETIME nullable | SPM-116: when the hold was placed |
 | hold_ended_at | DATETIME nullable | SPM-116: when the hold ended before its expiry |
 | hold_end_reason | VARCHAR(32) nullable | SPM-116: `released`, `approved`, `rejected`, `withdrawn`, or `cancelled` |
-| decision_reason | TEXT nullable | Venue Staff's optional note on approval or rejection |
+| decision_reason | TEXT nullable | Venue Staff's optional note on approval, or the required reason for a rejection (SPM-10) |
 | reviewed_by | VARCHAR(64) nullable | SPM-8: the Venue Staff user who approved or rejected it |
-| reviewed_by_name | VARCHAR(255) nullable | SPM-8: that user's name when they approved it (migration `c7e2a9f4b815`) |
+| reviewed_by_name | VARCHAR(255) nullable | SPM-8 and SPM-10: that user's name when they approved or rejected it (migration `c7e2a9f4b815`) |
+| suggested_venue_id | VARCHAR(64) nullable | SPM-10: another venue Venue Staff suggested when rejecting (migration `e1d5c3a8b247`) |
+| suggested_venue_name | VARCHAR(255) nullable | SPM-10: that venue's name at the time |
 | reviewed_at | DATETIME nullable | SPM-8: when it was approved or rejected. Booking rows are never deleted, so the approval record stays after the event is completed |
 | created_at | DATETIME | When the request was submitted; requests are listed oldest first (SPM-8 AC11) |
 
@@ -687,6 +689,8 @@ erDiagram
     text decision_reason
     string reviewed_by FK
     string reviewed_by_name
+    string suggested_venue_id
+    string suggested_venue_name
     datetime reviewed_at
     datetime created_at
   }

@@ -42,6 +42,15 @@
                 {{ booking.hold.state === 'active' ? 'Held until' : 'Hold expired' }}
                 {{ formatUtc(booking.hold.expiresAt) }} UTC
               </span>
+              <!-- SPM-10: why Venue Staff rejected it, and the venue they suggested instead, if any. -->
+              <span
+                v-if="booking.status === 'rejected' && booking.decisionReason"
+                class="rejection"
+                :data-testid="`venue-rejection-${booking.bookingId}`"
+              >
+                · Reason: {{ booking.decisionReason }}<template v-if="booking.suggestedVenueName">
+                  · Suggested instead: {{ booking.suggestedVenueName }}</template>
+              </span>
             </span>
             <button
               v-if="isAssignedCoordinator && booking.affectedByUnavailability"

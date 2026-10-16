@@ -17,9 +17,9 @@ class TestVenueBookings(VenueCase):
         self.assertEqual(ctx.exception.status_code, 409)
 
         other = self.service.create_booking(booking_create(created.venueId, eventId="e9"), "u-coord")
-        rejected = self.service.reject_booking(other.bookingId, "u-venue", None)
+        rejected = self.service.reject_booking(other.bookingId, "u-venue", "Not suitable")  # SPM-10 AC2: a reason is required
         self.assertEqual(rejected.status, "rejected")
-        self.assertIsNone(rejected.decisionReason)
+        self.assertEqual(rejected.decisionReason, "Not suitable")
 
         with self.assertRaises(HTTPException) as ctx:
             self.service.approve_booking(other.bookingId, "u-venue", "Again")

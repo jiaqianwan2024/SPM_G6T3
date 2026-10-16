@@ -210,6 +210,21 @@ class VenueBookingDecision(BaseModel):
     model_config = ConfigDict(json_schema_extra={"example": {"reason": "Hall A is free that day."}})
 
 
+class VenueBookingRejection(BaseModel):
+    """SPM-10: why the request is turned down (AC2, required), and optionally another venue to try (AC3)."""
+
+    reason: str | None = Field(default=None, max_length=2000, description="Required. Shown to the coordinator.")
+    suggestedVenueId: str | None = Field(
+        default=None, description="Optional. An active venue other than the one being rejected."
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"reason": "The hall is booked for maintenance that week.", "suggestedVenueId": "v3"}
+        }
+    )
+
+
 class HoldRequest(BaseModel):
     """SPM-116 AC1: Venue Staff hold a pending request's venue until this time (UTC)."""
 
@@ -362,7 +377,11 @@ class VenueBookingOut(BaseModel):
     requirementsSnapshot: str
     decisionReason: str | None
     reviewedBy: str | None
-    reviewedByName: str | None = Field(default=None, description="SPM-8 AC5: the approver's name.")
+    reviewedByName: str | None = Field(
+        default=None, description="SPM-8 AC5 and SPM-10 AC6: the name of whoever approved or rejected it."
+    )
+    suggestedVenueId: str | None = Field(default=None, description="SPM-10 AC3: the venue suggested on rejection.")
+    suggestedVenueName: str | None = Field(default=None, description="SPM-10 AC3: that venue's name.")
     reviewedAt: datetime | None
     createdAt: datetime
     eventSnapshot: dict | None = Field(
