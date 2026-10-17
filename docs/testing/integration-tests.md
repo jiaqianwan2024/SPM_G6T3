@@ -2,7 +2,9 @@
 
 Each service keeps one workflow test in `services/<service>/tests/integration/test_workflow.py`. The test calls that service through its HTTP API and reads the rows back from SQL. Auth and calls to other services stay stubbed, so a failure means this service's route, service code, and database disagree.
 
-The suite uses a temporary SQLite file. Docker and MySQL stay stopped.
+The workflow files use a temporary SQLite file. Docker and MySQL can stay stopped for those.
+
+`services/venue-service/tests/integration/test_double_booking_mysql.py` is the exception: it checks the real MySQL overlap triggers. Locally it is skipped when MySQL is down. GitHub Actions starts `infra/docker-compose.yml` and runs `python scripts/migrate.py --no-seed` before `npm run test:integration`, so that file runs on the `test` job.
 
 ## Run
 
@@ -12,7 +14,7 @@ From the repository root:
 npm run test:integration
 ```
 
-`.github/workflows/tests.yml` runs the same command after the unit tests, on pushes to `dev` and `main` and on pull requests into either branch. The job id is `test`.
+`.github/workflows/tests.yml` runs the same command after the unit tests, on pushes to `dev` and `main` and on pull requests into either branch. The job id is `test`. Playwright runs in the separate `e2e` job.
 
 From one service directory:
 

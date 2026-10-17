@@ -43,9 +43,11 @@ def _reachable() -> str | None:
 
 
 SKIP = _reachable()
+# GitHub Actions sets CI=true. Do not skip there: a down MySQL must fail the job.
+REQUIRE_MYSQL = bool(os.environ.get("CI"))
 
 
-@unittest.skipIf(SKIP, SKIP or "")
+@unittest.skipIf(SKIP and not REQUIRE_MYSQL, SKIP or "")
 class MySQLCase(unittest.TestCase):
     """A throwaway venue with 30 minutes setup and 60 minutes turnaround, so a
     10:00 to 12:00 booking occupies it from 09:30 to 13:00."""
