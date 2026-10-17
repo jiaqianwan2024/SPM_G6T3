@@ -46,6 +46,9 @@ class Event(Base):
     # SPM-72 AC3: who confirmed the event, and when.
     confirmedBy: Mapped[str | None] = mapped_column("confirmed_by", String(64), nullable=True)
     confirmedAt: Mapped[datetime | None] = mapped_column("confirmed_at", DateTime, nullable=True)
+    # SPM-120: the Safety Officer who claimed the event's safety review. They
+    # keep it for every later round, and only they can decide on it.
+    safetyOfficerId: Mapped[str | None] = mapped_column("safety_officer_id", String(64), nullable=True)
     createdAt: Mapped[datetime] = mapped_column("created_at", DateTime, default=datetime.utcnow)
     updatedAt: Mapped[datetime] = mapped_column(
         "updated_at", DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

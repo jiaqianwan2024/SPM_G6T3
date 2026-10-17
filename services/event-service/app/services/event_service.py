@@ -324,7 +324,9 @@ def _missing(gaps: list[dict]) -> HTTPException:
     )
 
 
-def _safety_review_out(row: EventSafetyReview, flagged: list[dict] = ()) -> SafetyReviewOut:
+def _safety_review_out(
+    row: EventSafetyReview, officer_id: str | None, flagged: list[dict] = ()
+) -> SafetyReviewOut:
     return SafetyReviewOut(
         reviewId=row.reviewId,
         eventId=row.eventId,
@@ -332,6 +334,7 @@ def _safety_review_out(row: EventSafetyReview, flagged: list[dict] = ()) -> Safe
         submittedBy=row.submittedBy,
         submittedAt=row.submittedAt,
         package=SafetyPackage(**row.package),
+        safetyOfficerId=officer_id,
         decidedBy=row.decidedBy,
         decidedAt=row.decidedAt,
         decisionNote=row.decisionNote,
@@ -2087,7 +2090,7 @@ class EventService(BaseService):
         if event.status not in SAFETY_SUBMITTABLE_STATUSES:
             raise conflict(f"An event is submitted for a safety review from planning (this one is {event.status})")
         review = self._open_safety_review(event, data, coordinator_id, "Submitted for safety review", authorization)
-        return _safety_review_out(review)
+        return _safety_review_out(review, event.safetyOfficerId)
 
     def safety_handoff(self, event_id: str, caller: dict, authorization: str | None = None) -> SafetyHandoffOut:
         """SPM-120, change 6: which arrangements have been sent to the Safety
@@ -2147,7 +2150,7 @@ class EventService(BaseService):
                 event, data, sender_id, "Arrangements sent for safety review", authorization, arrangements
             )
             self._notify_review_opened(event, authorization)
-            out.review = _safety_review_out(review)
+            out.review = _safety_review_out(review, event.safetyOfficerId)
         else:
             self.db.commit()
         return out
@@ -2281,14 +2284,16 @@ class EventService(BaseService):
 
     def list_safety_reviews(self, review_status: str = PENDING) -> list[SafetyReviewOut]:
         """The Safety Officers' queue, longest-waiting first."""
-        return [_safety_review_out(row) for row in self.safety_dao.list_with_status(review_status)]
+        rows = self.safety_dao.list_with_status(review_status)
+        officers = self.event_dao.safety_officers(list({row.eventId for row in rows}))
+        return [_safety_review_out(row, officers.get(row.eventId)) for row in rows]
 
     def get_safety_reviews(self, event_id: str, caller: dict) -> list[SafetyReviewOut]:
         """Every safety review of the event, newest first, for the organiser's
         organisation and staff (AC9: the organiser sees the outcome)."""
         event = self._require_event(event_id)
         _require_organiser_or_staff(event, caller, "safety reviews")
-        return [_safety_review_out(row) for row in self.safety_dao.list_by_event(event.eventId)]
+        return [_safety_review_out(row, event.safetyOfficerId) for row in self.safety_dao.list_by_event(event.eventId)]
 
     def approve_safety_review(
         self, event_id: str, review_id: str, data: SafetyApproval, officer_id: str, authorization: str | None = None
@@ -2296,7 +2301,7 @@ class EventService(BaseService):
         """AC3/AC4: the plan is safe. The decision, the officer, and the time
         are recorded, and the event waits for the coordinator to confirm it
         (SPM-72); preparation begins once it is confirmed."""
-        event, review = self._pending_safety_review(event_id, review_id)
+        event, review = self._pending_safety_review(event_id, review_id, officer_id)
         now = datetime.utcnow()
         self._close_safety_review(review, "approved", officer_id, data.note.strip() or None, now)
         self._record_status_change(event, SAFETY_APPROVED, officer_id, "Safety review approved", now)
@@ -2305,7 +2310,7 @@ class EventService(BaseService):
         self.db.commit()
         self.db.refresh(review)
         self._notify_safety_decision(event, review, authorization)
-        return _safety_review_out(review)
+        return _safety_review_out(review, event.safetyOfficerId)
 
     def reject_safety_review(
         self, event_id: str, review_id: str, data: SafetyRejection, officer_id: str, authorization: str | None = None
@@ -2314,7 +2319,7 @@ class EventService(BaseService):
         returns to planning, so it does not proceed to preparation, but it is
         not cancelled: the coordinator can revise the arrangements and submit
         again. The coordinator and the organiser are told."""
-        event, review = self._pending_safety_review(event_id, review_id)
+        event, review = self._pending_safety_review(event_id, review_id, officer_id)
         now = datetime.utcnow()
         self._close_safety_review(review, "rejected", officer_id, data.reason, now)
         self._record_status_change(event, "planning", officer_id, "Safety review rejected", now)
@@ -2323,7 +2328,7 @@ class EventService(BaseService):
         self.db.commit()
         self.db.refresh(review)
         self._notify_safety_decision(event, review, authorization)
-        return _safety_review_out(review)
+        return _safety_review_out(review, event.safetyOfficerId)
 
     def request_safety_changes(
         self,
@@ -2337,7 +2342,7 @@ class EventService(BaseService):
         The arrangements the officer names are flagged for re-checking, so
         venue staff or technical support review them again; the flags go out
         before the save, so a change never returns without them."""
-        event, review = self._pending_safety_review(event_id, review_id)
+        event, review = self._pending_safety_review(event_id, review_id, officer_id)
         reason = f"Safety review: {data.requiredChanges}"
         flagged: list[dict] = []
         if "venue" in data.affected:
@@ -2353,9 +2358,30 @@ class EventService(BaseService):
         self.db.commit()
         self.db.refresh(review)
         self._notify_safety_decision(event, review, authorization)
-        return _safety_review_out(review, flagged)
+        return _safety_review_out(review, event.safetyOfficerId, flagged)
 
-    def _pending_safety_review(self, event_id: str, review_id: str) -> tuple[Event, EventSafetyReview]:
+    def claim_safety_review(
+        self, event_id: str, review_id: str, officer_id: str, authorization: str | None = None
+    ) -> SafetyReviewOut:
+        """SPM-120: a Safety Officer takes the event's pending review. One officer
+        per event: only they can decide on it, and every later round goes to them.
+        Claiming again is a no-op for the same officer and 409 for anyone else."""
+        event, review = self._pending_safety_review(event_id, review_id)
+        if event.safetyOfficerId is None:
+            claimed = self.event_dao.claim_safety_review(event.eventId, officer_id)
+            self.db.commit()
+            self.db.refresh(event)
+            if claimed:
+                self._notify_safety_claimed(event, officer_id, authorization)
+        if event.safetyOfficerId != officer_id:
+            raise conflict(f"{self._officer_name(event.safetyOfficerId, authorization)} has already claimed this safety review")
+        return _safety_review_out(review, event.safetyOfficerId)
+
+    def _pending_safety_review(
+        self, event_id: str, review_id: str, officer_id: str | None = None
+    ) -> tuple[Event, EventSafetyReview]:
+        """The event's pending review. With `officer_id` (a decision), the
+        officer must be the one who claimed the event."""
         event = self._require_event(event_id)
         review = self._require(
             next((row for row in self.safety_dao.list_by_event(event.eventId) if row.reviewId == review_id), None),
@@ -2363,7 +2389,27 @@ class EventService(BaseService):
         )
         if review.status != PENDING:
             raise conflict(f"This safety review is already {review.status.replace('_', ' ')}")
+        if officer_id is not None:
+            if event.safetyOfficerId is None:
+                raise conflict("Claim this safety review before deciding on it")
+            if event.safetyOfficerId != officer_id:
+                raise forbidden("Only the Safety Officer who claimed this event can decide on its safety review")
         return event, review
+
+    def _officer_name(self, officer_id: str | None, authorization: str | None) -> str:
+        return self._directory(authorization).get(officer_id, {}).get("userName") or "Another Safety Officer"
+
+    def _notify_safety_claimed(self, event: Event, officer_id: str, authorization: str | None) -> None:
+        """Best effort: the coordinator learns who is reviewing the event."""
+        directory = self._directory(authorization)
+        name = directory.get(officer_id, {}).get("userName") or "A Safety Officer"
+        title = f"{name} is reviewing {event.eventName}"
+        body = f"{name} has taken the safety review of {event.eventName} and will decide on it."
+        recipient = self._recipient(directory, event.coordinatorId, event)
+        if recipient is not None:
+            send_notification(recipient["email"], title, body, authorization)
+        if event.coordinatorId:
+            record_notification(event.coordinatorId, event.eventId, "event.safety_review", title, body, authorization)
 
     @staticmethod
     def _close_safety_review(
@@ -2387,20 +2433,26 @@ class EventService(BaseService):
 
     def _notify_safety_officers(self, event: Event, review: EventSafetyReview, authorization: str | None) -> None:
         """Best effort: the submission is already saved. Officers are emailed here;
-        their in-app notification is the published "Event details submitted" trigger (SPM-93)."""
+        their in-app notification is the published "Event details submitted" trigger (SPM-93).
+        An event a Safety Officer has claimed goes to them alone; otherwise every
+        officer is told, so one of them can claim it."""
         title = f"{event.eventName} is ready for a safety review"
         body = f"The venue and equipment for {event.eventName} are confirmed and have been sent for a safety review."
 
         directory = self._directory(authorization)
-        for officer in directory.values():
-            if officer.get("role") != "safety":
-                continue
-            send_notification(officer["email"], title, body, authorization)
+        if event.safetyOfficerId:
+            recipients = [{"userId": event.safetyOfficerId, "role": "safety"}]
+        else:
+            recipients = people(event, ["safety"], directory)
+        for recipient in recipients:
+            officer = directory.get(recipient["userId"])
+            if officer is not None:
+                send_notification(officer["email"], title, body, authorization)
         publish_notification(
             "safety.submitted",
             event.eventId,
             f"{event.eventId}:safety.submitted:{review.reviewId}",
-            people(event, ["safety"], directory),
+            recipients,
             {"eventName": event.eventName},
             actor_id=review.submittedBy,
             resource={"type": "safety_review", "id": review.reviewId},

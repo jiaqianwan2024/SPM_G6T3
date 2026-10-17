@@ -36,6 +36,9 @@
               {{ venueSummary(review) }}
             </span>
             <span v-if="hasFlag(review)" class="flag">An arrangement is marked for re-checking</span>
+            <span class="owner" :class="ownerClass(review)" :data-testid="`safety-dashboard-owner-${review.eventId}`">
+              {{ ownerLabel(review) }}
+            </span>
           </div>
           <button
             type="button"
@@ -98,50 +101,70 @@
           </dl>
           <router-link class="full-link" :to="`/app/events/${review.eventId}`">Open the full event page →</router-link>
 
-          <label :for="`decision-${review.reviewId}`">Notes for the coordinator</label>
-          <textarea
-            :id="`decision-${review.reviewId}`"
-            v-model="decisionText"
-            rows="3"
-            maxlength="4000"
-            placeholder="Optional to approve; required to reject or request changes"
-            data-testid="safety-dashboard-text"
-          ></textarea>
-          <fieldset class="affected">
-            <legend>If requesting changes, review again:</legend>
-            <label><input v-model="affected" type="checkbox" value="venue" data-testid="safety-dashboard-affected-venue" /> Venue</label>
-            <label><input v-model="affected" type="checkbox" value="technical" data-testid="safety-dashboard-affected-technical" /> Equipment</label>
-          </fieldset>
-          <p v-if="actionError" class="form-error">{{ actionError }}</p>
-          <div class="actions">
-            <button
-              type="button"
-              class="btn btn-outline small"
-              :disabled="busy || !decisionText.trim()"
-              data-testid="safety-dashboard-reject"
-              @click="decide(review, 'reject')"
-            >
-              Reject
-            </button>
-            <button
-              type="button"
-              class="btn btn-outline small"
-              :disabled="busy || !decisionText.trim()"
-              data-testid="safety-dashboard-request-changes"
-              @click="decide(review, 'changes')"
-            >
-              Request changes
-            </button>
+          <!-- One Safety Officer per event: claim it first; only they decide. -->
+          <div v-if="!review.safetyOfficerId" class="claim">
+            <p>Nobody has claimed this review yet. Claim it to decide; later rounds of this event come to you too.</p>
+            <p v-if="actionError" class="form-error">{{ actionError }}</p>
             <button
               type="button"
               class="btn btn-solid small"
               :disabled="busy"
-              data-testid="safety-dashboard-approve"
-              @click="decide(review, 'approve')"
+              data-testid="safety-dashboard-claim"
+              @click="claim(review)"
             >
-              Approve
+              Claim review
             </button>
           </div>
+          <p v-else-if="!isMine(review)" class="claimed-note" data-testid="safety-dashboard-claimed">
+            {{ nameOf(review.safetyOfficerId) }} is reviewing this event, so only they can decide on it.
+          </p>
+
+          <template v-else>
+            <label :for="`decision-${review.reviewId}`">Notes for the coordinator</label>
+            <textarea
+              :id="`decision-${review.reviewId}`"
+              v-model="decisionText"
+              rows="3"
+              maxlength="4000"
+              placeholder="Optional to approve; required to reject or request changes"
+              data-testid="safety-dashboard-text"
+            ></textarea>
+            <fieldset class="affected">
+              <legend>If requesting changes, review again:</legend>
+              <label><input v-model="affected" type="checkbox" value="venue" data-testid="safety-dashboard-affected-venue" /> Venue</label>
+              <label><input v-model="affected" type="checkbox" value="technical" data-testid="safety-dashboard-affected-technical" /> Equipment</label>
+            </fieldset>
+            <p v-if="actionError" class="form-error">{{ actionError }}</p>
+            <div class="actions">
+              <button
+                type="button"
+                class="btn btn-outline small"
+                :disabled="busy || !decisionText.trim()"
+                data-testid="safety-dashboard-reject"
+                @click="decide(review, 'reject')"
+              >
+                Reject
+              </button>
+              <button
+                type="button"
+                class="btn btn-outline small"
+                :disabled="busy || !decisionText.trim()"
+                data-testid="safety-dashboard-request-changes"
+                @click="decide(review, 'changes')"
+              >
+                Request changes
+              </button>
+              <button
+                type="button"
+                class="btn btn-solid small"
+                :disabled="busy"
+                data-testid="safety-dashboard-approve"
+                @click="decide(review, 'approve')"
+              >
+                Approve
+              </button>
+            </div>
+          </template>
         </div>
       </article>
     </section>
@@ -164,10 +187,13 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import {
   approveSafetyReview,
+  claimSafetyReview,
   getSafetyReviewQueue,
   rejectSafetyReview,
   requestSafetyChanges,
 } from '../../api/eventService.js'
+import { getUsers } from '../../api/userService.js'
+import { session } from '../../store/session.js'
 import { formatUtc } from '../../utils/datetime.js'
 
 const COUNTS = [
@@ -187,6 +213,7 @@ const affected = ref([])
 const busy = ref(false)
 const actionError = ref('')
 const notice = ref('')
+const names = ref({})
 
 // The five most recent decisions of any kind, newest first.
 const recent = computed(() =>
@@ -207,6 +234,24 @@ function venueSummary(review) {
 function hasFlag(review) {
   const { venues, equipment } = review.package
   return venues.some((venue) => venue.needsReverification) || equipment.some((line) => line.needsReverification)
+}
+
+function isMine(review) {
+  return review.safetyOfficerId === session.userId
+}
+
+function nameOf(userId) {
+  return names.value[userId] || 'Another Safety Officer'
+}
+
+function ownerLabel(review) {
+  if (!review.safetyOfficerId) return 'Unclaimed'
+  return isMine(review) ? 'Yours' : `Claimed by ${nameOf(review.safetyOfficerId)}`
+}
+
+function ownerClass(review) {
+  if (!review.safetyOfficerId) return 'unclaimed'
+  return isMine(review) ? 'mine' : 'taken'
 }
 
 function errorText(err, fallback) {
@@ -237,6 +282,31 @@ function toggle(review) {
   actionError.value = ''
 }
 
+// Names are for display only; without them the dashboard still works.
+async function loadNames() {
+  try {
+    const { data } = await getUsers()
+    names.value = Object.fromEntries(data.map((user) => [user.userId, user.userName]))
+  } catch {
+    names.value = {}
+  }
+}
+
+async function claim(review) {
+  busy.value = true
+  actionError.value = ''
+  try {
+    await claimSafetyReview(review.eventId, review.reviewId)
+    notice.value = `You are now the Safety Officer for ${review.package.eventName}.`
+    await load()
+  } catch (err) {
+    // A 409 names the officer who claimed it first.
+    actionError.value = errorText(err, 'Could not claim the review. Please try again.')
+  } finally {
+    busy.value = false
+  }
+}
+
 async function decide(review, kind) {
   busy.value = true
   actionError.value = ''
@@ -261,7 +331,10 @@ async function decide(review, kind) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadNames()
+})
 </script>
 
 <style scoped>
@@ -310,6 +383,20 @@ onMounted(load)
   border-radius: 999px;
   padding: 2px 9px;
 }
+
+.owner {
+  align-self: flex-start;
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 2px 9px;
+  border: 1px solid var(--hairline);
+  color: var(--muted);
+}
+.owner.mine { color: var(--halo); background: rgba(124, 77, 255, .18); border-color: rgba(167, 139, 250, .3); }
+.claim { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.claim p:not(.form-error), .claimed-note { font-size: 13px; color: var(--muted); line-height: 1.55; margin: 0; }
 
 .review { border-top: 1px solid var(--hairline); margin-top: 14px; padding-top: 14px; }
 .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; margin: 0 0 10px; }

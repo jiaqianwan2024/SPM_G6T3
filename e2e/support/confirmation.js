@@ -92,7 +92,10 @@ export function submitSafetyReview(event) {
   })
 }
 
-export function decideSafetyReview(event, review, action, body = {}) {
+// The officer claims the review first (a no-op once it is theirs); only the
+// Safety Officer who claimed the event can decide on it.
+export async function decideSafetyReview(event, review, action, body = {}) {
+  await events('POST', `/${event.eventId}/safety-reviews/${review.reviewId}/claim`, 'SO-01')
   return events('POST', `/${event.eventId}/safety-reviews/${review.reviewId}/${action}`, 'SO-01', body)
 }
 

@@ -770,6 +770,11 @@ class SafetyReviewOut(BaseModel):
     submittedBy: str
     submittedAt: datetime
     package: SafetyPackage
+    safetyOfficerId: str | None = Field(
+        default=None,
+        description="The Safety Officer who claimed the event's safety review; null until one claims it. "
+        "Only they can decide, and every later round goes to them.",
+    )
     decidedBy: str | None = Field(default=None, description="The officer who decided, or who changed the event (superseded).")
     decidedAt: datetime | None = None
     decisionNote: str | None = Field(

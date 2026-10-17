@@ -119,13 +119,21 @@ class SafetyCase(EventCase):
     def status(self, event_id="e1"):
         return self.service.get_event(event_id).status
 
+    def claim(self, review_id, officer_id="safety-1", event_id="e1"):
+        return self.service.claim_safety_review(event_id, review_id, officer_id, "Bearer token")
+
+    # The decision helpers claim first, as the officer would; claiming an event
+    # the officer already holds changes nothing.
     def approve(self, review_id, note=""):
+        self.claim(review_id)
         return self.service.approve_safety_review("e1", review_id, SafetyApproval(note=note), "safety-1", "Bearer token")
 
     def reject(self, review_id, reason="Exits blocked by the stage."):
+        self.claim(review_id)
         return self.service.reject_safety_review("e1", review_id, SafetyRejection(reason=reason), "safety-1", "Bearer token")
 
     def request_changes(self, review_id, changes="Move the stage away from exit B.", affected=()):
+        self.claim(review_id)
         return self.service.request_safety_changes(
             "e1", review_id, SafetyChangeRequest(requiredChanges=changes, affected=list(affected)), "safety-1", "Bearer token"
         )
@@ -306,6 +314,7 @@ class TestApproving(SafetyCase):
     def test_approve_records_the_decision_the_officer_and_the_time_and_waits_for_confirmation(self):
         self.event()
         review = self.submit()
+        self.claim(review.reviewId)
         self.mocks["email"].reset_mock()
         self.mocks["inbox"].reset_mock()
 
@@ -424,6 +433,90 @@ class TestDecisionRules(SafetyCase):
 
         self.assertEqual(self.reject(review.reviewId).status, "rejected")
         self.assertEqual(self.published_to("safety.rejected"), {"coord-1", "org-1"})
+
+
+class TestOneOfficerPerEvent(SafetyCase):
+    """SPM-120: one Safety Officer claims the event and decides on it."""
+
+    def test_a_new_review_is_unclaimed_and_every_officer_is_told(self):
+        self.event()
+
+        review = self.submit()
+
+        self.assertIsNone(review.safetyOfficerId)
+        self.assertEqual(self.published_to("safety.submitted"), {"safety-1", "safety-2"})
+
+    def test_claiming_makes_the_officer_the_events_and_tells_the_coordinator(self):
+        self.event()
+        review = self.submit()
+        self.mocks["email"].reset_mock()
+
+        claimed = self.claim(review.reviewId)
+
+        self.assertEqual(claimed.safetyOfficerId, "safety-1")
+        self.assertEqual(self.service.get_safety_reviews("e1", COORDINATOR)[0].safetyOfficerId, "safety-1")
+        self.assertEqual([row.safetyOfficerId for row in self.service.list_safety_reviews()], ["safety-1"])
+        to, subject, _body, _ = self.mocks["email"].call_args.args
+        self.assertEqual((to, subject), ("ben@connectsphere.com", "Hana Yusof is reviewing Summit"))
+        self.assertEqual(self.inboxes()[-1][:3], ("coord-1", "e1", "event.safety_review"))
+
+    def test_claiming_again_is_a_no_op_for_the_same_officer(self):
+        self.event()
+        review = self.submit()
+        self.claim(review.reviewId)
+        self.mocks["email"].reset_mock()
+
+        self.assertEqual(self.claim(review.reviewId).safetyOfficerId, "safety-1")
+        self.mocks["email"].assert_not_called()
+
+    def test_another_officer_cannot_claim_or_decide(self):
+        self.event()
+        review = self.submit()
+        self.claim(review.reviewId)
+
+        error = self.refused(self.claim, review.reviewId, "safety-2")
+        self.assertEqual((error.status_code, error.detail), (409, "Hana Yusof has already claimed this safety review"))
+        error = self.refused(
+            self.service.approve_safety_review, "e1", review.reviewId, SafetyApproval(), "safety-2", "Bearer token"
+        )
+        self.assertEqual(error.status_code, 403)
+        self.assertEqual(self.status(), "safety review")
+
+    def test_an_unclaimed_review_cannot_be_decided(self):
+        self.event()
+        review = self.submit()
+
+        decisions = (
+            (self.service.approve_safety_review, SafetyApproval()),
+            (self.service.reject_safety_review, SafetyRejection(reason="No")),
+            (self.service.request_safety_changes, SafetyChangeRequest(requiredChanges="Change it")),
+        )
+        for decide, body in decisions:
+            with self.subTest(decision=decide.__name__):
+                error = self.refused(decide, "e1", review.reviewId, body, "safety-1", "Bearer token")
+                self.assertEqual((error.status_code, error.detail), (409, "Claim this safety review before deciding on it"))
+        self.assertEqual(self.status(), "safety review")
+
+    def test_only_a_pending_review_can_be_claimed(self):
+        self.event()
+        review = self.submit()
+        self.reject(review.reviewId)
+
+        self.assertEqual(self.refused(self.claim, review.reviewId, "safety-2").status_code, 409)
+
+    def test_a_resubmission_goes_to_the_officer_who_claimed_the_event(self):
+        self.event()
+        self.reject(self.submit().reviewId)
+        self.mocks["email"].reset_mock()
+
+        second = self.submit()
+
+        self.assertEqual(second.safetyOfficerId, "safety-1")
+        self.assertEqual({args[0] for args in self.emails()}, {"hana@connectsphere.com"})
+        self.assertEqual(self.published_to("safety.submitted"), {"safety-1"})
+        error = self.refused(self.claim, second.reviewId, "safety-2")
+        self.assertEqual(error.status_code, 409)
+        self.assertEqual(self.approve(second.reviewId).status, "approved")
 
 
 class TestChangesDuringReview(SafetyCase):
@@ -598,7 +691,11 @@ class TestSafetyRoutes(ServiceTestCase):
         self.assertEqual(response.status_code, 201)
         return response.json()["reviewId"]
 
+    def claim(self, review_id):
+        return self.client.post(f"/events/e1/safety-reviews/{review_id}/claim", headers=HEADERS)
+
     def decide(self, review_id, action, body):
+        self.claim(review_id)
         return self.client.post(f"/events/e1/safety-reviews/{review_id}/{action}", headers=HEADERS, json=body)
 
     def test_submit_queue_history_and_approve(self):
@@ -608,6 +705,8 @@ class TestSafetyRoutes(ServiceTestCase):
         self.assertEqual([row["reviewId"] for row in queue.json()], [review_id])
         self.assertEqual(queue.json()[0]["package"]["venues"][0]["emergencyAccess"], VENUE["emergencyAccess"])
 
+        claimed = self.claim(review_id)
+        self.assertEqual((claimed.status_code, claimed.json()["safetyOfficerId"]), (200, "safety-1"))
         approved = self.decide(review_id, "approve", {})
         self.assertEqual((approved.status_code, approved.json()["status"]), (200, "approved"))
         self.assertEqual(self.client.get("/events/e1", headers=HEADERS).json()["status"], "safety approved")
@@ -641,6 +740,8 @@ class TestSafetyRoutes(ServiceTestCase):
             for action, body in bodies.items():
                 with self.subTest(role=caller["role"], action=action):
                     self.assertEqual(self.decide(review_id, action, body).status_code, 403)
+            with self.subTest(role=caller["role"], action="claim"):
+                self.assertEqual(self.claim(review_id).status_code, 403)
             with self.subTest(role=caller["role"], action="queue"):
                 self.assertEqual(self.client.get("/events/safety-reviews", headers=HEADERS).status_code, 403)
         self.assertEqual(self.client.get("/events/e1", headers=HEADERS).json()["status"], "safety review")

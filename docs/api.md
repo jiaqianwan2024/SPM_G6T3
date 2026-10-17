@@ -45,7 +45,8 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `POST /events/{id}/safety-reviews` | `coordinator` assigned to the event (SPM-120); only from `planning` |
 | `GET /events/safety-reviews` | `safety` |
 | `GET /events/{id}/safety-reviews` | `organiser` of that event's organisation, `coordinator`, `venue`, `techsupport`, `safety` |
-| `POST /events/{id}/safety-reviews/{rid}/approve`, `/reject`, or `/request-changes` | `safety` only; every other role gets 403 |
+| `POST /events/{id}/safety-reviews/{rid}/claim` | `safety`; 409 once another officer has claimed the event |
+| `POST /events/{id}/safety-reviews/{rid}/approve`, `/reject`, or `/request-changes` | the `safety` officer who claimed the event; another officer and every other role get 403, an unclaimed review is 409 |
 | `GET /events/{id}/confirmation`, `POST /events/{id}/confirm` | `coordinator` assigned to the event (SPM-72); confirming only from `safety approved` |
 | `POST` or `DELETE /events/{id}/equipment-lines/{equipmentId}/not-required` | `coordinator` assigned to the event (SPM-72); only in `planning` |
 | `PATCH /events/{id}/registration-settings` | `coordinator` assigned to the event (SPM-90); from `planning` until `confirmed` |
@@ -217,11 +218,13 @@ Week 7 change 6: the staff who confirmed each arrangement send it to the Safety 
   - the equipment placement (required when the event has any equipment);
   - crowd movement.
 - **Flags:** a booking or reservation with `needsReverification` does not count. The submission is 409, naming the re-verification, and nothing is submitted until Venue Staff or technical support re-confirm it (SPM-86).
-- **Who's told:** every Safety Officer is notified.
+- **Who's told:** every Safety Officer is notified until one claims the event. After that, every later round goes to that officer alone.
 
 `GET /events/safety-reviews?status=pending` is the officers' queue, longest-waiting first. `GET /events/{id}/safety-reviews` lists an event's reviews, newest first, for the organiser's organisation and staff.
 
-Decisions apply to the pending review, by Safety Officers only; every other role gets 403:
+**One officer per event.** `POST …/{rid}/claim` makes the caller the event's Safety Officer (`safetyOfficerId` on every review of the event). Claiming the pending review of an event you already hold returns it unchanged. If another officer holds it, the response is 409 naming them. A review that is not pending is 409. Claims are atomic, so two officers claiming at once cannot both win. The coordinator gets an email and an in-app notice (`event.safety_review`) naming the officer. The officer keeps the event across rejections, change requests, and resubmissions; there is no release yet.
+
+Decisions apply to the pending review, by the Safety Officer who claimed the event only. An unclaimed review is 409 (`Claim this safety review before deciding on it`), another officer is 403, and every other role gets 403:
 
 - `POST …/{rid}/approve` with an optional `note`: records `decidedBy` and `decidedAt`, and the event moves to `safety approved`. The coordinator then confirms it (SPM-72).
 - `POST …/{rid}/reject` with a required `reason`: the event returns to `planning`. It doesn't proceed to preparation and isn't cancelled; the coordinator can revise the arrangements and submit again.
