@@ -10,7 +10,7 @@ from app.main import app
 from app.models.event_assignment import EventAssignment
 from app.models.event_status_history import EventStatusHistory
 from app.orchestration import clients
-from app.schemas.event import EventAssignmentCreate
+from app.schemas.event import EventAssignmentCreate, EventRejection
 from shared.auth.deps import require_authenticated_user
 from shared.exceptions.http import forbidden, service_unavailable
 from tests.unit.support import COORDINATOR, EventCase, event_create, insert_event
@@ -218,7 +218,7 @@ class TestCandidatesAndLog(AssignmentCase):
         self.event(event_id="b", status="under review", coordinatorId="coord-1")
 
         self.assertEqual(self.service.approve_event("a", "coord-1").status, "planning")
-        self.assertEqual(self.service.reject_event("b", "coord-1", "Dates clash").status, "rejected")
+        self.assertEqual(self.service.reject_event("b", "coord-1", EventRejection(reason="insufficient notice", explanation="Too late")).status, "rejected")
         with self.assertRaises(HTTPException) as ctx:
             self.service.approve_event("a", "coord-1")
         self.assertEqual(ctx.exception.status_code, 409)

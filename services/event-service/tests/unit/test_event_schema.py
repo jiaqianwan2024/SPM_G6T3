@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 
-from app.schemas.event import EventAssignmentCreate, EventDecision
+from app.schemas.event import EventAssignmentCreate
 from tests.unit.support import START, draft_payload, event_create
 
 
@@ -69,9 +69,7 @@ class TestEventSchema(unittest.TestCase):
         with self.assertRaises(ValidationError):
             event_create(expectedAttendance=0)
 
-    def test_decision_and_assignment_models_keep_optional_fields(self):
-        decision = EventDecision()
+    def test_assignment_model_keeps_its_coordinator(self):
         assignment = EventAssignmentCreate(coordinatorId="coord-1")
 
-        self.assertIsNone(decision.reason)
         self.assertEqual(assignment.coordinatorId, "coord-1")

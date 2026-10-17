@@ -156,7 +156,8 @@ const narrowed = computed(() => {
 })
 
 const flags = computed(() => {
-  const counts = new Map(events.value.map((event) => [event.status, 0]))
+  // SPM-70 AC6: Rejected is always offered, so an organiser knows where a rejected request will be.
+  const counts = new Map([['rejected', 0], ...events.value.map((event) => [event.status, 0])])
   for (const event of narrowed.value) {
     counts.set(event.status, (counts.get(event.status) || 0) + 1)
   }

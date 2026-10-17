@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.models.event_change_request import EventChangeRequest
 from app.schemas.followup import ReadinessCreate, ReadinessPatch
-from app.orchestration.clients import release_event_holds
+from app.orchestration.clients import release_event_holds, release_event_venue_bookings
 from app.schemas.event import OrganiserDraftPatch
 from app.services.event_followup import EventFollowUp, _clock, _equipment_status, _person, _schedule_aspects, _soft_get
 from pydantic import ValidationError
@@ -374,6 +374,15 @@ class TestFollowUp(EventCase):
         with patch("app.orchestration.clients.httpx.Client") as client:
             client.return_value.__enter__.return_value.post.return_value = MagicMock()
             release_event_holds("e1", None)
+        with patch("app.orchestration.clients.httpx.Client") as client:
+            client.return_value.__enter__.return_value.post.side_effect = httpx.HTTPError("down")
+            release_event_venue_bookings("e1", "Bearer token")
+        with patch("app.orchestration.clients.httpx.Client") as client:
+            client.return_value.__enter__.return_value.post.return_value = MagicMock()
+            release_event_venue_bookings("e1", None)
+            post = client.return_value.__enter__.return_value.post
+            self.assertTrue(post.call_args.args[0].endswith("/venues/bookings/release"))
+            self.assertEqual(post.call_args.kwargs["json"], {"eventId": "e1"})
 
 
 class TestFollowUpRoutes(ServiceTestCase):

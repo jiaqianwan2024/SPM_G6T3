@@ -34,7 +34,8 @@ from app.schemas.event import (
     EventAssignmentCreate,
     EventAssignmentOut,
     EventCoordinatorOut,
-    EventDecision,
+    EventRejection,
+    EventRejectionOut,
     EventIntake,
     EventConfirmOut,
     EventDecisionOut,
@@ -1006,15 +1007,27 @@ def approve_event(
     )
 
 
-@router.post("/{event_id}/reject", response_model=EventOut)
+@router.post(
+    "/{event_id}/reject",
+    response_model=EventRejectionOut,
+    summary="Reject a request",
+    description="Assigned coordinator only (SPM-70). Moves a request that is `under review` or `changes requested` "
+    "to `rejected`, which is final. `reason` must be one of `no suitable venue available`, "
+    "`insufficient equipment`, `insufficient notice` or `outside ConnectSphere services`, and `explanation` is "
+    "required free text. Both are shown to the organiser (`GET /events/{id}/decision`) and the organiser is "
+    "emailed (best effort). Venue requests and bookings and equipment reservations held for the event are "
+    "released (best effort). 409 when no coordinator is assigned or the request is not under review; 403 for any "
+    "other coordinator; 422 for a reason outside the list or a blank explanation.",
+    responses=error_responses(403, 404, 409),
+)
 def reject_event(
     event_id: str,
-    body: EventDecision,
+    body: EventRejection,
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
-    return service.reject_event(event_id, caller["userId"], body.reason or "", authorization)
+    return service.reject_event(event_id, caller["userId"], body, authorization)
 
 
 @router.get(

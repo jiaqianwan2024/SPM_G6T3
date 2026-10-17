@@ -122,6 +122,33 @@ class TestPublish(ServiceTestCase):
                 "Equipment for AI in Events Summit was released. Reason: Stock moved to another venue",
             )
 
+    def test_a_rejected_request_tells_the_organiser_the_reason_and_explanation(self):
+        ctx = {**CONTEXT, "reason": "insufficient notice", "explanation": "Too close to the date."}
+        result = self.publish(
+            trigger="event.rejected",
+            recipients=[{"userId": "u-org", "role": "organiser"}],
+            context=ctx,
+            actor_id="u-coord",
+        )
+
+        self.assertEqual(result.created, 1)
+        row = self.rows()[0]
+        self.assertEqual((row.userId, row.title), ("u-org", "Your request was rejected"))
+        self.assertEqual(
+            row.body,
+            "AI in Events Summit was rejected. Reason: insufficient notice. Explanation: Too close to the date.",
+        )
+
+    def test_a_rejection_needs_its_reason_and_explanation_and_goes_only_to_the_organiser(self):
+        with self.assertRaisesRegex(PublishError, "event.rejected needs: reason, explanation"):
+            self.publish(trigger="event.rejected", recipients=[{"userId": "u-org", "role": "organiser"}])
+        with self.assertRaises(PublishError):
+            self.publish(
+                trigger="event.rejected",
+                recipients=[COORD],
+                context={**CONTEXT, "reason": "insufficient notice", "explanation": "Too late."},
+            )
+
     def test_a_release_with_no_reason_is_refused_and_notifies_no_one(self):
         for context in (CONTEXT, {**CONTEXT, "reason": "   "}):
             with self.subTest(context=context):

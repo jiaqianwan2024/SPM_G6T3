@@ -168,11 +168,28 @@
     <div v-if="rejecting" class="modal-backdrop" @click.self="rejecting = null">
       <div class="modal">
         <h3>Reject {{ rejecting.eventName }}</h3>
-        <label>Reason (optional)</label>
-        <textarea v-model="rejectReason" rows="3" placeholder="Let the organiser know why"></textarea>
+        <label for="reject-reason">Reason</label>
+        <select id="reject-reason" v-model="rejectReason" data-testid="reject-reason">
+          <option value="" disabled>Choose a reason</option>
+          <option v-for="reason in REJECTION_REASONS" :key="reason" :value="reason">{{ reason }}</option>
+        </select>
+        <label for="reject-explanation">Explanation for the organiser</label>
+        <textarea
+          id="reject-explanation"
+          v-model="rejectExplanation"
+          rows="3"
+          maxlength="2000"
+          placeholder="Let the organiser know why"
+          data-testid="reject-explanation"
+        ></textarea>
         <div class="modal-actions">
           <button class="btn btn-outline" @click="rejecting = null">Cancel</button>
-          <button class="btn btn-solid" :disabled="isBusy(rejecting.eventId)" @click="confirmReject">
+          <button
+            class="btn btn-solid"
+            data-testid="reject-confirm"
+            :disabled="isBusy(rejecting.eventId) || !rejectReason || !rejectExplanation.trim()"
+            @click="confirmReject"
+          >
             Reject event
           </button>
         </div>
@@ -185,7 +202,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { getCoordinatorCandidates, getSubmissionQueue, rejectEvent } from '../../api/eventService.js'
 import { getMe } from '../../api/userService.js'
-import { IN_REVIEW_EVENT_STATUSES } from '../../config/eventStatus.js'
+import { IN_REVIEW_EVENT_STATUSES, REJECTION_REASONS } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
 import ApproveEventDialog from '../event-detail/ApproveEventDialog.vue'
 import AssignCoordinatorDialog from '../event-detail/AssignCoordinatorDialog.vue'
@@ -199,6 +216,7 @@ const rowErrors = reactive({})
 const selected = ref(null)
 const rejecting = ref(null)
 const rejectReason = ref('')
+const rejectExplanation = ref('')
 const assigning = ref(null)
 const approving = ref(null)
 const dialogOpen = computed(() => Boolean(assigning.value || rejecting.value || approving.value))
@@ -233,9 +251,9 @@ function canApprove(event) {
   )
 }
 
-// SPM-70: only the assigned coordinator rejects, while the request awaits a decision.
+// SPM-70 AC1: only the assigned coordinator rejects, while the request is under review or has changes requested.
 function canReject(event) {
-  return !!event.coordinatorId && event.coordinatorId === myUserId.value && ['submitted', 'under review'].includes(event.status)
+  return !!event.coordinatorId && event.coordinatorId === myUserId.value && IN_REVIEW_EVENT_STATUSES.includes(event.status)
 }
 
 function coordinatorName(userId) {
@@ -421,6 +439,7 @@ async function onAssigned(assignment) {
 function openReject(event) {
   rejecting.value = event
   rejectReason.value = ''
+  rejectExplanation.value = ''
 }
 
 async function confirmReject() {
@@ -428,7 +447,7 @@ async function confirmReject() {
   busyIds.add(event.eventId)
   delete rowErrors[event.eventId]
   try {
-    await rejectEvent(event.eventId, rejectReason.value)
+    await rejectEvent(event.eventId, rejectReason.value, rejectExplanation.value.trim())
     removeFromQueue(event.eventId)
     rejecting.value = null
   } catch (err) {
@@ -593,6 +612,7 @@ onUnmounted(() => clearInterval(ticker))
   font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
   color: var(--muted); display: block; margin-bottom: 6px;
 }
+.modal select,
 .modal textarea {
   width: 100%;
   border: 1px solid var(--hairline);
@@ -605,6 +625,8 @@ onUnmounted(() => clearInterval(ticker))
   resize: vertical;
   line-height: 1.6;
 }
+.modal select { margin-bottom: 16px; }
+.modal select:focus,
 .modal textarea:focus {
   outline: none;
   border-color: rgba(167, 139, 250, .6);

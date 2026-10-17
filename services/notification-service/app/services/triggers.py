@@ -77,6 +77,14 @@ TRIGGERS: dict[str, Trigger] = {
             recipient_roles=_SAFETY_RECIPIENTS,
             required_context=("eventName", "reason"),
         ),
+        # SPM-70 AC4: the coordinator rejected the request. The organiser reads the reason and explanation.
+        Trigger(
+            key="event.rejected",
+            title="Your request was rejected",
+            body="{eventName} was rejected. Reason: {reason}. Explanation: {explanation}",
+            recipient_roles=frozenset({"organiser"}),
+            required_context=("eventName", "reason", "explanation"),
+        ),
         # SPM-78 AC4: a reservation released on a confirmed event. The reason is required,
         # so a release with no reason publishes nothing.
         Trigger(
