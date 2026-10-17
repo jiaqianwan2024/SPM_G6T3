@@ -58,7 +58,9 @@
     </form>
 
     <p v-if="latest?.status === 'pending' && !isOfficer" class="notice" data-testid="safety-pending">
-      Submitted {{ formatUtc(latest.submittedAt) }}. Waiting for a Safety Officer.
+      Submitted {{ formatUtc(latest.submittedAt) }}.
+      <template v-if="latest.safetyOfficerId">{{ nameOf(latest.safetyOfficerId) }} is reviewing it.</template>
+      <template v-else>Waiting for a Safety Officer to claim it.</template>
     </p>
 
     <!-- AC3–AC6, AC9: the latest decision, for everyone who can see the panel. -->
@@ -154,8 +156,28 @@
       </dl>
     </details>
 
-    <!-- AC3: Safety Officers decide; the server refuses everyone else with 403 (AC8). -->
-    <div v-if="isOfficer && latest?.status === 'pending'" class="decision" data-testid="safety-decision">
+    <!-- One Safety Officer per event: an officer claims the review before deciding. -->
+    <div v-if="isOfficer && latest?.status === 'pending' && !latest.safetyOfficerId" class="decision" data-testid="safety-claim-panel">
+      <p class="hint">
+        Nobody has claimed this review yet. Claim it to decide; later rounds of this event come to you too.
+      </p>
+      <p v-if="decisionError" class="form-error">{{ decisionError }}</p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-solid small" :disabled="busy" data-testid="safety-claim" @click="claim">
+          Claim review
+        </button>
+      </div>
+    </div>
+    <p
+      v-else-if="isOfficer && latest?.status === 'pending' && !isMine"
+      class="notice"
+      data-testid="safety-claimed"
+    >
+      {{ nameOf(latest.safetyOfficerId) }} is reviewing this event, so only they can decide on it.
+    </p>
+
+    <!-- AC3: the claiming Safety Officer decides; the server refuses everyone else with 403 (AC8). -->
+    <div v-if="isMine && latest?.status === 'pending'" class="decision" data-testid="safety-decision">
       <label for="safety-decision-text">Notes for the coordinator</label>
       <textarea
         id="safety-decision-text"
@@ -205,6 +227,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import {
   approveSafetyReview,
+  claimSafetyReview,
   getSafetyReviews,
   rejectSafetyReview,
   requestSafetyChanges,
@@ -258,6 +281,8 @@ const busy = ref(false)
 
 const latest = computed(() => reviews.value[0] || null)
 const isOfficer = computed(() => session.role === 'safety')
+// The officer who claimed the event, the only one who can decide on it.
+const isMine = computed(() => isOfficer.value && !!latest.value?.safetyOfficerId && latest.value.safetyOfficerId === session.userId)
 const canSubmit = computed(
   () =>
     session.role === 'coordinator' &&
@@ -332,6 +357,20 @@ async function submit() {
     }
   } finally {
     saving.value = false
+  }
+}
+
+async function claim() {
+  busy.value = true
+  decisionError.value = ''
+  try {
+    await claimSafetyReview(props.event.eventId, latest.value.reviewId)
+    await load()
+  } catch (err) {
+    // A 409 names the officer who claimed it first.
+    decisionError.value = errorText(err, 'Could not claim the review. Please try again.')
+  } finally {
+    busy.value = false
   }
 }
 

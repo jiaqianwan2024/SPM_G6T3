@@ -117,6 +117,7 @@ Lifecycle state is stored in `status`, not a separate table.
 | submitted_at | DATETIME nullable | |
 | confirmed_by | VARCHAR(64) nullable | SPM-72: the coordinator who confirmed it (`0009` migration) |
 | confirmed_at | DATETIME nullable | SPM-72 |
+| safety_officer_id | VARCHAR(64) nullable | SPM-120: logical FK → users; the Safety Officer who claimed the event's safety review, kept for every later round (`0012` migration) |
 | created_at | DATETIME | |
 | updated_at | DATETIME | |
 

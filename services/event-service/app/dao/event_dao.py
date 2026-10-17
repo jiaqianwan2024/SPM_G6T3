@@ -101,5 +101,22 @@ class EventDAO(BaseDAO):
             .all()
         )
 
+    def safety_officers(self, event_ids: list[str]) -> dict[str, str | None]:
+        """SPM-120: eventId -> the Safety Officer who claimed it, in one query."""
+        if not event_ids:
+            return {}
+        rows = self.db.query(Event.eventId, Event.safetyOfficerId).filter(Event.eventId.in_(event_ids)).all()
+        return {event_id: officer_id for event_id, officer_id in rows}
+
+    def claim_safety_review(self, event_id: str, officer_id: str) -> bool:
+        """SPM-120: sets the event's Safety Officer only if nobody has claimed it,
+        in one UPDATE, so two officers claiming at once cannot both win."""
+        claimed = (
+            self.db.query(Event)
+            .filter(Event.eventId == event_id, Event.safetyOfficerId.is_(None))
+            .update({Event.safetyOfficerId: officer_id, Event.updatedAt: datetime.utcnow()}, synchronize_session=False)
+        )
+        return claimed == 1
+
     def add(self, row: Event) -> None:
         self.db.add(row)

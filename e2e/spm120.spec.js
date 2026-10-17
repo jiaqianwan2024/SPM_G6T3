@@ -49,7 +49,9 @@ async function underSafetyReview(label) {
   return { event, review: submitted.body }
 }
 
-function decide(event, review, action, accountId, body) {
+// Claims first, as the officer would; claiming a review you hold is a no-op.
+async function decide(event, review, action, accountId, body) {
+  await eventApi('POST', `/${event.eventId}/safety-reviews/${review.reviewId}/claim`, accountId)
   return eventApi('POST', `/${event.eventId}/safety-reviews/${review.reviewId}/${action}`, accountId, body)
 }
 
@@ -179,6 +181,12 @@ test.describe('SPM-120 Safety review after venue and technical arrangements are 
     const { event } = await underSafetyReview('ac04')
     await login(page, account('SO-01'))
     await page.goto(`/app/events/${event.eventId}`)
+    await expect(page.getByTestId('safety-decision')).toHaveCount(0)
+    const claimed = page.waitForResponse(
+      (response) => /\/safety-reviews\/[^/]+\/claim$/.test(response.url()) && response.request().method() === 'POST',
+    )
+    await page.getByTestId('safety-claim').click()
+    expect((await claimed).status()).toBe(200)
     const decision = page.waitForResponse(
       (response) => /\/safety-reviews\/[^/]+\/approve$/.test(response.url()) && response.request().method() === 'POST',
     )
@@ -240,6 +248,9 @@ test.describe('SPM-120 Safety review after venue and technical arrangements are 
     await expect(item).toBeVisible()
     await page.getByTestId(`safety-dashboard-review-${event.eventId}`).click()
     await expect(item).toContainText(/emergency access/i)
+    await expect(page.getByTestId(`safety-dashboard-owner-${event.eventId}`)).toHaveText(/unclaimed/i)
+    await item.getByTestId('safety-dashboard-claim').click()
+    await expect(page.getByTestId(`safety-dashboard-owner-${event.eventId}`)).toHaveText(/yours/i)
     await item.getByTestId('safety-dashboard-text').fill('Keep the stage clear of exit B.')
     await item.getByTestId('safety-dashboard-affected-technical').check()
     const decision = page.waitForResponse(

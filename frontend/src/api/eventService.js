@@ -173,7 +173,12 @@ export const getSafetyReviewQueue = (status = "pending") =>
 // Every review of the event, newest first, each with the facts submitted and the outcome.
 export const getSafetyReviews = (eventId) => axiosClient.get(`/events/${eventId}/safety-reviews`);
 
-// Safety Officers only; every other role gets 403.
+// Safety Officers only; every other role gets 403. The officer becomes the
+// event's Safety Officer, and only they can decide on it.
+export const claimSafetyReview = (eventId, reviewId) =>
+  axiosClient.post(`/events/${eventId}/safety-reviews/${reviewId}/claim`);
+
+// The Safety Officer who claimed the event only; anyone else gets 403.
 export const approveSafetyReview = (eventId, reviewId, note = "") =>
   axiosClient.post(`/events/${eventId}/safety-reviews/${reviewId}/approve`, { note });
 
