@@ -57,11 +57,7 @@ export const roles = {
   attendee: {
     label: 'Attendee',
     tabs: ['Dashboard', 'Browse Events', 'My Registrations', 'Waiting List', 'Profile'],
-    cards: [
-      { title: 'Open for registration', sub: '6 upcoming events accepting sign-ups' },
-      { title: 'My registrations', sub: '2 confirmed events' },
-      { title: 'Waiting list status', sub: '1 event — position 3' },
-      { title: 'Closing soon', sub: 'Registration for AI Summit closes in 2 days' }
-    ]
+    // The Dashboard tab is AttendeeHome (live registrations and open events), not cards.
+    cards: []
   }
 }
