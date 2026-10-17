@@ -43,6 +43,7 @@ from app.orchestration.clients import (
     publish_notification,
     record_notification,
     release_event_holds,
+    release_event_venue_bookings,
     registered_attendees,
     registration_count,
     send_notification,
@@ -72,6 +73,8 @@ from app.schemas.event import (
     EventCreate,
     EventConfirmOut,
     EventDecisionOut,
+    EventRejection,
+    EventRejectionOut,
     EquipmentNotRequired,
     EventDraftUpsert,
     EventInternalNotesOut,
@@ -134,12 +137,9 @@ EVENT_STATUSES = (
 
 # Statuses the coordinator review queue (GET /events/queue) includes.
 QUEUE_STATUSES = ("submitted", "under review", "changes requested")
-# Reject applies while the request waits for a decision. Assigning a
-# coordinator moves a submitted request to "under review" (SPM-66 AC6), and it
-# must still be decidable from there.
-DECIDABLE_STATUSES = ("submitted", "under review")
 # An assigned request under review, or waiting on the organiser. Its assigned
-# coordinator can raise clarifications on it (SPM-68) or approve it (SPM-69).
+# coordinator can raise clarifications on it (SPM-68), approve it (SPM-69) or
+# reject it (SPM-70).
 IN_REVIEW_STATUSES = ("under review", "changes requested")
 # SPM-68 AC2/AC5: raising a clarification moves a request to this status, and
 # resolving the last open one returns it to "under review".
@@ -1630,26 +1630,6 @@ class EventService(BaseService):
             )
         )
 
-    def _decide_event(
-        self,
-        event_id: str,
-        coordinator_id: str,
-        new_status: str,
-        reason: str,
-        authorization: str | None = None,
-    ) -> EventOut:
-        event = self._require_event(event_id)
-        if event.status not in DECIDABLE_STATUSES:
-            raise conflict(f"Event is already {event.status}")
-        self._record_status_change(event, new_status, coordinator_id, reason)
-        event.status = new_status
-        event.updatedAt = datetime.utcnow()
-        self.db.commit()
-        self.db.refresh(event)
-        if new_status in ("rejected", "cancelled", "completed"):
-            release_event_holds(event.eventId, authorization)
-        return _to_out(event, authorization)
-
     def approve_event(
         self,
         event_id: str,
@@ -1754,6 +1734,7 @@ class EventService(BaseService):
         return EventDecisionOut(
             eventId=event.eventId,
             decision=DECISIONS[review.action],
+            decisionReason=review.reason,
             decisionNote=review.comment,
             decidedBy=review.reviewerId,
             decidedAt=review.createdAt,
@@ -1961,13 +1942,80 @@ class EventService(BaseService):
         self,
         event_id: str,
         coordinator_id: str,
-        reason: str = "",
+        data: EventRejection,
         authorization: str | None = None,
-    ) -> EventOut:
-        # SPM-70 AC1: only the assigned coordinator rejects; each coordinator
-        # manages only the events assigned to them.
-        _require_assigned_coordinator(self._require_event(event_id), coordinator_id, "reject it")
-        return self._decide_event(event_id, coordinator_id, "rejected", reason, authorization)
+    ) -> EventRejectionOut:
+        """SPM-70: the assigned coordinator turns down a request ConnectSphere cannot take on.
+
+        Only the assigned coordinator can reject, and only while the request is
+        under review or changes requested (AC1). The listed reason and the
+        explanation are stored as a `reject` review that the organiser reads
+        through `GET /events/{id}/decision` (AC4). Rejected is terminal (AC3):
+        every later edit, approval and clarification is refused because the
+        status is no longer a review status. The status change goes in the
+        activity log with the listed reason only, so the explanation stays out
+        of the log that attendees can read (AC6). After the save, the venue
+        bookings and equipment reservations held for the event are released
+        (AC5) and the organiser is emailed (AC4), both best effort.
+        """
+        event = self._require_event(event_id)
+        _require_assigned_coordinator(event, coordinator_id, "reject it")
+        if event.status not in IN_REVIEW_STATUSES:
+            raise conflict(f"Only a request under review can be rejected (this one is {event.status})")
+        now = datetime.utcnow()
+        self.review_dao.add(
+            EventReview(
+                reviewId=str(uuid4()),
+                eventId=event.eventId,
+                reviewerId=coordinator_id,
+                action="reject",
+                reason=data.reason,
+                comment=data.explanation,
+                createdAt=now,
+            )
+        )
+        self._record_status_change(event, "rejected", coordinator_id, data.reason, now)
+        event.status = "rejected"
+        event.updatedAt = now
+        self.db.commit()
+        self.db.refresh(event)
+        release_event_venue_bookings(event.eventId, authorization)
+        release_event_holds(event.eventId, authorization)
+        self._notify_rejection(event, data, coordinator_id, authorization)
+        return _to_out(
+            event,
+            authorization,
+            out_type=EventRejectionOut,
+            decisionReason=data.reason,
+            decisionNote=data.explanation,
+            decidedBy=coordinator_id,
+            decidedAt=now,
+        )
+
+    def _notify_rejection(
+        self, event: Event, data: EventRejection, coordinator_id: str, authorization: str | None
+    ) -> None:
+        """Best effort: the rejection is already saved, so a directory or email
+        failure is logged rather than raised. The organiser gets an in-app
+        notification (SPM-93) as well as the email."""
+        publish_notification(
+            "event.rejected",
+            event.eventId,
+            f"{event.eventId}:event.rejected",
+            people(event, ["organiser"], {}),
+            {"eventName": event.eventName, "reason": data.reason, "explanation": data.explanation},
+            actor_id=coordinator_id,
+            resource={"type": "event", "id": event.eventId},
+        )
+        organiser = self._recipient(self._directory(authorization), event.organiserId, event)
+        if organiser is None:
+            return
+        body = (
+            f"ConnectSphere cannot take on {event.eventName}, so the request has been rejected. "
+            f"Reason: {data.reason}. {data.explanation} "
+            "Any venue or equipment held for it has been released. You can submit a new request at any time."
+        )
+        send_notification(organiser["email"], f"{event.eventName} was rejected", body, authorization)
 
     def complete_event(
         self, event_id: str, coordinator_id: str, authorization: str | None = None

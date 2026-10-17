@@ -31,8 +31,9 @@ export const approveEvent = (eventId, note = "", confirmOpenClarifications = fal
 // Organisers (their own organisation's events) and staff only.
 export const getEventDecision = (eventId) => axiosClient.get(`/events/${eventId}/decision`);
 
-export const rejectEvent = (eventId, reason) =>
-  axiosClient.post(`/events/${eventId}/reject`, { reason });
+// SPM-70: `reason` is one of REJECTION_REASONS, `explanation` is free text. Both are required.
+export const rejectEvent = (eventId, reason, explanation) =>
+  axiosClient.post(`/events/${eventId}/reject`, { reason, explanation });
 
 // Draft-stage requests — only eventName is required on save (see EventDraftUpsert).
 export const saveDraft = (draft) => axiosClient.post("/events/drafts", draft);

@@ -82,8 +82,17 @@ class TestEventRoutes(ServiceTestCase):
             approved = self.client.post(f"/events/{event_id}/approve", headers=headers, json={})
             rejected_source = self.client.post("/events", headers=headers, json=body).json()["eventId"]
             self.client.post(f"/events/{rejected_source}/assign-coordinator", headers=headers, json={"coordinatorId": "coord-1"})
-            rejected = self.client.post(f"/events/{rejected_source}/reject", headers=headers, json={"reason": "Dates clash"})
+            rejected = self.client.post(
+                f"/events/{rejected_source}/reject",
+                headers=headers,
+                json={"reason": "insufficient notice", "explanation": "Too close to the date."},
+            )
+            unlisted = self.client.post(
+                f"/events/{rejected_source}/reject", headers=headers, json={"reason": "Dates clash", "explanation": "x"}
+            )
         self.assertEqual(rejected.status_code, 200)
+        self.assertEqual(rejected.json()["decisionReason"], "insufficient notice")
+        self.assertEqual(unlisted.status_code, 422)
         self.assertEqual(assigned.status_code, 201)
         self.assertEqual(approved.status_code, 200)
         self.assertEqual(approved.json()["status"], "planning")

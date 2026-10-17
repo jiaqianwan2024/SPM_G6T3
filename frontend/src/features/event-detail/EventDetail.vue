@@ -33,6 +33,14 @@
               Approve request
             </button>
             <button
+              v-if="canReject"
+              class="btn btn-outline"
+              data-testid="event-reject"
+              @click="openReject"
+            >
+              Reject request
+            </button>
+            <button
               v-if="canAssign"
               class="btn btn-outline"
               data-testid="assign-coordinator"
@@ -122,6 +130,20 @@
             {{ decision.decisionNote }}
           </p>
           <p v-if="event.status === 'planning'">Venue and equipment are still being arranged.</p>
+        </div>
+        <!-- SPM-70 AC4: the organiser sees why the request was rejected. -->
+        <div
+          v-if="decision?.decision === 'rejected'"
+          class="notice attention"
+          :data-testid="session.role === 'organiser' ? 'organiser-decision' : 'event-decision'"
+        >
+          <p>
+            <strong>Rejected</strong><template v-if="decidedByName"> by {{ decidedByName }}</template>
+            on {{ formatUtc(decision.decidedAt) }}. Any venue or equipment held for this event has been released.
+            You can submit a new request at any time.
+          </p>
+          <p>Reason: {{ decision.decisionReason }}</p>
+          <p v-if="decision.decisionNote">Explanation: {{ decision.decisionNote }}</p>
         </div>
         <p v-if="savedNote" class="notice" data-testid="event-edit-saved">{{ savedNote }}</p>
 
@@ -331,6 +353,13 @@
       @approved="onApproved"
     />
 
+    <RejectEventDialog
+      v-if="rejecting"
+      :event="event"
+      @close="rejecting = false"
+      @rejected="onRejected"
+    />
+
     <EventEditForm
       v-if="editing"
       :event="event"
@@ -404,6 +433,7 @@ import {
 import { session } from '../../store/session.js'
 import { formatUtc } from '../../utils/datetime.js'
 import ApproveEventDialog from './ApproveEventDialog.vue'
+import RejectEventDialog from './RejectEventDialog.vue'
 import AssignCoordinatorDialog from './AssignCoordinatorDialog.vue'
 import EventChangeRequests from './EventChangeRequests.vue'
 import EventSafetyHandoff from './EventSafetyHandoff.vue'
@@ -437,13 +467,14 @@ const coordinator = ref(null)
 const assigning = ref(false)
 const decision = ref(null)
 const approving = ref(false)
+const rejecting = ref(false)
 function onRequirementsSaved(updated) {
   event.value = updated
   savedNote.value = 'Requirements saved.'
 }
 
 const dialogOpen = computed(
-  () => assigning.value || approving.value || editing.value || confirming.value || completing.value,
+  () => assigning.value || approving.value || rejecting.value || editing.value || confirming.value || completing.value,
 )
 
 // SPM-69 AC1/AC5: only the assigned coordinator, and only once the request is
@@ -655,6 +686,27 @@ async function loadDecision() {
   } catch {
     decision.value = null
   }
+}
+
+// SPM-70 AC1: the same coordinator and statuses as approving.
+const canReject = computed(() => canApprove.value)
+
+function openReject() {
+  savedNote.value = ''
+  rejecting.value = true
+}
+
+function onRejected(rejected) {
+  rejecting.value = false
+  event.value = rejected
+  decision.value = {
+    decision: rejected.decision,
+    decisionReason: rejected.decisionReason,
+    decisionNote: rejected.decisionNote,
+    decidedBy: rejected.decidedBy,
+    decidedAt: rejected.decidedAt,
+  }
+  savedNote.value = 'Request rejected. The organiser has been notified.'
 }
 
 function openApprove() {

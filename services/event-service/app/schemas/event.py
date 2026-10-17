@@ -144,8 +144,37 @@ class EventOut(BaseModel):
     )
 
 
-class EventDecision(BaseModel):
-    reason: str | None = None
+class EventRejection(BaseModel):
+    """SPM-70 AC2: a reason from the list and a free-text explanation, both required."""
+
+    reason: Literal[
+        "no suitable venue available",
+        "insufficient equipment",
+        "insufficient notice",
+        "outside ConnectSphere services",
+    ]
+    explanation: str = Field(max_length=2000, description="Shown to the organiser alongside the reason.")
+
+    @field_validator("explanation")
+    @classmethod
+    def _explanation_given(cls, value: str) -> str:
+        return _required_text(value)
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"reason": "no suitable venue available", "explanation": "No hall fits those dates."}
+        }
+    )
+
+
+class EventRejectionOut(EventOut):
+    """SPM-70 AC4: the rejected event, with the reason, explanation, who decided, and when."""
+
+    decision: Literal["rejected"] = "rejected"
+    decisionReason: str
+    decisionNote: str
+    decidedBy: str
+    decidedAt: datetime
 
 
 class EventApproval(BaseModel):
@@ -174,6 +203,7 @@ class EventDecisionOut(BaseModel):
 
     eventId: str
     decision: Literal["approved", "rejected"] | None = None
+    decisionReason: str | None = Field(default=None, description="SPM-70: the listed reason, for a rejection.")
     decisionNote: str | None = None
     decidedBy: str | None = None
     decidedAt: datetime | None = None

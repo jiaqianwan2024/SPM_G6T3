@@ -188,14 +188,17 @@ class TestOrganiserIsTold(ApprovalCase):
         self.db.add_all(
             [
                 EventReview(reviewId="rv-1", eventId="e1", reviewerId="coord-1", action="approve", comment="", createdAt=now - timedelta(days=1)),
-                EventReview(reviewId="rv-2", eventId="e1", reviewerId="coord-1", action="reject", comment="Dates clash", createdAt=now),
+                EventReview(reviewId="rv-2", eventId="e1", reviewerId="coord-1", action="reject", reason="insufficient notice", comment="Dates clash", createdAt=now),
             ]
         )
         self.db.commit()
 
         decision = self.service.get_event_decision("e1", ORGANISER)
 
-        self.assertEqual((decision.decision, decision.decisionNote), ("rejected", "Dates clash"))
+        self.assertEqual(
+            (decision.decision, decision.decisionReason, decision.decisionNote),
+            ("rejected", "insufficient notice", "Dates clash"),
+        )
 
 
 class TestOpenClarifications(ApprovalCase):

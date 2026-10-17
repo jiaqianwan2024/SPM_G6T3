@@ -15,6 +15,14 @@ export const eventStatusLabel = (status) => LABELS[status] || String(status || '
 // is the organiser's to edit, and a discarded draft is gone.
 export const LOCKED_EVENT_STATUSES = ['completed', 'cancelled', 'rejected', 'draft', 'discarded']
 
+// SPM-70 AC2: the reasons a coordinator can reject a request for (the backend accepts only these).
+export const REJECTION_REASONS = [
+  'no suitable venue available',
+  'insufficient equipment',
+  'insufficient notice',
+  'outside ConnectSphere services',
+]
+
 // SPM-90: registration is set up from planning until the event is confirmed
 // ("approved" is planning's older name; a reconsidering event is still confirmed).
 export const REGISTRATION_SETUP_STATUSES = [

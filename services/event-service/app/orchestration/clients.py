@@ -456,6 +456,23 @@ def release_event_holds(event_id: str, authorization: str | None) -> None:
         logger.info("release_event_holds(%s) raised %r", event_id, exc)
 
 
+def release_event_venue_bookings(event_id: str, authorization: str | None) -> None:
+    """Ask venue-service to cancel every open venue request and booking for a rejected event.
+
+    Best effort: the rejection is already saved, so a down service is logged.
+    """
+    headers = {"Authorization": authorization} if authorization else {}
+    try:
+        with httpx.Client(timeout=0.8) as client:
+            client.post(
+                f"{settings.venue_service_url}/venues/bookings/release",
+                json={"eventId": event_id},
+                headers=headers,
+            )
+    except httpx.HTTPError as exc:
+        logger.info("release_event_venue_bookings(%s) raised %r", event_id, exc)
+
+
 def send_notification(to: str, subject: str, body: str, authorization: str | None) -> bool:
     """Queue an email through notification-service. Best effort: callers have
     already saved their change, so a failure is logged rather than raised."""
