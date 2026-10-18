@@ -119,7 +119,7 @@ npm run test:spm95
 npm run test:spm51
 ```
 
-`test:acceptance` omits SPM-47, SPM-55 through SPM-59, the venue epic
+`test:acceptance` omits SPM-45 (its API specs collide with the seeded e1/v1 bookings), SPM-47, SPM-55 through SPM-59, the venue epic
 above, the planning-review epic (SPM-5, SPM-15, SPM-65 through SPM-73),
 the equipment epic (SPM-2, SPM-3, SPM-4, SPM-75 through SPM-78), the
 request-and-change epic (SPM-14, SPM-79 through SPM-83, SPM-85 through

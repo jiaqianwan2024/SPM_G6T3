@@ -62,7 +62,7 @@ test.describe('SPM-46 Assigned Coordinator Event Permissions (UI)', () => {
     await page.goto(`/app/events/${event.eventId}/venues`)
 
     await expect(page.getByTestId('venue-request-read-only')).toHaveText(
-      'Only the coordinator assigned to this event can request or withdraw a venue for it. You can still check how each venue suits the event.',
+      'Only the coordinator assigned to this event can request, withdraw, or cancel a venue for it. You can still check how each venue suits the event.',
     )
     await page.getByTestId('venue-select-v1').click()
     await expect(page.getByTestId('suitability-verdict')).toBeVisible()
