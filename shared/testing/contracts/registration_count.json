@@ -1,0 +1,5 @@
+{
+  "description": "event-service asks registration-service how many attendees are registered for an event.",
+  "request": {"method": "GET", "path": "/registrations/count", "query": {"eventId": "e1"}},
+  "response": {"status": 200, "body": {"count": 2}}
+}

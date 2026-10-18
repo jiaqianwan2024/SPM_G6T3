@@ -25,17 +25,18 @@ SERVICES = (
 class TestProjectWorkflows(unittest.TestCase):
     def test_every_service_workflow(self):
         for name in SERVICES:
-            result = subprocess.run(
-                [sys.executable, "-m", "unittest", "discover", "-s", "tests/integration", "-p", "test_*.py", "-t", "."],
-                cwd=ROOT / "services" / name,
-                capture_output=True,
-                text=True,
-            )
-            self.assertEqual(
-                result.returncode,
-                0,
-                f"{name} failed\n{result.stdout}\n{result.stderr}",
-            )
+            with self.subTest(service=name):
+                result = subprocess.run(
+                    [sys.executable, "-m", "unittest", "discover", "-s", "tests/integration", "-p", "test_*.py", "-t", "."],
+                    cwd=ROOT / "services" / name,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(
+                    result.returncode,
+                    0,
+                    f"{name} failed\n{result.stdout}\n{result.stderr}",
+                )
 
 
 if __name__ == "__main__":
