@@ -2,7 +2,7 @@
 
 Unit tests and the Coverage.py demo are in [unit-tests.md](unit-tests.md). Integration tests are in [integration-tests.md](integration-tests.md).
 
-Before pushing, especially after a merge, run `npm run test:ci` for the fast suite, then `npm run test:e2e` for Playwright. `test:ci` is unit coverage plus the SQLite workflows; it needs no Docker or Firebase, and it skips the venue MySQL overlap file when Docker is down. GitHub Actions runs every passing automated suite: the `test` job starts MySQL, migrates, and runs unit plus all integration tests; the `e2e` job runs every Playwright spec with `npm run test:e2e`, which also needs Docker and the Firebase secrets listed under Run. Files under `tests/upcoming/` stay out of the pipeline until those functions exist.
+Before pushing, especially after a merge, run `npm run test:ci` for the fast suite, then `npm run test:e2e` for Playwright. `test:ci` is unit coverage plus the SQLite workflows; it needs no Docker or Firebase, and it skips the venue MySQL overlap file when Docker is down. GitHub Actions runs every passing automated suite: the `test` job starts MySQL, migrates, and runs unit plus all integration tests; the `e2e` job runs the Playwright specs that `npm run test:acceptance` selects, which also needs Docker and the Firebase secrets listed under Run. Specs for stories that are not built yet (the ones `test:acceptance` omits, such as SPM-04) stay out of the pipeline until those stories exist; `test:e2e` still runs them locally.
 
 Playwright covers SPM-43, the current SPM-45 API, the current SPM-46 API,
 the SPM-47 tenant-isolation contract, the role-home contracts for
