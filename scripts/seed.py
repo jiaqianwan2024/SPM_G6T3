@@ -888,10 +888,10 @@ def _ensure_equipment_requests(conn, now: datetime, day: timedelta) -> None:
             text(
                 "INSERT INTO equipment_requests ("
                 "request_id, event_id, equipment_id, quantity, technical_requirements, requested_by, "
-                "status, starts_at, ends_at, reviewed_by, review_note, created_at"
+                "status, starts_at, ends_at, reviewed_by, review_note, decision_reason, created_at"
                 ") VALUES ("
                 ":request_id, :event_id, :equipment_id, :quantity, :technical_requirements, :requested_by, "
-                ":status, :starts_at, :ends_at, :reviewed_by, :review_note, :created_at"
+                ":status, :starts_at, :ends_at, :reviewed_by, :review_note, '', :created_at"
                 ")"
             ),
             row,
