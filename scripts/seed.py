@@ -117,12 +117,12 @@ def _insert_event(conn, row: dict, now: datetime, assign_coordinator: bool = Tru
         text(
             "INSERT INTO events (event_id, organiser_id, organisation_id, coordinator_id, name, "
             "purpose, description, category, proposed_start_at, proposed_end_at, expected_attendance, "
-            "venue_requirements, accessibility_needs, equipment_requirements, layout_preference, "
+            "venue_requirements, accessibility_needs, accessibility_note, equipment_requirements, layout_preference, "
             "registration_enabled, registration_opens_at, registration_closes_at, capacity, status, "
             "submitted_at, created_at, updated_at) VALUES ("
             ":event_id, :organiser_id, :organisation_id, :coordinator_id, :name, :purpose, "
             ":description, :category, :proposed_start_at, :proposed_end_at, :expected_attendance, "
-            ":venue_requirements, :accessibility_needs, :equipment_requirements, :layout_preference, "
+            ":venue_requirements, :accessibility_needs, '', :equipment_requirements, :layout_preference, "
             ":registration_enabled, :registration_opens_at, :registration_closes_at, :capacity, "
             ":status, :submitted_at, :created_at, :updated_at)"
         ),
