@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -24,6 +24,12 @@ class Event(Base):
     accessibilityNeeds: Mapped[str] = mapped_column("accessibility_needs", Text, default="")
     equipmentRequirements: Mapped[str] = mapped_column("equipment_requirements", Text, default="")
     layoutPreference: Mapped[str | None] = mapped_column("layout_preference", String(64), nullable=True)
+    # SPM-80: structured venue, accessibility, and equipment requirements.
+    preferredLocation: Mapped[str] = mapped_column("preferred_location", String(255), default="")
+    requiredFacilities: Mapped[list] = mapped_column("required_facilities", JSON, default=list)
+    accessibilityNote: Mapped[str] = mapped_column("accessibility_note", Text, default="")
+    accessibilitySelections: Mapped[list] = mapped_column("accessibility_selections", JSON, default=list)
+    equipmentLines: Mapped[list] = mapped_column("equipment_lines", JSON, default=list)
     # SPM-71 AC1: staff-only notes, and how to reach the organiser for this event.
     internalNotes: Mapped[str | None] = mapped_column("internal_notes", Text, nullable=True)
     organiserContact: Mapped[str | None] = mapped_column("organiser_contact", String(255), nullable=True)
@@ -37,6 +43,12 @@ class Event(Base):
     capacity: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(32))
     submittedAt: Mapped[datetime | None] = mapped_column("submitted_at", DateTime, nullable=True)
+    # SPM-72 AC3: who confirmed the event, and when.
+    confirmedBy: Mapped[str | None] = mapped_column("confirmed_by", String(64), nullable=True)
+    confirmedAt: Mapped[datetime | None] = mapped_column("confirmed_at", DateTime, nullable=True)
+    # SPM-120: the Safety Officer who claimed the event's safety review. They
+    # keep it for every later round, and only they can decide on it.
+    safetyOfficerId: Mapped[str | None] = mapped_column("safety_officer_id", String(64), nullable=True)
     createdAt: Mapped[datetime] = mapped_column("created_at", DateTime, default=datetime.utcnow)
     updatedAt: Mapped[datetime] = mapped_column(
         "updated_at", DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

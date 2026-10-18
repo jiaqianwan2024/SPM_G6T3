@@ -4,6 +4,7 @@ from fastapi import Depends
 
 from app.core.config import settings
 from app.routers.event import router as event_router
+from app.routers.reminders import router as reminders_router
 from shared.auth.deps import require_authenticated_user
 from shared.config import parse_origins
 from shared.openapi import create_service_app
@@ -30,4 +31,6 @@ New events start at status `created`. Seed data also uses `planning` and `confir
     ],
 )
 
+# The reminder check takes the service key as well as a user token, so it checks for itself.
+app.include_router(reminders_router)
 app.include_router(event_router, dependencies=[Depends(require_authenticated_user)])

@@ -117,7 +117,7 @@ test.describe('SPM-43 User Login and Session Management', () => {
         await expect(page.locator('.field-error')).toHaveCount(row.errors.length)
         await expect(page.locator('.auth-error')).toHaveCount(0)
         await expect(page).toHaveURL(/\/login$/)
-        await page.waitForTimeout(250)
+        // The errors above only render once validation has stopped the submit, so any auth call would already have been sent.
         expect(authRequests).toEqual([])
       })
     }

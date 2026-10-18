@@ -32,9 +32,21 @@ class VenueBooking(Base):
         "needs_reverification", Boolean, default=False, server_default=false()
     )
     reverificationNote: Mapped[str | None] = mapped_column("reverification_note", Text, nullable=True)
+    # SPM-116: a tentative hold placed by Venue Staff on this pending request.
+    # It reserves the venue until it expires or ends; see app/services/occupancy.py.
+    holdExpiresAt: Mapped[datetime | None] = mapped_column("hold_expires_at", DateTime, nullable=True)
+    holdPlacedBy: Mapped[str | None] = mapped_column("hold_placed_by", String(64), nullable=True)
+    holdPlacedAt: Mapped[datetime | None] = mapped_column("hold_placed_at", DateTime, nullable=True)
+    holdEndedAt: Mapped[datetime | None] = mapped_column("hold_ended_at", DateTime, nullable=True)
+    holdEndReason: Mapped[str | None] = mapped_column("hold_end_reason", String(32), nullable=True)
     decisionReason: Mapped[str | None] = mapped_column("decision_reason", Text, nullable=True)
     reviewedBy: Mapped[str | None] = mapped_column("reviewed_by", String(64), nullable=True)
+    # SPM-8 AC5: who approved it, by name, kept with the booking.
+    reviewedByName: Mapped[str | None] = mapped_column("reviewed_by_name", String(255), nullable=True)
     reviewedAt: Mapped[datetime | None] = mapped_column("reviewed_at", DateTime, nullable=True)
+    # SPM-10 AC3: another venue Venue Staff suggest when rejecting, kept by name too.
+    suggestedVenueId: Mapped[str | None] = mapped_column("suggested_venue_id", String(64), nullable=True)
+    suggestedVenueName: Mapped[str | None] = mapped_column("suggested_venue_name", String(255), nullable=True)
     createdAt: Mapped[datetime] = mapped_column("created_at", DateTime, default=datetime.utcnow)
 
     venue: Mapped["VenueInfo"] = relationship("VenueInfo", back_populates="bookings")

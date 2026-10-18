@@ -10,7 +10,7 @@
       <p v-if="loading" class="empty-note">Loading event…</p>
       <p v-else-if="error" class="form-error">{{ error }}</p>
 
-      <template v-else>
+      <div v-else class="event-body">
         <header class="page-head">
           <div>
             <p class="eyebrow">Event</p>
@@ -31,6 +31,14 @@
               @click="openApprove"
             >
               Approve request
+            </button>
+            <button
+              v-if="canReject"
+              class="btn btn-outline"
+              data-testid="event-reject"
+              @click="openReject"
+            >
+              Reject request
             </button>
             <button
               v-if="canAssign"
@@ -62,7 +70,15 @@
               data-testid="event-choose-venue"
               @click="router.push(`/app/events/${event.eventId}/venues`)"
             >
-              Choose a venue
+              Choose venues
+            </button>
+            <button
+              v-if="canViewReadiness"
+              class="btn btn-outline"
+              data-testid="event-readiness-link"
+              @click="router.push(`/app/events/${event.eventId}/readiness`)"
+            >
+              Readiness
             </button>
             <button
               v-if="session.role === 'organiser' && event.status === 'draft'"
@@ -72,12 +88,32 @@
             >
               Discard
             </button>
+            <button
+              v-if="canComplete"
+              class="btn btn-solid"
+              data-testid="event-complete"
+              @click="openCompleteConfirm"
+            >
+              Mark completed
+            </button>
           </div>
         </header>
 
         <p v-if="event.status === 'reconsidering'" class="notice attention" data-testid="event-reconsidering">
-          Some planning details changed after this event was confirmed, so its venue and equipment
-          arrangements are being re-checked. It will show as confirmed again once they are re-verified.
+          <span data-testid="reverify-flag">
+            Some planning details changed after this event was confirmed, so its venue and equipment
+            arrangements are being re-checked. It will show as confirmed again once they are re-verified.
+          </span>
+        </p>
+        <p
+          v-if="venueReleased || (event.status === 'reconsidering' && !venue.venueName)"
+          class="notice attention"
+          data-testid="search-venue-again"
+        >
+          A venue booking was released because it no longer fits. Search for a venue again.
+          <button v-if="canChooseVenue" type="button" class="btn btn-outline" @click="router.push(`/app/events/${event.eventId}/venues`)">
+            Choose venues
+          </button>
         </p>
         <!-- SPM-69 AC3: the organiser sees the outcome and any note on their event. -->
         <div
@@ -87,7 +123,7 @@
         >
           <p>
             <strong>Approved</strong><template v-if="decidedByName"> by {{ decidedByName }}</template>
-            on {{ formatUtc(decision.decidedAt) }}. ConnectSphere has taken this event on and planning has started.
+            on {{ formatUtc(decision.decidedAt) }}. ConnectSphere has taken this event on and preparation has started.
           </p>
           <p v-if="decision.decisionNote">
             {{ session.role === 'organiser' ? 'Note from your coordinator' : 'Note to the organiser' }}:
@@ -95,7 +131,81 @@
           </p>
           <p v-if="event.status === 'planning'">Venue and equipment are still being arranged.</p>
         </div>
+        <!-- SPM-70 AC4: the organiser sees why the request was rejected. -->
+        <div
+          v-if="decision?.decision === 'rejected'"
+          class="notice attention"
+          :data-testid="session.role === 'organiser' ? 'organiser-decision' : 'event-decision'"
+        >
+          <p>
+            <strong>Rejected</strong><template v-if="decidedByName"> by {{ decidedByName }}</template>
+            on {{ formatUtc(decision.decidedAt) }}. Any venue or equipment held for this event has been released.
+            You can submit a new request at any time.
+          </p>
+          <p>Reason: {{ decision.decisionReason }}</p>
+          <p v-if="decision.decisionNote">Explanation: {{ decision.decisionNote }}</p>
+        </div>
         <p v-if="savedNote" class="notice" data-testid="event-edit-saved">{{ savedNote }}</p>
+
+        <section
+          v-if="session.role === 'organiser'"
+          class="panel"
+          data-testid="organiser-arrangements"
+        >
+          <h2>Arrangements</h2>
+          <!-- SPM-120, SPM-72: what is in place, then what is still needed. -->
+          <p v-if="event.status === 'confirmed'">The venue booking, equipment, and safety review are in place.</p>
+          <p v-else-if="event.status === 'reconsidering'">
+            The event was confirmed. Still needed: its changed arrangements are being reconsidered.
+          </p>
+          <p v-else-if="event.status === 'safety approved'">
+            The venue booking and equipment are in place, and the Safety Officer approved the plan.
+            Still needed: your coordinator's confirmation.
+          </p>
+          <p v-else-if="event.status === 'safety review'">
+            The venue booking and equipment are in place. Still needed: the Safety Officer's review.
+          </p>
+          <p v-else>The venue booking is in place where it has been confirmed. Safety checks are still needed.</p>
+          <p v-if="releasedOutcome">
+            Still needed: equipment was released and needs attention. {{ releasedOutcome.reason }}
+          </p>
+          <p v-else-if="event.status === 'confirmed'">Nothing is outstanding.</p>
+        </section>
+        <section
+          v-if="session.role === 'organiser' && event.status === 'confirmed'"
+          class="panel"
+          data-testid="organiser-confirmed-arrangements"
+        >
+          <h2>Confirmed arrangements</h2>
+          <p>{{ venue.venueName }}</p>
+          <p v-if="venue.location">{{ venue.location }}</p>
+          <p data-testid="organiser-confirmed-date">{{ confirmedDate }}</p>
+          <p data-testid="organiser-confirmed-time">{{ confirmedTime }}</p>
+          <p v-if="event.layoutPreference">Layout: {{ event.layoutPreference }}</p>
+          <p>Equipment: {{ equipmentSummary }}</p>
+        </section>
+        <button
+          v-if="session.role === 'organiser' && event.hasOpenClarifications"
+          type="button"
+          class="notice attention"
+          data-testid="organiser-needs-action"
+        >
+          A clarification needs action.
+        </button>
+        <section v-if="reservations.length" class="panel" data-testid="event-reservations">
+          <h2>Reservations</h2>
+          <p v-for="row in reservations" :key="row.reservationId || row.requestId">
+            {{ row.equipmentName || row.equipmentId }} · {{ row.quantity }} · {{ row.status }}
+          </p>
+        </section>
+        <section v-if="outcomes.length" class="panel" data-testid="equipment-request-outcome">
+          <h2>Equipment requests</h2>
+          <p v-for="row in outcomes" :key="row.requestId || row.reservationId">
+            {{ row.equipmentName || row.equipmentId }} · {{ row.status }}
+            <template v-if="row.reason"> · {{ row.reason }}</template>
+            <template v-if="row.alternativeEquipmentId"> · {{ row.alternativeEquipmentId }}</template>
+          </p>
+        </section>
 
         <div class="layout" :class="{ split: showEquipment }">
           <section class="panel">
@@ -162,6 +272,27 @@
                 <dt>Accessibility needs</dt>
                 <dd>{{ event.accessibilityNeeds }}</dd>
               </div>
+              <div v-if="event.preferredLocation" class="wide">
+                <dt>Preferred location</dt>
+                <dd>{{ event.preferredLocation }}</dd>
+              </div>
+              <div v-if="event.requiredFacilities?.length" class="wide">
+                <dt>Facilities</dt>
+                <dd>{{ event.requiredFacilities.join(', ') }}</dd>
+              </div>
+              <div v-if="event.accessibilityNote" class="wide">
+                <dt>Accessibility note</dt>
+                <dd>{{ event.accessibilityNote }}</dd>
+              </div>
+              <div v-if="event.equipmentLines?.length" class="wide">
+                <dt>Equipment</dt>
+                <dd>
+                  <span v-for="line in event.equipmentLines" :key="line.equipmentId">
+                    {{ line.quantity }} × {{ line.equipmentId }}
+                    <template v-if="line.technicalNotes"> ({{ line.technicalNotes }})</template>
+                  </span>
+                </dd>
+              </div>
               <div v-if="event.equipmentRequirements" class="wide">
                 <dt>Equipment notes</dt>
                 <dd>{{ event.equipmentRequirements }}</dd>
@@ -173,8 +304,24 @@
             </dl>
           </section>
 
+          <EventRequirements
+            v-if="session.role === 'organiser' && event.status === 'draft'"
+            :event="event"
+            @saved="onRequirementsSaved"
+          />
+
           <EventEquipment v-if="showEquipment" :event="event" />
         </div>
+
+        <EventConfirmation :event="event" @changed="onConfirmationChanged" />
+
+        <EventSafetyHandoff :event="event" @changed="reloadEvent" />
+
+        <EventSafetyReview
+          v-if="CONTACT_ROLES.includes(session.role)"
+          :event="event"
+          @changed="reloadEvent"
+        />
 
         <EventChangeRequests
           v-if="CONTACT_ROLES.includes(session.role)"
@@ -189,7 +336,7 @@
         />
 
         <p v-if="discardError" class="form-error">{{ discardError }}</p>
-      </template>
+      </div>
     </div>
 
     <AssignCoordinatorDialog
@@ -204,6 +351,13 @@
       :event="event"
       @close="approving = false"
       @approved="onApproved"
+    />
+
+    <RejectEventDialog
+      v-if="rejecting"
+      :event="event"
+      @close="rejecting = false"
+      @rejected="onRejected"
     />
 
     <EventEditForm
@@ -230,19 +384,46 @@
         </div>
       </div>
     </div>
+
+    <!-- SPM-73: completing confirmation -->
+    <div v-if="completing" class="modal-backdrop" @click.self="closeCompleteConfirm">
+      <div class="modal" data-testid="complete-confirm">
+        <h3>Mark this event completed?</h3>
+        <p>
+          <strong>{{ event.eventName }}</strong> will be marked completed now that it has taken place.
+          It drops out of active queues and attendees can no longer register or withdraw, but it stays
+          readable with its full activity log.
+        </p>
+        <p v-if="completeError" class="form-error">{{ completeError }}</p>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="closeCompleteConfirm">Cancel</button>
+          <button
+            class="btn btn-solid"
+            :disabled="completingSave"
+            data-testid="complete-confirm-submit"
+            @click="confirmComplete"
+          >
+            {{ completingSave ? 'Marking completed…' : 'Mark completed' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { getReservationSummary, getEventReservations } from '../../api/equipmentService.js'
 import {
   getEvent,
   discardEvent,
+  completeEvent,
   getEventCoordinator,
   getEventDecision,
   getInternalNotes,
 } from '../../api/eventService.js'
+import { getPublicVenue, getVenueBookings } from '../../api/venueService.js'
 import {
   IN_REVIEW_EVENT_STATUSES,
   LOCKED_EVENT_STATUSES,
@@ -252,11 +433,16 @@ import {
 import { session } from '../../store/session.js'
 import { formatUtc } from '../../utils/datetime.js'
 import ApproveEventDialog from './ApproveEventDialog.vue'
+import RejectEventDialog from './RejectEventDialog.vue'
 import AssignCoordinatorDialog from './AssignCoordinatorDialog.vue'
 import EventChangeRequests from './EventChangeRequests.vue'
+import EventSafetyHandoff from './EventSafetyHandoff.vue'
+import EventSafetyReview from './EventSafetyReview.vue'
+import EventConfirmation from './EventConfirmation.vue'
 import EventClarifications from './EventClarifications.vue'
 import EventEditForm from './EventEditForm.vue'
 import EventEquipment from './EventEquipment.vue'
+import EventRequirements from './EventRequirements.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -269,6 +455,10 @@ const confirming = ref(false)
 const discarding = ref(false)
 const discardError = ref('')
 
+const completing = ref(false)
+const completingSave = ref(false)
+const completeError = ref('')
+
 const internalNotes = ref('')
 const editing = ref(false)
 const savedNote = ref('')
@@ -277,8 +467,14 @@ const coordinator = ref(null)
 const assigning = ref(false)
 const decision = ref(null)
 const approving = ref(false)
+const rejecting = ref(false)
+function onRequirementsSaved(updated) {
+  event.value = updated
+  savedNote.value = 'Requirements saved.'
+}
+
 const dialogOpen = computed(
-  () => assigning.value || approving.value || editing.value || confirming.value,
+  () => assigning.value || approving.value || rejecting.value || editing.value || confirming.value || completing.value,
 )
 
 // SPM-69 AC1/AC5: only the assigned coordinator, and only once the request is
@@ -310,12 +506,39 @@ const decidedByName = computed(() =>
     : '',
 )
 
-// SPM-66: any coordinator can assign or reassign, but not a finished event or a draft.
+// Only the Event Coordinator Lead assigns or reassigns, and never a finished event or a draft.
 const canAssign = computed(
-  () => session.role === 'coordinator' && !LOCKED_EVENT_STATUSES.includes(event.value?.status),
+  () => session.role === 'coordinatorlead' && !LOCKED_EVENT_STATUSES.includes(event.value?.status),
 )
 // Who may see the coordinator's contact; the server enforces the organisation check.
-const CONTACT_ROLES = ['organiser', 'coordinator', 'venue', 'techsupport']
+const CONTACT_ROLES = ['organiser', 'coordinator', 'coordinatorlead', 'venue', 'techsupport', 'safety']
+const outcomes = ref([])
+const reservations = ref([])
+const venue = ref({ venueName: '', location: '' })
+const venueReleased = ref(false)
+
+const releasedOutcome = computed(() => outcomes.value.find((row) => row.status === 'released') || null)
+
+const confirmedDate = computed(() => {
+  if (!event.value?.proposedStartAt) return ''
+  return new Date(event.value.proposedStartAt).toLocaleDateString()
+})
+
+const confirmedTime = computed(() => {
+  if (!event.value?.proposedStartAt) return ''
+  return new Date(event.value.proposedStartAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+})
+
+const equipmentSummary = computed(() => {
+  const all = event.value?.equipmentLines || []
+  // SPM-72: a line the coordinator recorded as not required is not part of the event.
+  const lines = all.filter((line) => !line.notRequired)
+  if (lines.length) return lines.map((line) => `${line.quantity} × ${line.equipmentId}`).join(', ')
+  if (all.length) return 'none'
+  if (event.value?.equipmentRequirements) return event.value.equipmentRequirements
+  if (outcomes.value.length) return outcomes.value.map((row) => row.equipmentName || row.equipmentId).join(', ')
+  return 'listed with the request'
+})
 
 // SPM-71: only the assigned coordinator edits, and never a finished event.
 // The server enforces both; this only decides whether to offer the button.
@@ -337,8 +560,25 @@ const canChooseVenue = computed(
     event.value.status !== 'draft',
 )
 
+// SPM-73 AC1: only the assigned coordinator, only a confirmed event, and only
+// once its end time has passed. The server enforces all three (403/409); this
+// only decides whether to offer the button.
+const canComplete = computed(
+  () =>
+    session.role === 'coordinator' &&
+    !!event.value?.coordinatorId &&
+    event.value.coordinatorId === session.userId &&
+    event.value.status === 'confirmed' &&
+    !!event.value.proposedEndAt &&
+    new Date(event.value.proposedEndAt).getTime() <= Date.now(),
+)
+
 const showEquipment = computed(
   () => session.role === 'coordinator' || session.role === 'techsupport',
+)
+// SPM-5: coordinators follow up here; organisers and technical support can read it.
+const canViewReadiness = computed(() =>
+  ['coordinator', 'organiser', 'techsupport'].includes(session.role),
 )
 const showRegistrations = computed(
   () =>
@@ -349,6 +589,8 @@ const backTarget = computed(() => {
   if (session.role === 'coordinator') return { label: 'Assigned Events', tab: 'Assigned Events' }
   if (session.role === 'organiser') return { label: 'My Events', tab: 'My Events' }
   if (session.role === 'techsupport') return { label: 'Upcoming Events', tab: 'Upcoming Events' }
+  if (session.role === 'safety') return { label: 'Safety Reviews', tab: 'Safety Reviews' }
+  if (session.role === 'coordinatorlead') return { label: 'Assignments', tab: 'Assignments' }
   return { label: 'Dashboard', tab: 'Dashboard' }
 })
 
@@ -369,7 +611,11 @@ async function load() {
     const { data } = await getEvent(route.params.id)
     event.value = data
   } catch (err) {
-    error.value = err.response?.data?.detail || 'Could not load this event. Please try again.'
+    const status = err.response?.status
+    error.value =
+      status === 403 || status === 404
+        ? 'This event is no longer available to you.'
+        : err.response?.data?.detail || 'Could not load this event. Please try again.'
   } finally {
     loading.value = false
   }
@@ -377,6 +623,47 @@ async function load() {
   if (event.value && CONTACT_ROLES.includes(session.role)) {
     loadCoordinator()
     loadDecision()
+    loadArrangements()
+  }
+}
+
+async function loadArrangements() {
+  const eventId = event.value.eventId
+  try {
+    const { data } = await getPublicVenue(eventId)
+    venue.value = data
+  } catch {
+    venue.value = { venueName: '', location: '' }
+  }
+  try {
+    const { data } = await getReservationSummary(eventId)
+    outcomes.value = data
+  } catch {
+    outcomes.value = []
+  }
+  try {
+    const { data } = await getEventReservations(eventId)
+    reservations.value = data
+  } catch {
+    reservations.value = outcomes.value.filter((row) => row.reservationId)
+  }
+  if (session.role === 'coordinator' || session.role === 'venue') {
+    try {
+      const { data } = await getVenueBookings({ eventId })
+      venueReleased.value = data.some(
+        (row) => row.status === 'cancelled' && /Released after re-verification/i.test(row.reverificationNote || ''),
+      )
+    } catch {
+      venueReleased.value = false
+    }
+  }
+}
+
+// SPM-72: confirming changes the status; marking equipment not required changes its lines.
+async function onConfirmationChanged(outcome) {
+  await reloadEvent()
+  if (outcome === 'confirmed') {
+    savedNote.value = 'Event confirmed. The organiser, venue staff, and technical support have been notified.'
   }
 }
 
@@ -399,6 +686,27 @@ async function loadDecision() {
   } catch {
     decision.value = null
   }
+}
+
+// SPM-70 AC1: the same coordinator and statuses as approving.
+const canReject = computed(() => canApprove.value)
+
+function openReject() {
+  savedNote.value = ''
+  rejecting.value = true
+}
+
+function onRejected(rejected) {
+  rejecting.value = false
+  event.value = rejected
+  decision.value = {
+    decision: rejected.decision,
+    decisionReason: rejected.decisionReason,
+    decisionNote: rejected.decisionNote,
+    decidedBy: rejected.decidedBy,
+    decidedAt: rejected.decidedAt,
+  }
+  savedNote.value = 'Request rejected. The organiser has been notified.'
 }
 
 function openApprove() {
@@ -492,6 +800,31 @@ async function confirmDiscard() {
   }
 }
 
+function openCompleteConfirm() {
+  completeError.value = ''
+  completing.value = true
+}
+
+function closeCompleteConfirm() {
+  if (completingSave.value) return
+  completing.value = false
+}
+
+async function confirmComplete() {
+  completingSave.value = true
+  completeError.value = ''
+  try {
+    const { data } = await completeEvent(event.value.eventId)
+    event.value = data
+    completing.value = false
+    savedNote.value = 'Event marked completed.'
+  } catch (err) {
+    completeError.value = err.response?.data?.detail || 'Could not mark this event completed. Please try again.'
+  } finally {
+    completingSave.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -518,12 +851,18 @@ onMounted(load)
   margin-top: 16px;
 }
 
+.event-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.event-body :deep(.panel) { margin-top: 0; }
+
 .page-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 20px;
-  margin-bottom: 22px;
 }
 .page-head h1 {
   margin: 6px 0 10px;
@@ -531,7 +870,7 @@ onMounted(load)
   font-weight: 500;
   letter-spacing: -.02em;
 }
-.actions { display: flex; gap: 10px; flex-shrink: 0; }
+.actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 
 .status-pill {
   display: inline-block;
@@ -558,7 +897,13 @@ onMounted(load)
   border: 1px solid rgba(167, 139, 250, .25);
   border-radius: 9px;
   padding: 11px 14px;
-  margin: 0 0 16px;
+  margin: 0;
+}
+button.notice {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
 }
 div.notice p { margin: 0; }
 div.notice p + p { margin-top: 6px; }
@@ -580,6 +925,8 @@ div.notice p + p { margin-top: 6px; }
   padding: 22px 24px;
 }
 .panel h2 { margin: 0 0 16px; font-size: 16px; font-weight: 500; }
+.panel p { margin: 0; }
+.panel p + p { margin-top: 10px; }
 
 .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; margin: 0; }
 .facts .wide { grid-column: 1 / -1; }

@@ -44,16 +44,18 @@ test.describe('SPM-93 Notification delivery and recipient resolution', () => {
 
   test('TC-SPM93-AC05 the actor never receives a notification about their own action', async () => {
     const event = await createSubmittedEvent('EO-01', 'AUTO-SPM93-self')
-    await assignCoordinator(event.eventId, 'u2', 'EC-01')
-    const inbox = await notificationApi('GET', `/notifications?eventId=${event.eventId}`, 'EC-01')
+    await assignCoordinator(event.eventId, 'u2')
+    const inbox = await notificationApi('GET', `/notifications?eventId=${event.eventId}`, 'ECL-01')
     expect(JSON.stringify(inbox.body || [])).not.toMatch(new RegExp(event.eventId))
   })
 
   test('TC-SPM93-AC06 one notification is created per recipient per occurrence, so a repeat does not duplicate', async () => {
-    await eventApi('POST', '/e6/assign-coordinator', 'EC-01', { coordinatorId: 'u2' })
-    await eventApi('POST', '/e6/assign-coordinator', 'EC-01', { coordinatorId: 'u2' })
-    const inbox = await notificationApi('GET', '/notifications?eventId=e6&trigger=event.assigned', 'EO-01')
-    const rows = (inbox.body.items || inbox.body || []).filter((row) => row.eventId === 'e6')
+    // A request of its own, so the seeded unassigned request (e6) stays unassigned.
+    const event = await createSubmittedEvent('EO-01', 'AUTO-SPM93-repeat')
+    await eventApi('POST', `/${event.eventId}/assign-coordinator`, 'ECL-01', { coordinatorId: 'u2' })
+    await eventApi('POST', `/${event.eventId}/assign-coordinator`, 'ECL-01', { coordinatorId: 'u2' })
+    const inbox = await notificationApi('GET', `/notifications?eventId=${event.eventId}&trigger=event.assigned`, 'EO-01')
+    const rows = (inbox.body.items || inbox.body || []).filter((row) => row.eventId === event.eventId)
     const keys = rows.map((row) => `${row.trigger}:${row.recipientUserId || row.userId}`)
     expect(new Set(keys).size).toBe(keys.length)
   })
@@ -75,11 +77,14 @@ test.describe('SPM-93 Notification delivery and recipient resolution', () => {
   })
 
   test('TC-SPM93-AC09 if delivery fails, the action still succeeds and the failure is logged', async () => {
-    const assigned = await eventApi('POST', '/e6/assign-coordinator', 'EC-01', {
+    // A request of its own, assigned by the Lead (SPM-117): the seeded unassigned
+    // request (e6) must stay unassigned for the review-queue specs.
+    const event = await createSubmittedEvent('EO-01', 'AUTO-SPM93-delivery')
+    const assigned = await eventApi('POST', `/${event.eventId}/assign-coordinator`, 'ECL-01', {
       coordinatorId: 'u2',
       simulateNotificationFailure: true,
     })
-    expect([201, 409]).toContain(assigned.status)
+    expect(assigned.status).toBe(201)
   })
 
   test('TC-SPM93-AC10 notifications persist after the event is completed or cancelled', async () => {

@@ -41,19 +41,24 @@ const props = defineProps({
 const emit = defineEmits(['save', 'cancel'])
 
 const CATEGORIES = [
-  { value: 'audio', label: 'Audio' },
-  { value: 'display', label: 'Display' },
-  { value: 'lighting', label: 'Lighting' },
-  { value: 'staging', label: 'Staging' },
-  { value: 'video', label: 'Video' },
+  { value: 'Audio', label: 'Audio' },
+  { value: 'Display', label: 'Display' },
+  { value: 'Lighting', label: 'Lighting' },
+  { value: 'Staging', label: 'Staging' },
+  { value: 'Video', label: 'Video' },
 ]
 
 const form = reactive(blank())
 
+function matchCategory(value) {
+  const current = String(value || '').trim()
+  return CATEGORIES.find((item) => item.value.toLowerCase() === current.toLowerCase())?.value || current
+}
+
 const categoryOptions = computed(() => {
-  const known = new Set(CATEGORIES.map((item) => item.value))
-  const current = String(form.category || '').trim().toLowerCase()
-  if (current && !known.has(current)) {
+  const known = new Set(CATEGORIES.map((item) => item.value.toLowerCase()))
+  const current = String(form.category || '').trim()
+  if (current && !known.has(current.toLowerCase())) {
     return [...CATEGORIES, { value: current, label: current.charAt(0).toUpperCase() + current.slice(1) }]
   }
   return CATEGORIES
@@ -77,7 +82,7 @@ function blank() {
 function fill(equipment) {
   form.code = equipment?.code || ''
   form.name = equipment?.name || ''
-  form.category = String(equipment?.category || '').trim().toLowerCase()
+  form.category = matchCategory(equipment?.category)
   form.description = equipment?.description || ''
   form.homeLocation = equipment?.homeLocation || ''
   form.technicalNotes = equipment?.technicalNotes || ''
@@ -96,7 +101,7 @@ function submit(acknowledge = false) {
   emit('save', {
     code: form.code.trim(),
     name: form.name.trim(),
-    category: form.category.trim().toLowerCase(),
+    category: matchCategory(form.category),
     description: form.description.trim(),
     homeLocation: form.homeLocation.trim(),
     technicalNotes: form.technicalNotes.trim(),
@@ -133,8 +138,8 @@ input, textarea, select {
   padding: 8px 10px;
 }
 select option {
-  color: #1b1230;
-  background: #ffffff;
+  color: #F3EEFF;
+  background: #1A1030;
 }
 .warning {
   margin: 16px 0 0;

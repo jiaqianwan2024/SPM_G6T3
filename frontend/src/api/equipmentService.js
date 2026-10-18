@@ -4,6 +4,8 @@ const axiosClient = createServiceClient("equipment");
 
 export const getEquipmentList = () => axiosClient.get("/equipment");
 
+export const getEquipmentQueue = () => axiosClient.get("/equipment/queue");
+
 export const getEquipment = (equipmentId) => axiosClient.get(`/equipment/${equipmentId}`);
 
 export const createEquipment = (body) => axiosClient.post("/equipment", body);
@@ -13,6 +15,15 @@ export const updateEquipment = (equipmentId, body) => axiosClient.patch(`/equipm
 export const checkEquipmentAvailability = (body) => axiosClient.post("/equipment/availability", body);
 
 export const getEquipmentRequests = () => axiosClient.get("/equipment/requests");
+
+export const getEventReservations = (eventId) =>
+  axiosClient.get("/equipment/reservations", { params: { eventId } });
+
+export const getReservationSummary = (eventId) =>
+  axiosClient.get("/equipment/reservations/summary", { params: { eventId } });
+
+export const getEquipmentReservations = (equipmentId) =>
+  axiosClient.get(`/equipment/${equipmentId}/reservations`);
 
 export const createEquipmentRequest = (body) => axiosClient.post("/equipment/requests", body);
 

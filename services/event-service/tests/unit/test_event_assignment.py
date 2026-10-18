@@ -10,18 +10,21 @@ from app.main import app
 from app.models.event_assignment import EventAssignment
 from app.models.event_status_history import EventStatusHistory
 from app.orchestration import clients
-from app.schemas.event import EventAssignmentCreate
+from app.schemas.event import EventAssignmentCreate, EventRejection
 from shared.auth.deps import require_authenticated_user
 from shared.exceptions.http import forbidden, service_unavailable
-from tests.unit.support import COORDINATOR, EventCase, insert_event
+from tests.unit.support import COORDINATOR, EventCase, event_create, insert_event
+from tests.unit.test_event_safety_reviews import resolve_as
 
 DIRECTORY = [
     {"userId": "coord-1", "userName": "Ben Lee", "email": "ben@connectsphere.com", "role": "coordinator"},
     {"userId": "coord-2", "userName": "Cara Ng", "email": "cara@connectsphere.com", "role": "coordinator"},
     {"userId": "venue-1", "userName": "Carol", "email": "carol@connectsphere.com", "role": "venue"},
     {"userId": "org-1", "userName": "Amy", "email": "amy@apex.com", "role": "organiser", "organisationId": "o1"},
+    {"userId": "lead-1", "userName": "Rachel Goh", "email": "lead@connectsphere.com", "role": "coordinatorlead"},
 ]
 ORGANISER = {"userId": "org-1", "role": "organiser", "organisationId": "o1"}
+LEAD = {"userId": "lead-1", "role": "coordinatorlead"}
 
 
 class AssignmentCase(EventCase):
@@ -31,6 +34,7 @@ class AssignmentCase(EventCase):
             "names": patch("app.services.event_service.organisation_names", return_value={}),
             "users": patch("app.services.event_service.list_users", return_value=DIRECTORY),
             "notify": patch("app.services.event_service.send_notification", return_value=True),
+            "inbox": patch("app.services.event_service.record_notification", return_value=True),
         }
         self.mocks = {name: p.start() for name, p in self.patches.items()}
 
@@ -42,19 +46,21 @@ class AssignmentCase(EventCase):
     def event(self, event_id="e1", status="submitted", **overrides):
         return insert_event(self.db, eventId=event_id, status=status, eventName="Summit", **overrides)
 
-    def assign(self, coordinator_id="coord-1", event_id="e1", assigned_by="coord-1"):
+    def assign(self, coordinator_id="coord-1", event_id="e1", assigned_by="lead-1"):
         return self.service.assign_coordinator(
             event_id, EventAssignmentCreate(coordinatorId=coordinator_id), assigned_by, "Bearer token"
         )
 
 
 class TestAssigning(AssignmentCase):
-    def test_a_coordinator_can_assign_a_submitted_event_to_themselves(self):
+    def test_a_new_request_stays_unassigned_until_the_lead_assigns_it(self):
+        created = self.service.create_event(event_create(), "org-1", "o1")
+        self.assertEqual((created.status, created.coordinatorId), ("submitted", None))
         self.event()
 
         assignment = self.assign()
 
-        self.assertEqual((assignment.coordinatorId, assignment.assignedBy), ("coord-1", "coord-1"))
+        self.assertEqual((assignment.coordinatorId, assignment.assignedBy), ("coord-1", "lead-1"))
         self.assertEqual(self.service.get_event("e1").coordinatorId, "coord-1")
 
     def test_assigning_a_submitted_event_moves_it_to_under_review(self):
@@ -64,7 +70,7 @@ class TestAssigning(AssignmentCase):
 
         self.assertEqual(self.service.get_event("e1").status, "under review")
         history = self.db.query(EventStatusHistory).one()
-        self.assertEqual((history.fromStatus, history.toStatus, history.changedBy), ("submitted", "under review", "coord-1"))
+        self.assertEqual((history.fromStatus, history.toStatus, history.changedBy), ("submitted", "under review", "lead-1"))
         self.assertEqual(history.note, "Assigned to Cara Ng")
 
     def test_reassigning_keeps_the_events_status(self):
@@ -85,7 +91,7 @@ class TestAssigning(AssignmentCase):
 
     def test_only_an_event_coordinator_can_be_assigned(self):
         self.event()
-        for user_id in ("venue-1", "org-1", "nobody"):
+        for user_id in ("venue-1", "org-1", "lead-1", "nobody"):
             with self.assertRaises(HTTPException) as ctx:
                 self.assign(coordinator_id=user_id)
 
@@ -128,6 +134,34 @@ class TestAssignmentNotifications(AssignmentCase):
         self.assertIn("Cara Ng", calls[1].args[2])
         self.assertIn("cara@connectsphere.com", calls[1].args[2])
         self.assertEqual(calls[0].args[3], "Bearer token")
+        # The new coordinator's in-app notice is SPM-93's publish alone, so it is not doubled.
+        inbox = [(call.args[0], call.args[2]) for call in self.mocks["inbox"].call_args_list]
+        self.assertEqual(inbox, [("org-1", "event.coordinator")])
+        self.assertEqual(self.published.call_args.args[3], [{"userId": "coord-2", "role": "coordinator"}])
+
+    def test_a_reassignment_also_tells_the_coordinator_it_was_taken_from(self):
+        self.event(status="planning", coordinatorId="coord-1")
+
+        self.assign(coordinator_id="coord-2")
+
+        emails = [call.args[0] for call in self.mocks["notify"].call_args_list]
+        self.assertEqual(emails, ["cara@connectsphere.com", "ben@connectsphere.com", "amy@apex.com"])
+        replaced = self.mocks["notify"].call_args_list[1].args
+        self.assertEqual(replaced[1], "Summit has been reassigned")
+        self.assertIn("now with Cara Ng", replaced[2])
+        self.assertIn(("coord-1", "event.reassigned"), [(c.args[0], c.args[2]) for c in self.mocks["inbox"].call_args_list])
+
+    def test_reassigning_to_the_coordinator_it_already_has_is_refused_and_saves_nothing(self):
+        self.event(status="planning", coordinatorId="coord-1")
+
+        with self.assertRaises(HTTPException) as ctx:
+            self.assign(coordinator_id="coord-1")
+
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertIn("Ben Lee is already the coordinator", ctx.exception.detail)
+        self.assertEqual(self.db.query(EventAssignment).count(), 0)
+        self.mocks["notify"].assert_not_called()
+        self.mocks["inbox"].assert_not_called()
 
     def test_an_organiser_missing_from_the_directory_is_skipped(self):
         self.event(organiserId="gone")
@@ -168,26 +202,58 @@ class TestCandidatesAndLog(AssignmentCase):
         self.db.query(EventAssignment).one().assignedAt = earlier
         self.db.query(EventStatusHistory).one().createdAt = earlier
         self.db.commit()
-        self.assign(coordinator_id="coord-2", assigned_by="coord-1")
+        self.assign(coordinator_id="coord-2")
 
         log = self.service.get_activity_log("e1")
 
         self.assertEqual([entry.kind for entry in log], ["assignment", "status", "assignment"])
         first, status, second = log
-        self.assertEqual((first.field, first.oldValue, first.newValue, first.changedBy), ("coordinatorId", None, "coord-1", "coord-1"))
+        self.assertEqual((first.field, first.oldValue, first.newValue, first.changedBy), ("coordinatorId", None, "coord-1", "lead-1"))
         self.assertEqual(first.createdAt, status.createdAt)
         self.assertEqual(status.toStatus, "under review")
         self.assertEqual((second.oldValue, second.newValue), ("coord-1", "coord-2"))
 
     def test_a_request_under_review_can_still_be_approved_or_rejected(self):
         self.event(event_id="a", status="under review", coordinatorId="coord-1")
-        self.event(event_id="b", status="under review")
+        self.event(event_id="b", status="under review", coordinatorId="coord-1")
 
         self.assertEqual(self.service.approve_event("a", "coord-1").status, "planning")
-        self.assertEqual(self.service.reject_event("b", "coord-1", "Dates clash").status, "rejected")
+        self.assertEqual(self.service.reject_event("b", "coord-1", EventRejection(reason="insufficient notice", explanation="Too late")).status, "rejected")
         with self.assertRaises(HTTPException) as ctx:
             self.service.approve_event("a", "coord-1")
         self.assertEqual(ctx.exception.status_code, 409)
+
+
+class TestCoordinatorAssignments(AssignmentCase):
+    """SPM-119: the Lead sees every coordinator and their active events."""
+
+    def test_each_coordinator_is_listed_with_their_active_events_soonest_first(self):
+        self.mocks["names"].return_value = {"o1": "Apex Partners"}
+        self.event(event_id="later", status="planning", coordinatorId="coord-2", proposedStartAt=datetime(2026, 12, 2, 9))
+        self.event(event_id="sooner", status="under review", coordinatorId="coord-2", proposedStartAt=datetime(2026, 12, 1, 9))
+        for index, status in enumerate(("completed", "cancelled", "rejected", "draft", "discarded")):
+            self.event(event_id=f"closed-{index}", status=status, coordinatorId="coord-2")
+        self.event(event_id="unassigned")
+
+        groups = self.service.list_coordinator_assignments("Bearer token")
+
+        self.assertEqual([(group.userId, group.name) for group in groups], [("coord-1", "Ben Lee"), ("coord-2", "Cara Ng")])
+        self.assertEqual(groups[0].events, [])
+        self.assertEqual([event.eventId for event in groups[1].events], ["sooner", "later"])
+        self.assertEqual(
+            (groups[1].events[0].eventName, groups[1].events[0].status, groups[1].events[0].organisationName),
+            ("Summit", "under review", "Apex Partners"),
+        )
+
+    def test_an_event_held_by_someone_no_longer_a_coordinator_stays_in_view(self):
+        self.event(event_id="moved", status="planning", coordinatorId="venue-1")
+        self.event(event_id="gone", status="planning", coordinatorId="left-the-company")
+
+        groups = {group.userId: group for group in self.service.list_coordinator_assignments("Bearer token")}
+
+        self.assertEqual((groups["venue-1"].name, groups["venue-1"].email), ("Carol", "carol@connectsphere.com"))
+        self.assertEqual((groups["left-the-company"].name, groups["left-the-company"].email), ("left-the-company", ""))
+        self.assertEqual([event.eventId for event in groups["left-the-company"].events], ["gone"])
 
 
 class TestEventCoordinatorContact(AssignmentCase):
@@ -283,7 +349,7 @@ class TestAssignmentRoutes(AssignmentCase):
     def setUp(self):
         super().setUp()
         app.dependency_overrides[require_authenticated_user] = lambda: {"uid": "uid-1"}
-        self.caller = patch("app.routers.event.resolve_caller", return_value=COORDINATOR)
+        self.caller = patch("app.routers.event.resolve_caller", side_effect=resolve_as(LEAD))
         self.caller_mock = self.caller.start()
         self.client = TestClient(app)
         self.client.__enter__()
@@ -295,20 +361,54 @@ class TestAssignmentRoutes(AssignmentCase):
         app.dependency_overrides.clear()
         super().tearDown()
 
-    def test_coordinators_list_candidates_and_assign(self):
+    def test_the_lead_lists_candidates_and_assigns(self):
         self.event()
 
         candidates = self.client.get("/events/coordinators", headers=self.headers)
-        self.assertEqual(self.caller_mock.call_args.kwargs["allowed_roles"], {"coordinator"})
+        self.assertEqual(self.caller_mock.call_args.kwargs["allowed_roles"], {"coordinatorlead"})
         assigned = self.client.post("/events/e1/assign-coordinator", headers=self.headers, json={"coordinatorId": "coord-2"})
         refused = self.client.post("/events/e1/assign-coordinator", headers=self.headers, json={"coordinatorId": "venue-1"})
 
         self.assertEqual(candidates.status_code, 200)
         self.assertEqual([row["userId"] for row in candidates.json()], ["coord-1", "coord-2"])
         self.assertEqual(assigned.status_code, 201)
-        self.assertEqual(assigned.json()["assignedBy"], "coord-1")
+        self.assertEqual(assigned.json()["assignedBy"], "lead-1")
         self.assertEqual(self.client.get("/events/e1", headers=self.headers).json()["status"], "under review")
         self.assertEqual(refused.status_code, 422)
+
+    def test_an_event_coordinator_gets_403_on_assigning_or_listing_candidates(self):
+        self.event()
+        self.caller_mock.side_effect = resolve_as(COORDINATOR)
+
+        self.assertEqual(self.client.get("/events/coordinators", headers=self.headers).status_code, 403)
+        refused = self.client.post("/events/e1/assign-coordinator", headers=self.headers, json={"coordinatorId": "coord-1"})
+        self.assertEqual(refused.status_code, 403)
+        self.assertIsNone(self.service.get_event("e1").coordinatorId)
+
+    def test_only_the_lead_gets_the_all_assignments_view(self):
+        self.event(event_id="theirs", status="planning", coordinatorId="coord-1")
+
+        shown = self.client.get("/events/assignments", headers=self.headers)
+        self.caller_mock.side_effect = resolve_as(COORDINATOR)
+        refused = self.client.get("/events/assignments", headers=self.headers)
+
+        self.assertEqual(shown.status_code, 200)
+        self.assertEqual(shown.json()[0]["events"][0]["eventId"], "theirs")
+        self.assertEqual(refused.status_code, 403)
+
+    def test_the_lead_sees_every_request_and_a_coordinator_only_their_own(self):
+        self.event(event_id="new")
+        self.event(event_id="theirs", status="under review", coordinatorId="coord-1")
+        self.event(event_id="other", status="under review", coordinatorId="coord-2")
+
+        everything = self.client.get("/events/queue", headers=self.headers).json()
+        one_coordinator = self.client.get("/events/queue?assignedTo=coord-2", headers=self.headers).json()
+        self.caller_mock.side_effect = resolve_as(COORDINATOR)
+        own = self.client.get("/events/queue?assignedTo=coord-2", headers=self.headers).json()
+
+        self.assertEqual({row["eventId"] for row in everything}, {"new", "theirs", "other"})
+        self.assertEqual([row["eventId"] for row in one_coordinator], ["other"])
+        self.assertEqual([row["eventId"] for row in own], ["theirs"])
 
     def test_other_roles_cannot_assign_or_list_candidates(self):
         self.event()
@@ -323,12 +423,38 @@ class TestAssignmentRoutes(AssignmentCase):
     def test_the_coordinator_contact_route_checks_the_caller(self):
         self.event(coordinatorId="coord-1")
 
-        self.caller_mock.return_value = ORGANISER
+        self.caller_mock.side_effect = resolve_as(ORGANISER)
         shown = self.client.get("/events/e1/coordinator", headers=self.headers)
-        self.caller_mock.return_value = {"userId": "att-1", "role": "attendee"}
+        self.caller_mock.side_effect = resolve_as({"userId": "att-1", "role": "attendee"})
         hidden = self.client.get("/events/e1/coordinator", headers=self.headers)
 
         self.assertEqual(shown.status_code, 200)
         self.assertEqual(shown.json()["name"], "Ben Lee")
         self.assertNotIn("allowed_roles", self.caller_mock.call_args.kwargs)
         self.assertEqual(hidden.status_code, 403)
+
+
+class TestAssignmentPublishes(AssignmentCase):
+    """SPM-93: "New booking request assigned" goes to the assigned coordinator."""
+
+    def test_the_new_coordinator_is_told_it_was_assigned_to_them(self):
+        self.event()
+
+        assignment = self.assign(coordinator_id="coord-2", assigned_by="coord-1")
+
+        call = self.published.call_args
+        self.assertEqual(call.args[:3], ("booking.assigned", "e1", f"e1:booking.assigned:{assignment.assignmentId}"))
+        self.assertEqual(call.args[3], [{"userId": "coord-2", "role": "coordinator"}])
+        self.assertEqual(call.args[4], {"eventName": "Summit"})
+        self.assertEqual(call.kwargs["actor_id"], "coord-1")
+        self.assertEqual(call.kwargs["resource"], {"type": "event", "id": "e1"})
+
+    def test_a_reassignment_is_a_new_occurrence(self):
+        self.event()
+
+        first = self.assign(coordinator_id="coord-1")
+        first_occurrence = self.published.call_args.args[2]
+        second = self.assign(coordinator_id="coord-2")
+
+        self.assertNotEqual(first.assignmentId, second.assignmentId)
+        self.assertNotEqual(self.published.call_args.args[2], first_occurrence)

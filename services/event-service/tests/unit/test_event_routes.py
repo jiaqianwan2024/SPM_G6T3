@@ -43,6 +43,22 @@ class TestEventRoutes(ServiceTestCase):
         }
         created = self.client.post("/events", headers=headers, json=body)
         self.assertEqual(created.status_code, 201)
+        # The organiser form sends accessibility options as a list, plus fields the draft form also sends.
+        form_shaped = self.client.post(
+            "/events",
+            headers=headers,
+            json={
+                **body,
+                "eventName": "Form submit",
+                "layoutPreference": "Theatre",
+                "preferredLocation": "",
+                "requiredFacilities": [],
+                "accessibilityNeeds": ["Wheelchair accessible"],
+                "accessibilityNote": "",
+            },
+        )
+        self.assertEqual(form_shaped.status_code, 201, form_shaped.text)
+        self.assertIn("Wheelchair", form_shaped.json()["accessibilityNeeds"])
         event_id = created.json()["eventId"]
 
         self.assertEqual(self.client.get("/events", headers=headers).status_code, 200)
@@ -54,14 +70,6 @@ class TestEventRoutes(ServiceTestCase):
         self.assertEqual(self.client.get(f"/events/{event_id}", headers=headers).status_code, 200)
         self.assertEqual(self.client.get(f"/events/{event_id}/activity-log", headers=headers).status_code, 200)
 
-        rejected_source = self.client.post("/events", headers=headers, json=body)
-        rejected = self.client.post(
-            f"/events/{rejected_source.json()['eventId']}/reject",
-            headers=headers,
-            json={"reason": "Dates clash"},
-        )
-        self.assertEqual(rejected.status_code, 200)
-
         directory = [{"userId": "coord-1", "userName": "Ben", "email": "ben@example.com", "role": "coordinator"}]
         with patch("app.services.event_service.list_users", return_value=directory), patch(
             "app.services.event_service.send_notification", return_value=True
@@ -72,6 +80,19 @@ class TestEventRoutes(ServiceTestCase):
                 json={"coordinatorId": "coord-1"},
             )
             approved = self.client.post(f"/events/{event_id}/approve", headers=headers, json={})
+            rejected_source = self.client.post("/events", headers=headers, json=body).json()["eventId"]
+            self.client.post(f"/events/{rejected_source}/assign-coordinator", headers=headers, json={"coordinatorId": "coord-1"})
+            rejected = self.client.post(
+                f"/events/{rejected_source}/reject",
+                headers=headers,
+                json={"reason": "insufficient notice", "explanation": "Too close to the date."},
+            )
+            unlisted = self.client.post(
+                f"/events/{rejected_source}/reject", headers=headers, json={"reason": "Dates clash", "explanation": "x"}
+            )
+        self.assertEqual(rejected.status_code, 200)
+        self.assertEqual(rejected.json()["decisionReason"], "insufficient notice")
+        self.assertEqual(unlisted.status_code, 422)
         self.assertEqual(assigned.status_code, 201)
         self.assertEqual(approved.status_code, 200)
         self.assertEqual(approved.json()["status"], "planning")
@@ -135,9 +156,14 @@ class TestEventRoutes(ServiceTestCase):
                 "proposedStartAt": "2026-10-06T09:00:00",
                 "proposedEndAt": "2026-10-06T17:00:00",
                 "expectedAttendance": 4,
+                "accessibilityNeeds": ["Wheelchair accessible"],
+                "requiredFacilities": ["Projector"],
+                "preferredLocation": "",
+                "accessibilityNote": "",
             },
         )
-        self.assertEqual(submitted.status_code, 200)
+        self.assertEqual(submitted.status_code, 200, submitted.text)
+        self.assertIn("Wheelchair", submitted.json()["accessibilityNeeds"])
 
         another = self.client.post("/events/drafts", headers=headers, json={"eventName": "Throwaway"})
         discarded = self.client.delete(f"/events/{another.json()['eventId']}", headers=headers)

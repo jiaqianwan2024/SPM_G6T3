@@ -18,6 +18,7 @@ class EventReview(Base):
     reviewerId: Mapped[str] = mapped_column("reviewer_id", String(64))
     action: Mapped[str] = mapped_column(String(32))
     comment: Mapped[str] = mapped_column(Text, default="")
+    reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
     createdAt: Mapped[datetime] = mapped_column("created_at", DateTime, default=datetime.utcnow)
     field: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str | None] = mapped_column(String(16), nullable=True)

@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.orchestration.clients import event_recipients, publish_notification
 
 from app.dao.equipment_activity_log_dao import EquipmentActivityLogDAO
 from app.dao.equipment_dao import EquipmentDAO
@@ -108,44 +109,83 @@ def _events_over_serviceable(rows: list[EquipmentReservation], serviceable: int)
     return sorted(event_ids)
 
 
-def _user_email(user_id: str, authorization: str | None) -> str | None:
+def _event_record(event_id: str, authorization: str | None) -> dict | None:
     if not authorization:
         return None
     try:
-        with httpx.Client(timeout=5) as client:
-            response = client.get(
-                f"{settings.user_service_url}/users",
-                headers={"Authorization": authorization},
-            )
+        response = httpx.get(
+            f"{settings.event_service_url}/events/{event_id}",
+            headers={"Authorization": authorization},
+            timeout=0.8,
+        )
     except httpx.HTTPError:
         return None
     if response.status_code != 200:
         return None
-    for user in response.json():
-        if user.get("userId") == user_id and user.get("email"):
-            return user["email"]
-    return None
+    return response.json()
 
 
-def _notify_coordinator(row: EquipmentRequest, authorization: str | None) -> None:
-    email = _user_email(row.requestedBy, authorization)
-    if not email:
+def _notify_role(role: str, event_id: str, title: str, body: str, authorization: str | None, notice_type: str) -> None:
+    """Email a role and store the same notice in each inbox. Best effort."""
+    if not authorization:
         return
     try:
-        with httpx.Client(timeout=5) as client:
-            client.post(
-                f"{settings.notification_service_url}/notifications",
-                headers={"Authorization": authorization},
-                json={
-                    "to": email,
-                    "subject": "An equipment request cannot be fulfilled",
-                    "body": (
-                        f"{row.equipmentId} for event {row.eventId} was marked unavailable. {row.reviewNote}"
-                    ).strip(),
-                },
-            )
+        users = httpx.get(
+            f"{settings.user_service_url}/users", headers={"Authorization": authorization}, timeout=5.0
+        )
     except httpx.HTTPError:
         return
+    if users.status_code != 200:
+        return
+    for user in users.json():
+        if user.get("role") != role:
+            continue
+        _notify_people(title, body, [user.get("email") or ""], authorization)
+        try:
+            httpx.post(
+                f"{settings.notification_service_url}/notifications/records",
+                headers={"Authorization": authorization},
+                json={
+                    "userId": user.get("userId"),
+                    "eventId": event_id,
+                    "type": notice_type,
+                    "title": title,
+                    "body": body,
+                },
+                timeout=5.0,
+            )
+        except httpx.HTTPError:
+            continue
+
+
+def _settle_reverification(event_id: str, authorization: str | None) -> None:
+    if not authorization:
+        return
+    try:
+        httpx.post(
+            f"{settings.event_service_url}/events/{event_id}/reverification/settle",
+            headers={"Authorization": authorization},
+            timeout=5.0,
+        )
+    except httpx.HTTPError:
+        return
+
+
+def _notify_people(subject: str, body: str, emails: list[str], authorization: str | None) -> None:
+    if not authorization:
+        return
+    for email in emails:
+        if not email:
+            continue
+        try:
+            httpx.post(
+                f"{settings.notification_service_url}/notifications",
+                headers={"Authorization": authorization},
+                json={"to": email, "subject": subject, "body": body},
+                timeout=0.8,
+            )
+        except httpx.HTTPError:
+            continue
 
 
 def _request_to_out(row: EquipmentRequest) -> EquipmentRequestOut:
@@ -162,6 +202,12 @@ def _request_to_out(row: EquipmentRequest) -> EquipmentRequestOut:
         reviewedBy=row.reviewedBy,
         reviewedAt=row.reviewedAt,
         reviewNote=row.reviewNote,
+        decisionReason=row.decisionReason or "",
+        reason=row.decisionReason or row.reviewNote,
+        alternativeEquipmentId=row.alternativeEquipmentId,
+        suggestedAlternative=row.alternativeEquipmentId,
+        shortfall=row.shortfall or 0,
+        reservedQuantity=row.reservedQuantity or 0,
         createdAt=row.createdAt,
     )
 
@@ -412,13 +458,28 @@ class EquipmentService(BaseService):
             for row in rows
         ]
 
-    def reserve_quantity(self, data: EquipmentQuantityReserve, caller: dict) -> EquipmentReservationOut:
-        row = self._require_equipment(data.equipmentId)
-        starts_at, ends_at = _naive(data.startsAt), _naive(data.endsAt)
+    def _locked_equipment(self, equipment_id: str) -> EquipmentInfo:
+        query = self.db.query(EquipmentInfo).filter(EquipmentInfo.equipmentId == equipment_id).with_for_update()
+        row = query.one_or_none()
+        return self._require(row, "Equipment not found")
+
+    def _available_for(self, row: EquipmentInfo, starts_at: datetime, ends_at: datetime, ignore_id: str | None = None) -> int:
         viewed = self._equipment_out(row)
-        already_held = _overlapping_quantity(self._active_reservations(row.equipmentId), starts_at, ends_at)
-        if data.quantity > viewed.serviceableQuantity - already_held:
-            raise conflict("Requested quantity is not available for that period")
+        held = [
+            item
+            for item in self._active_reservations(row.equipmentId)
+            if item.reservationId != ignore_id
+        ]
+        return viewed.serviceableQuantity - _overlapping_quantity(held, starts_at, ends_at)
+
+    def reserve_quantity(
+        self, data: EquipmentQuantityReserve, caller: dict, authorization: str | None = None
+    ) -> EquipmentReservationOut:
+        row = self._locked_equipment(data.equipmentId)
+        starts_at, ends_at = _naive(data.startsAt), _naive(data.endsAt)
+        available = self._available_for(row, starts_at, ends_at)
+        if data.quantity > available:
+            raise conflict(f"Only {available} available for that period; nothing was reserved")
         request = EquipmentRequest(
             requestId=str(uuid4()),
             eventId=data.eventId,
@@ -445,9 +506,64 @@ class EquipmentService(BaseService):
         )
         self.request_dao.add(request)
         self.reservation_dao.add(reservation)
+        self._log_change(
+            row.equipmentId,
+            "reserve",
+            caller,
+            {"eventId": data.eventId, "quantity": data.quantity, "previousQuantity": 0, "newQuantity": data.quantity},
+        )
         self.db.commit()
         self.db.refresh(reservation)
+        self._notify_when_fully_reserved(data.eventId, authorization)
         return _reservation_to_out(reservation)
+
+    def _notify_when_fully_reserved(self, event_id: str, authorization: str | None) -> None:
+        requests = [
+            row
+            for row in self.request_dao.list_all()
+            if row.eventId == event_id
+            and row.status != "rejected"
+            and row.reviewNote != "Reserved from the catalogue quantity check"
+        ]
+        if not requests:
+            return
+        reserved = sum(row.quantity for row in self.reservation_dao.list_active_for_event(event_id))
+        needed = sum(row.quantity for row in requests)
+        if reserved < needed:
+            return
+        record = _event_record(event_id, authorization) or {}
+        _notify_people(
+            "Equipment reserved",
+            f"Equipment for event {event_id} is fully reserved.",
+            [record.get("organiserContact") or ""],
+            authorization,
+        )
+
+    def adjust_reservation(
+        self, reservation_id: str, quantity: int, caller: dict, authorization: str | None = None
+    ) -> EquipmentReservationOut:
+        row = self._require(self.reservation_dao.get_by_id(reservation_id), "Reservation not found")
+        if row.status not in ("active", "reserved"):
+            raise conflict(f"Reservation is already {row.status}")
+        record = _event_record(row.eventId, authorization) or {}
+        if record.get("status") in ("completed", "cancelled", "rejected"):
+            raise conflict(f"This event is {record['status']}, so the reservation cannot be changed")
+        equipment = self._locked_equipment(row.equipmentId)
+        previous = row.quantity
+        if quantity > previous:
+            available = self._available_for(equipment, row.startsAt, row.endsAt, ignore_id=row.reservationId)
+            if quantity > available + previous:
+                raise conflict(f"Only {available} available for that period")
+        row.quantity = quantity
+        self._log_change(
+            row.equipmentId,
+            "adjust",
+            caller,
+            {"previousQuantity": previous, "newQuantity": quantity, "old": previous, "new": quantity},
+        )
+        self.db.commit()
+        self.db.refresh(row)
+        return _reservation_to_out(row)
 
     def list_reservations(self, equipment_id: str) -> list[EquipmentReservationOut]:
         self._require_equipment(equipment_id)
@@ -456,23 +572,151 @@ class EquipmentService(BaseService):
     def list_event_reservations(self, event_id: str) -> list[EquipmentReservationOut]:
         return [_reservation_to_out(row) for row in self.reservation_dao.list_for_event(event_id)]
 
-    def flag_for_reverification(self, event_id: str, reason: str) -> list[EquipmentReservationOut]:
+    def get_reservation(self, reservation_id: str) -> EquipmentReservationOut:
+        return _reservation_to_out(self._require(self.reservation_dao.get_by_id(reservation_id), "Reservation not found"))
+
+    def release_holds_for_event(self, event_id: str, caller: dict, reason: str) -> list[EquipmentReservationOut]:
+        """Rejecting, cancelling, or completing an event returns its held stock (SPM-3)."""
+        rows = self.reservation_dao.list_active_for_event(event_id)
+        for row in rows:
+            previous = row.quantity
+            row.status = "released"
+            self._log_change(
+                row.equipmentId,
+                "release",
+                caller,
+                {"eventId": event_id, "previousQuantity": previous, "newQuantity": 0, "reason": reason},
+            )
+        self.db.commit()
+        return [_reservation_to_out(row) for row in rows]
+
+    def outcome_summary(self, event_id: str) -> list[dict]:
+        requests = {row.requestId: row for row in self.request_dao.list_all() if row.eventId == event_id}
+        seen: set[str] = set()
+        outcomes = []
+        for reservation in self.reservation_dao.list_for_event(event_id):
+            request = requests.get(reservation.requestId)
+            seen.add(reservation.requestId)
+            outcomes.append(
+                {
+                    "reservationId": reservation.reservationId,
+                    "requestId": reservation.requestId,
+                    "eventId": event_id,
+                    "equipmentId": reservation.equipmentId,
+                    "equipmentName": reservation.equipment.name if reservation.equipment else "",
+                    "quantity": reservation.quantity,
+                    "status": reservation.status,
+                    "reason": (request.decisionReason or request.reviewNote or "") if request else "",
+                    "alternativeEquipmentId": request.alternativeEquipmentId if request and request.alternativeEquipmentId else "",
+                }
+            )
+        for request in requests.values():
+            if request.requestId in seen:
+                continue
+            if request.status not in ("unavailable", "partial", "attention", "resolved"):
+                continue
+            outcomes.append(
+                {
+                    "reservationId": "",
+                    "requestId": request.requestId,
+                    "eventId": event_id,
+                    "equipmentId": request.equipmentId,
+                    "equipmentName": "",
+                    "quantity": request.quantity,
+                    "status": request.status,
+                    "reason": request.decisionReason or request.reviewNote or "",
+                    "alternativeEquipmentId": request.alternativeEquipmentId or "",
+                }
+            )
+        return outcomes
+
+    def flag_for_reverification(
+        self, event_id: str, reason: str, authorization: str | None = None
+    ) -> list[EquipmentReservationOut]:
         """SPM-71 AC4: mark the event's reservations that still hold stock as
-        needing re-verification. Their status is unchanged, so the stock stays held."""
+        needing re-verification. Their status is unchanged, so the stock stays held.
+        SPM-86 AC03: technical support are told. The reserved quantity is not raised."""
         rows = self.reservation_dao.list_active_for_event(event_id)
         for row in rows:
             row.needsReverification = True
             row.reverificationNote = reason
         self.db.commit()
+        if rows:
+            _notify_role(
+                "techsupport",
+                event_id,
+                "Equipment needs re-verification",
+                f"A reservation for {event_id} needs re-verification. {reason}",
+                authorization,
+                "equipment.reverification",
+            )
         return [_reservation_to_out(row) for row in rows]
 
-    def release_reservation(self, reservation_id: str, caller: dict) -> EquipmentReservationOut:
+    def reverification_queue(self) -> list[EquipmentReservationOut]:
+        """SPM-86 AC02 and AC07: held reservations technical support still have to re-check."""
+        return [_reservation_to_out(row) for row in self.reservation_dao.list_needing_reverification()]
+
+    def reconfirm_reservation(
+        self, reservation_id: str, authorization: str | None = None
+    ) -> EquipmentReservationOut:
+        """SPM-86: technical support accept the held quantity. Extra units that are not free
+        leave the flag in place and do not increase what is reserved."""
+        row = self._require(self.reservation_dao.get_by_id(reservation_id), "Reservation not found")
+        if row.status not in ("active", "reserved") or not row.needsReverification:
+            raise conflict("This reservation does not need re-verification.")
+        event = _event_record(row.eventId, authorization) or {}
+        wanted = 0
+        for line in event.get("equipmentLines") or []:
+            if line.get("equipmentId") == row.equipmentId and not line.get("notRequired"):
+                wanted = max(wanted, int(line.get("quantity") or 0))
+        if wanted > row.quantity:
+            equipment = self._require_equipment(row.equipmentId)
+            coverable = self._available_for(equipment, row.startsAt, row.endsAt, ignore_id=row.reservationId)
+            if wanted > coverable:
+                raise conflict(
+                    f"Only {coverable} can be covered for that period and the reservation stays at {row.quantity}. "
+                    "The extra units are unavailable, so the line stays flagged for technical support."
+                )
+        row.needsReverification = False
+        row.reverificationNote = None
+        self.db.commit()
+        self.db.refresh(row)
+        _settle_reverification(row.eventId, authorization)
+        return _reservation_to_out(row)
+
+    def release_reservation(
+        self, reservation_id: str, caller: dict, reason: str = "", authorization: str | None = None
+    ) -> EquipmentReservationOut:
         row = self._require(self.reservation_dao.get_by_id(reservation_id), "Reservation not found")
         if row.status not in ("active", "reserved"):
             raise conflict(f"Reservation is already {row.status}")
+        record = _event_record(row.eventId, authorization) or {}
+        if record.get("status") == "confirmed" and not reason.strip():
+            raise HTTPException(status_code=422, detail="A reason is required to release a confirmed event's reservation")
+        previous = row.quantity
         row.status = "released"
+        request = self.request_dao.get_by_id(row.requestId) if row.requestId else None
+        if request is not None and request.status in ("reserved", "approved", "partial"):
+            request.status = "attention"
+            request.reviewNote = reason or request.reviewNote
+        self._log_change(
+            row.equipmentId,
+            "release",
+            caller,
+            {"previousQuantity": previous, "newQuantity": 0, "reason": reason},
+        )
         self.db.commit()
         self.db.refresh(row)
+        if record.get("status") == "confirmed":
+            publish_notification(
+                "equipment.released",
+                row.eventId,
+                f"{row.eventId}:equipment.released:{row.reservationId}",
+                event_recipients(record, ("coordinator", "organiser")),
+                {"eventName": record.get("eventName") or row.eventId, "reason": reason.strip()},
+                actor_id=caller.get("userId"),
+                resource={"type": "equipment_reservation", "id": row.reservationId},
+            )
         return _reservation_to_out(row)
 
     def list_requests(self) -> list[EquipmentRequestOut]:
@@ -505,6 +749,7 @@ class EquipmentService(BaseService):
         reason: str,
         note: str,
         authorization: str | None,
+        alternative: str | None = None,
     ) -> EquipmentRequestOut:
         row = self._require_request(request_id)
         if row.status != "pending":
@@ -514,11 +759,123 @@ class EquipmentService(BaseService):
         row.status = "unavailable"
         row.reviewedBy = caller.get("userId", "")
         row.reviewedAt = datetime.utcnow()
+        row.decisionReason = reason.strip()
+        row.alternativeEquipmentId = alternative
         pieces = [piece for piece in (reason.strip(), note.strip()) if piece]
         row.reviewNote = ". ".join(pieces)
+        self._log_change(
+            row.equipmentId,
+            "unavailable",
+            caller,
+            {"reason": reason.strip(), "alternativeEquipmentId": alternative or ""},
+        )
         self.db.commit()
         self.db.refresh(row)
-        _notify_coordinator(row, authorization)
+        self._publish_shortfall(row, caller, authorization, alternative)
+        return _request_to_out(row)
+
+    def record_partial(
+        self, request_id: str, reserved_quantity: int, reason: str, caller: dict, authorization: str | None
+    ) -> EquipmentRequestOut:
+        row = self._require_request(request_id)
+        if reserved_quantity > row.quantity:
+            raise conflict("Reserved quantity cannot exceed the request")
+        equipment = self._locked_equipment(row.equipmentId)
+        available = self._available_for(equipment, row.startsAt, row.endsAt)
+        if reserved_quantity > available:
+            raise conflict(f"Only {available} available for that period")
+        if reserved_quantity:
+            self.reservation_dao.add(
+                EquipmentReservation(
+                    reservationId=str(uuid4()),
+                    requestId=row.requestId,
+                    eventId=row.eventId,
+                    equipmentId=row.equipmentId,
+                    quantity=reserved_quantity,
+                    startsAt=row.startsAt,
+                    endsAt=row.endsAt,
+                    status="partial",
+                )
+            )
+        row.status = "partial"
+        row.reservedQuantity = reserved_quantity
+        row.shortfall = row.quantity - reserved_quantity
+        row.decisionReason = reason
+        row.reviewNote = reason
+        row.reviewedBy = caller.get("userId", "")
+        row.reviewedAt = datetime.utcnow()
+        self._log_change(
+            row.equipmentId,
+            "partial",
+            caller,
+            {"reservedQuantity": reserved_quantity, "shortfall": row.shortfall, "reason": reason},
+        )
+        self.db.commit()
+        self.db.refresh(row)
+        self._publish_shortfall(row, caller, authorization)
+        return _request_to_out(row)
+
+    def _publish_shortfall(
+        self,
+        row: EquipmentRequest,
+        caller: dict,
+        authorization: str | None,
+        alternative_id: str | None = None,
+    ) -> None:
+        """SPM-77 AC3: tell the assigned coordinator the line, shortfall, reason, and alternative."""
+        record = _event_record(row.eventId, authorization) or {}
+        shortfall = row.shortfall if row.status == "partial" else row.quantity
+        context = {
+            "eventName": record.get("eventName") or row.eventId,
+            "equipmentName": self._equipment_label(row.equipmentId),
+            "shortfall": f"{shortfall} of {row.quantity} short",
+            "reason": (row.decisionReason or row.reviewNote or "").strip(),
+        }
+        if alternative_id:
+            context["alternative"] = self._equipment_label(alternative_id)
+        publish_notification(
+            "equipment.shortfall",
+            row.eventId,
+            f"{row.eventId}:equipment.shortfall:{row.requestId}:{row.reviewedAt.isoformat()}",
+            event_recipients(record, ("coordinator",)),
+            context,
+            actor_id=caller.get("userId"),
+            resource={"type": "equipment_request", "id": row.requestId},
+        )
+
+    def _equipment_label(self, equipment_id: str) -> str:
+        row = self.equipment_dao.get_by_id(equipment_id)
+        return row.name if row is not None and row.name else equipment_id
+
+    def accept_shortfall(self, request_id: str, caller: dict) -> EquipmentRequestOut:
+        row = self._require_request(request_id)
+        if row.status not in ("partial", "unavailable"):
+            raise conflict("There is no shortfall to accept")
+        row.status = "resolved"
+        row.reviewedBy = caller.get("userId", "")
+        row.reviewedAt = datetime.utcnow()
+        self._log_change(row.equipmentId, "accept-shortfall", caller, {"status": "resolved"})
+        self.db.commit()
+        self.db.refresh(row)
+        return _request_to_out(row)
+
+    def complete_review(self, request_id: str, caller: dict) -> EquipmentRequestOut:
+        row = self._require_request(request_id)
+        row.status = "complete"
+        row.reviewedBy = caller.get("userId", "")
+        row.reviewedAt = datetime.utcnow()
+        self._log_change(row.equipmentId, "complete-review", caller, {"status": "complete"})
+        self.db.commit()
+        self.db.refresh(row)
+        return _request_to_out(row)
+
+    def amend_request(self, request_id: str, quantity: int | None) -> EquipmentRequestOut:
+        row = self._require_request(request_id)
+        if quantity is not None:
+            row.quantity = quantity
+        row.status = "pending"
+        self.db.commit()
+        self.db.refresh(row)
         return _request_to_out(row)
 
     def create_request(self, data: EquipmentRequestCreate, requested_by: str) -> EquipmentRequestOut:

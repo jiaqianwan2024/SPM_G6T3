@@ -109,6 +109,8 @@ cd infra && docker compose up -d && cd ..
 python scripts/migrate.py --no-seed
 ```
 
+`docker compose up -d` also picks up changes to `infra/docker-compose.yml`, recreating the MySQL container and keeping its data. SPM-64 needs this once: it added a MySQL setting that lets the migration create venue-service's double-booking triggers.
+
 `--no-seed` updates tables without inserting demo rows again. If seed is written to skip when tables already have data, plain `python scripts/migrate.py` is also fine.
 
 If the pull only changed Vue/Python and **no** new `alembic/versions/` files: just `up -d` (if needed) and run the apps. No migrate.
@@ -219,10 +221,12 @@ Shown on the login screen. Seeded in MySQL and listed in `Test Data/credentials-
 | organiser4@connectsphere.com | organiser000 | Event Organiser |
 | coordinator@connectsphere.com | coord123 | Event Coordinator |
 | coordinator2@connectsphere.com | coord456 | Event Coordinator |
+| lead@connectsphere.com | lead123 | Event Coordinator Lead |
 | venue@connectsphere.com | venue123 | Venue Staff |
 | venue2@connectsphere.com | venue456 | Venue Staff |
 | tech@connectsphere.com | tech123 | Technical Support |
 | tech2@connectsphere.com | tech456 | Technical Support |
+| safety@connectsphere.com | safety123 | Safety Officer |
 | attendee@connectsphere.com | attend123 | Attendee |
 | attendee2@connectsphere.com | attend456 | Attendee |
 
@@ -337,7 +341,7 @@ infra/
 
 | Script | Purpose |
 |---|---|
-| `dev-backend.py` | uvicorn all services |
+| `dev-backend.py` | uvicorn all services; sets a dev-only `INTERNAL_SERVICE_KEY` for them unless you already set one |
 | `migrate.py` | wait for MySQL → alembic upgrade → seed |
 | `prepare-acceptance-tests.py` | start MySQL, migrate, and seed before Playwright |
 | `revision.py` | `alembic revision --autogenerate` for one service (Windows-safe) |

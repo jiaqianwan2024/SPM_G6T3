@@ -2,6 +2,8 @@ import json
 from datetime import datetime
 from uuid import uuid4
 
+from fastapi import HTTPException
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.dao.venue_activity_log_dao import VenueActivityLogDAO
@@ -10,24 +12,41 @@ from app.dao.venue_dao import VenueDAO
 from app.dao.venue_unavailability_dao import VenueUnavailabilityDAO
 from app.models.venue_booking import VenueBooking
 from app.models.venue_info import VenueInfo
+from app.models.venue_unavailability import VenueUnavailability
 from app.schemas.venue import (
+    BookingClashOut,
+    BookingRecheckOut,
+    ClashingBooking,
     EventFacts,
+    HoldOut,
+    ReplacementRequest,
     SuitabilityOut,
     SuitabilityRequest,
+    UnavailabilityCreate,
+    UnavailabilityOut,
+    UnavailabilityUpdate,
     VenueActivityLogOut,
     VenueBookingCreate,
     VenueBookingOut,
     VenueCreate,
     VenueOut,
+    VenueSearchResult,
     VenueUpdate,
 )
-from app.services import suitability
+from app.orchestration.clients import notify_attendees, notify_coordinator, notify_role, settle_reverification
+from app.services import occupancy, suitability, venue_search
 from shared.exceptions.http import conflict, forbidden
 from shared.services.base import BaseService
 
 # SPM-63 AC1: "Planning" is the stage after approval. Event approval (SPM-69)
 # writes `planning`; events approved before that may still read `approved`. Both count.
-PLANNING_STATUSES = ("approved", "planning")
+PLANNING_STATUSES = ("approved", "planning", "reconsidering")
+# MySQL's error number for SIGNAL, which the SPM-64 trigger raises on an overlapping approval.
+SIGNALLED_ERROR = 1644
+APPROVED_ELSEWHERE = (
+    "Another request for this venue at an overlapping time, including setup and turnaround, "
+    "was approved first, so this request cannot be approved."
+)
 
 
 def _as_list(value) -> list:
@@ -61,12 +80,41 @@ def _to_out(row: VenueInfo) -> VenueOut:
         accessibility=_as_list(row.accessibility),
         layouts=layouts,
         operatingHours=_as_list(row.operatingHours),
+        setupMinutes=row.setupMinutes,
         turnaroundMinutes=row.turnaroundMinutes,
+        emergencyAccess=row.emergencyAccess or "",
+        restrictions=row.restrictions or "",
         isActive=row.isActive,
     )
 
 
+def _occupied_window(row: VenueBooking) -> tuple[datetime, datetime]:
+    """SPM-112 AC1: a booking's occupied window is always worked out from its
+    venue's current setup and turnaround times, so it never reports a window
+    stored before those times changed. The stored columns are only a fallback."""
+    if row.venue is None:
+        return row.setupStartsAt, row.teardownEndsAt
+    return occupancy.occupied_window(row.startsAt, row.endsAt, row.venue.setupMinutes, row.venue.turnaroundMinutes)
+
+
+def _hold_out(row: VenueBooking) -> HoldOut | None:
+    """SPM-116: the request's hold as it stands right now."""
+    state = occupancy.hold_state(row, datetime.utcnow())
+    if state is None:
+        return None
+    return HoldOut(expiresAt=row.holdExpiresAt, placedBy=row.holdPlacedBy, placedAt=row.holdPlacedAt, state=state)
+
+
+def _end_hold(row: VenueBooking, reason: str) -> None:
+    """SPM-116: a request's active hold ends with the request (AC6 for a
+    rejection). An expired hold is left as expired."""
+    now = datetime.utcnow()
+    if occupancy.hold_state(row, now) == "active":
+        row.holdEndedAt, row.holdEndReason = now, reason
+
+
 def _booking_to_out(row: VenueBooking) -> VenueBookingOut:
+    setup_from, turnaround_until = _occupied_window(row)
     return VenueBookingOut(
         bookingId=row.bookingId,
         venueId=row.venueId,
@@ -75,12 +123,15 @@ def _booking_to_out(row: VenueBooking) -> VenueBookingOut:
         status=row.status,
         startsAt=row.startsAt,
         endsAt=row.endsAt,
-        setupStartsAt=row.setupStartsAt,
-        teardownEndsAt=row.teardownEndsAt,
+        setupStartsAt=setup_from,
+        teardownEndsAt=turnaround_until,
         requirementsSnapshot=row.requirementsSnapshot,
         decisionReason=row.decisionReason,
         reviewedBy=row.reviewedBy,
+        reviewedByName=row.reviewedByName,
         reviewedAt=row.reviewedAt,
+        suggestedVenueId=row.suggestedVenueId,
+        suggestedVenueName=row.suggestedVenueName,
         createdAt=row.createdAt,
         eventSnapshot=row.eventSnapshot,
         coordinatorNotes=row.coordinatorNotes or "",
@@ -88,11 +139,94 @@ def _booking_to_out(row: VenueBooking) -> VenueBookingOut:
         venueName=row.venue.name if row.venue else None,
         needsReverification=bool(row.needsReverification),
         reverificationNote=row.reverificationNote,
+        hold=_hold_out(row),
     )
+
+
+def _clashing(row: VenueBooking, window: tuple[datetime, datetime]) -> ClashingBooking:
+    """SPM-122 AC2 and AC3: a clashing booking reported as it stands, never changed."""
+    return ClashingBooking(
+        bookingId=row.bookingId,
+        eventId=row.eventId,
+        eventName=(row.eventSnapshot or {}).get("eventName"),
+        status=row.status,
+        startsAt=row.startsAt,
+        endsAt=row.endsAt,
+        setupStartsAt=window[0],
+        teardownEndsAt=window[1],
+    )
+
+
+def _taken_by(venue: VenueInfo, held: occupancy.Commitments) -> str:
+    """What already holds the venue, in plain words, naming the clash."""
+    for kind in ("confirmed", "held"):
+        bookings = getattr(held, kind)
+        if bookings:
+            booking = bookings[0]
+            when = suitability._span(
+                *occupancy.occupied_window(
+                    booking.startsAt, booking.endsAt, venue.setupMinutes, venue.turnaroundMinutes
+                )
+            )
+            what = (
+                "already confirmed for"
+                if kind == "confirmed"
+                else f"on a tentative hold until {suitability._moment(booking.holdExpiresAt)} for"
+            )
+            return (
+                f"{venue.name} is {what} {suitability._event_label(booking)} at an overlapping time "
+                f"({when}, including setup and turnaround)"
+            )
+    period = held.unavailability[0]
+    why = f" ({period.reason})" if period.reason else ""
+    return f"{venue.name} is unavailable from {suitability._span(period.startsAt, period.endsAt)}{why}"
+
+
+def _approval_blocked(venue: VenueInfo, held: occupancy.Commitments) -> str:
+    """SPM-64 AC3, AC4 and AC7, SPM-116 AC2: why an approval was refused, naming the clash."""
+    return f"{_taken_by(venue, held)}, so this request cannot be approved."
 
 
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
+
+
+UNAVAILABILITY_REASONS = ("maintenance", "renovation", "safety issue", "internal activity", "other")
+
+
+def _reason(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise HTTPException(status_code=422, detail="Give a reason for this unavailability block.")
+    if cleaned not in UNAVAILABILITY_REASONS:
+        raise HTTPException(
+            status_code=422,
+            detail="Choose a reason from maintenance, renovation, safety issue, internal activity, or other.",
+        )
+    return cleaned
+
+
+def _block_changes(row: VenueUnavailability) -> dict:
+    return {
+        "unavailabilityId": row.unavailabilityId,
+        "startsAt": row.startsAt.isoformat(),
+        "endsAt": row.endsAt.isoformat(),
+        "reason": row.reason,
+        "note": row.note or "",
+    }
+
+
+def _block_out(row: VenueUnavailability) -> UnavailabilityOut:
+    return UnavailabilityOut(
+        unavailabilityId=row.unavailabilityId,
+        venueId=row.venueId,
+        startsAt=row.startsAt,
+        endsAt=row.endsAt,
+        reason=row.reason,
+        note=row.note or "",
+        createdBy=row.createdBy,
+        createdAt=row.createdAt,
+    )
 
 
 def _event_snapshot(event: EventFacts) -> dict:
@@ -197,7 +331,10 @@ class VenueService(BaseService):
             accessibility=[a for a in data.accessibility],
             layouts=[layout.model_dump() for layout in data.layouts],
             operatingHours=[hours.model_dump() for hours in data.operatingHours],
+            setupMinutes=data.setupMinutes,
             turnaroundMinutes=data.turnaroundMinutes,
+            emergencyAccess=data.emergencyAccess,
+            restrictions=data.restrictions,
             isActive=True,
             createdAt=datetime.utcnow(),
         )
@@ -283,18 +420,172 @@ class VenueService(BaseService):
             for row in rows
         ]
 
+    def commitments(
+        self,
+        venue: VenueOut | VenueInfo,
+        starts_at: datetime,
+        ends_at: datetime,
+        exclude_event_id: str | None = None,
+        lock: bool = False,
+        exclude_booking_id: str | None = None,
+    ) -> occupancy.Commitments:
+        """SPM-64 AC1: the one rule for what already holds `venue` while an event
+        from `starts_at` to `ends_at` would occupy it, setup and turnaround
+        included. Search, suitability and booking approval all use it.
+        `exclude_booking_id` leaves out the request being approved or held, so
+        its own hold never stands in its way (SPM-116)."""
+        window = occupancy.occupied_window(starts_at, ends_at, venue.setupMinutes, venue.turnaroundMinutes)
+        reach = occupancy.reach(venue.setupMinutes, venue.turnaroundMinutes)
+        nearby = [
+            booking
+            for booking in self.booking_dao.find_event_times_overlapping(
+                venue.venueId, starts_at - reach, ends_at + reach, exclude_event_id, lock
+            )
+            if booking.bookingId != exclude_booking_id
+        ]
+        now = datetime.utcnow()
+        waiting = [booking for booking in nearby if booking.status == "pending"]
+        held = [booking for booking in waiting if occupancy.hold_state(booking, now) == "active"]
+        return occupancy.Commitments(
+            confirmed=[booking for booking in nearby if booking.status == "approved"],
+            # SPM-61 AC9 and SPM-62 AC7: a pending request that is not an active hold only warns.
+            pending=[booking for booking in waiting if booking not in held],
+            # AC4: an unavailability period conflicts when it overlaps the occupied window.
+            unavailability=self.unavailability_dao.find_overlapping(venue.venueId, *window),
+            # SPM-116 AC2 to AC4: an active hold reserves the venue; an expired one does not.
+            held=held,
+        )
+
+    def booking_clashes(self, venue_id: str | None = None) -> list[BookingClashOut]:
+        """SPM-122 AC1 and AC2: every pair of confirmed bookings on the same venue
+        whose occupied windows overlap under the venue's current setup and turnaround
+        times (Week 7 change 1), with both events and the overlapping times. Such
+        pairs arise when a venue's times grow after its bookings were approved.
+        AC3 and AC4: this only reads; no booking or event record is changed."""
+        if venue_id:
+            self._require_venue(venue_id)
+        rows = self.booking_dao.list_confirmed_by_venue(venue_id)
+        windows = [_occupied_window(row) for row in rows]
+        clashes = []
+        for i, (first, first_window) in enumerate(zip(rows, windows)):
+            for second, second_window in zip(rows[i + 1 :], windows[i + 1 :]):
+                # One venue's bookings share its setup and turnaround, so they come
+                # in window order; once a window starts after this one ends, so do
+                # the rest. Windows that only touch do not clash (SPM-112 AC3).
+                if second.venueId != first.venueId or second_window[0] >= first_window[1]:
+                    break
+                clashes.append(
+                    BookingClashOut(
+                        venueId=first.venueId,
+                        venueName=first.venue.name,
+                        setupMinutes=first.venue.setupMinutes,
+                        turnaroundMinutes=first.venue.turnaroundMinutes,
+                        first=_clashing(first, first_window),
+                        second=_clashing(second, second_window),
+                        overlapStartsAt=second_window[0],
+                        overlapEndsAt=min(first_window[1], second_window[1]),
+                    )
+                )
+        return clashes
+
     def check_suitability(self, request: SuitabilityRequest, event: EventFacts) -> SuitabilityOut:
         """SPM-62. The one entry point every caller uses, so search, booking
         requests and re-verification all get the same verdict (AC9)."""
         venue = self.get_venue(request.venueId)
         needs = suitability.needs_for(request, event)
-        bookings, unavailability = [], []
-        window = suitability.occupied_window(needs)
-        if window:
-            bookings = self.booking_dao.find_overlapping(venue.venueId, *window, exclude_event_id=request.eventId)
-            unavailability = self.unavailability_dao.find_overlapping(venue.venueId, *window)
-        verdict, reasons = suitability.assess(venue, needs, bookings, unavailability)
+        bookings, unavailability, holds = [], [], []
+        period = suitability.event_period(needs)
+        if period:
+            held = self.commitments(venue, *period, exclude_event_id=request.eventId)
+            bookings, unavailability, holds = held.confirmed + held.pending, held.unavailability, held.held
+        verdict, reasons = suitability.assess(venue, needs, bookings, unavailability, holds)
         return SuitabilityOut(eventId=request.eventId, venueId=venue.venueId, verdict=verdict, reasons=reasons)
+
+    def search_venues(
+        self,
+        starts_at: datetime | None = None,
+        ends_at: datetime | None = None,
+        min_capacity: int | None = None,
+        location: str | None = None,
+        layout: str | None = None,
+        facilities: list[str] | None = None,
+        accessibility: list[str] | None = None,
+        exclude_event_id: str | None = None,
+        event: EventFacts | None = None,
+    ) -> list[VenueSearchResult]:
+        """SPM-61: the shortlist of active venues that fit the requirements and,
+        when a period is given, are free for it. Without a period only the
+        venue's own facts are checked. SPM-62 AC9: a search made for an event
+        (`exclude_event_id` and `event`) also gives each venue the verdict of
+        the same suitability check a booking request runs."""
+        if (starts_at is None) != (ends_at is None):
+            raise HTTPException(
+                status_code=422,
+                detail="Give both a start and an end time to search a period, or leave both out.",
+            )
+        starts_at, ends_at = suitability._utc(starts_at), suitability._utc(ends_at)
+        if starts_at is not None and ends_at <= starts_at:
+            raise HTTPException(
+                status_code=422,
+                detail="The end time must be after the start time.",
+            )
+        layout = layout.strip() if layout and layout.strip() else None
+        filters = venue_search.SearchFilters(
+            starts_at=starts_at,
+            ends_at=ends_at,
+            min_capacity=min_capacity or 0,
+            location=location,
+            layout=layout,
+            facilities=facilities or [],
+            accessibility=accessibility or [],
+        )
+        results = []
+        for venue in self.list_venues():
+            capacity = venue_search.fits(venue, filters)
+            if capacity is None:
+                continue
+            contested = False
+            if filters.has_period:
+                # AC3: a confirmed booking or unavailability excludes the venue (the SPM-64
+                # rule); AC9: another event's pending request only marks it contested.
+                held = self.commitments(venue, starts_at, ends_at, exclude_event_id=exclude_event_id)
+                if held.conflicts:
+                    continue
+                contested = bool(held.pending)
+            verdict = None
+            if event is not None and exclude_event_id:
+                # Whatever the search leaves out comes from the event, exactly as
+                # when the coordinator checks this venue on its own.
+                verdict = self.check_suitability(
+                    SuitabilityRequest(
+                        eventId=exclude_event_id,
+                        venueId=venue.venueId,
+                        expectedAttendance=min_capacity,
+                        layout=layout,
+                        requiredFacilities=facilities or [],
+                        requiredAccessibility=accessibility or [],
+                        startsAt=starts_at,
+                        endsAt=ends_at,
+                    ),
+                    event,
+                ).verdict
+            results.append(
+                VenueSearchResult(
+                    venueId=venue.venueId,
+                    code=venue.code,
+                    name=venue.name,
+                    location=venue.location,
+                    capacity=venue.capacity,
+                    layout=layout,
+                    layoutCapacity=capacity,
+                    headroom=capacity - filters.min_capacity,
+                    setupMinutes=venue.setupMinutes,
+                    turnaroundMinutes=venue.turnaroundMinutes,
+                    contested=contested,
+                    verdict=verdict,
+                )
+            )
+        return sorted(results, key=lambda row: row.name.casefold())
 
     def create_booking(
         self,
@@ -303,6 +594,11 @@ class VenueService(BaseService):
         event_snapshot: dict | None = None,
         warnings: list[str] | None = None,
     ) -> VenueBookingOut:
+        venue = self._require_venue(data.venueId)
+        # SPM-64 AC2: the stored window is the venue's own setup and turnaround around the event.
+        setup_from, turnaround_until = occupancy.occupied_window(
+            data.startsAt, data.endsAt, venue.setupMinutes, venue.turnaroundMinutes
+        )
         row = VenueBooking(
             bookingId=str(uuid4()),
             venueId=data.venueId,
@@ -311,8 +607,8 @@ class VenueService(BaseService):
             status="pending",
             startsAt=data.startsAt,
             endsAt=data.endsAt,
-            setupStartsAt=data.setupStartsAt,
-            teardownEndsAt=data.teardownEndsAt,
+            setupStartsAt=setup_from,
+            teardownEndsAt=turnaround_until,
             requirementsSnapshot=data.requirementsSnapshot,
             eventSnapshot=event_snapshot,
             coordinatorNotes=data.coordinatorNotes,
@@ -327,7 +623,8 @@ class VenueService(BaseService):
     def request_booking(self, data: VenueBookingCreate, caller: dict, event: EventFacts) -> VenueBookingOut:
         """SPM-63: a coordinator's venue booking request. Every rule below is
         checked before anything is saved, so a refused request leaves no trace."""
-        # AC1: only the event's assigned coordinator, only once it is in planning.
+        # AC1: only the event's assigned coordinator, once it is in planning.
+        # SPM-86: a reconsidering event can request a venue again after a booking is released.
         if event.coordinatorId != caller["userId"]:
             raise forbidden("Only the coordinator assigned to this event can request a venue for it.")
         if event.status not in PLANNING_STATUSES:
@@ -336,12 +633,14 @@ class VenueService(BaseService):
                 f"This event is currently {event.status or 'not yet approved'}."
             )
 
-        # AC7: one pending request per event at a time.
-        pending = self.booking_dao.find_pending_for_event(data.eventId)
-        if pending:
+        # SPM-114: an event may hold several venues at once. The same venue is
+        # not requested again while a pending or approved booking for it remains.
+        live = self.booking_dao.find_live_for_event_venue(data.eventId, data.venueId)
+        if live:
+            article = "an" if live.status == "approved" else "a"
             raise conflict(
-                f"This event already has a pending venue request for {self._venue_name(pending.venueId)}. "
-                "Withdraw it before requesting a different venue."
+                f"This event already has {article} {live.status} booking for {self._venue_name(data.venueId)}. "
+                "Withdraw, reject, or cancel that booking before requesting this venue again."
             )
 
         # AC3 and AC4: the SPM-62 rule decides; failures block, warnings need an acknowledgement.
@@ -351,8 +650,6 @@ class VenueService(BaseService):
                 venueId=data.venueId,
                 startsAt=data.startsAt,
                 endsAt=data.endsAt,
-                setupStartsAt=data.setupStartsAt,
-                teardownEndsAt=data.teardownEndsAt,
             ),
             event,
         )
@@ -371,20 +668,335 @@ class VenueService(BaseService):
     def list_bookings(
         self, status: str | None = None, event_id: str | None = None, venue_id: str | None = None
     ) -> list[VenueBookingOut]:
-        return [_booking_to_out(row) for row in self.booking_dao.list(status, event_id, venue_id)]
+        return [self._present(row) for row in self.booking_dao.list(status, event_id, venue_id)]
+
+    def public_summary(self, event_id: str) -> dict:
+        """Approved booking's venue name and location, for attendees (SPM-91)."""
+        bookings = self.booking_dao.list("approved", event_id, None)
+        if not bookings:
+            return {"eventId": event_id, "venueName": "", "location": ""}
+        venue = self.venue_dao.get_by_id(bookings[0].venueId)
+        return {
+            "eventId": event_id,
+            "venueName": venue.name if venue else "",
+            "location": venue.location if venue else "",
+        }
 
     def get_booking(self, booking_id: str) -> VenueBookingOut:
-        return _booking_to_out(self._require_booking(booking_id))
+        return self._present(self._require_booking(booking_id))
 
-    def flag_for_reverification(self, event_id: str, reason: str) -> list[VenueBookingOut]:
+    def _present(self, row: VenueBooking) -> VenueBookingOut:
+        """An approved booking is affected when a block overlaps its occupied window."""
+        out = _booking_to_out(row)
+        if row.status == "approved" and self._block_overlaps(row):
+            return out.model_copy(update={"affectedByUnavailability": True})
+        return out
+
+    def _block_overlaps(self, row: VenueBooking) -> bool:
+        start, end = _occupied_window(row)
+        return bool(self.unavailability_dao.find_overlapping(row.venueId, start, end))
+
+    def list_unavailability(self, venue_id: str) -> list[UnavailabilityOut]:
+        self._require_venue(venue_id)
+        return [_block_out(row) for row in self.unavailability_dao.list_for_venue(venue_id)]
+
+    def record_unavailability(self, venue_id: str, data: UnavailabilityCreate, caller: dict) -> UnavailabilityOut:
+        """Save a block. Overlapping bookings and holds stay as they are, and no event is read or changed."""
+        self._require_venue(venue_id)
+        starts_at, ends_at = self._period(data.startsAt, data.endsAt)
+        reason = _reason(data.reason)
+        self._require_acknowledgement(venue_id, starts_at, ends_at, data.acknowledgeConflicts)
+        row = VenueUnavailability(
+            unavailabilityId=str(uuid4()),
+            venueId=venue_id,
+            startsAt=starts_at,
+            endsAt=ends_at,
+            reason=reason,
+            note=(data.note or "").strip(),
+            createdBy=caller["userId"],
+            createdAt=datetime.utcnow(),
+        )
+        self.unavailability_dao.add(row)
+        self.log_dao.log(venue_id, "unavailability created", caller, {"unavailability": {"new": _block_changes(row)}})
+        self.db.commit()
+        self.db.refresh(row)
+        return _block_out(row)
+
+    def update_unavailability(
+        self, venue_id: str, unavailability_id: str, data: UnavailabilityUpdate, caller: dict
+    ) -> UnavailabilityOut:
+        """Change the note, reason, or period. A new overlap must be confirmed again. Bookings stay as they are."""
+        row = self._require_block(venue_id, unavailability_id)
+        starts_at = suitability._utc(data.startsAt) if data.startsAt is not None else row.startsAt
+        ends_at = suitability._utc(data.endsAt) if data.endsAt is not None else row.endsAt
+        if ends_at <= starts_at:
+            raise HTTPException(status_code=422, detail="The end time must be after the start time.")
+        reason = _reason(data.reason) if data.reason is not None else row.reason
+        note = data.note.strip() if data.note is not None else row.note
+        if starts_at != row.startsAt or ends_at != row.endsAt:
+            self._require_acknowledgement(venue_id, starts_at, ends_at, data.acknowledgeConflicts)
+        before = _block_changes(row)
+        row.startsAt, row.endsAt, row.reason, row.note = starts_at, ends_at, reason, note
+        self.log_dao.log(
+            venue_id,
+            "unavailability updated",
+            caller,
+            {"unavailability": {"old": before, "new": _block_changes(row)}},
+        )
+        self.db.commit()
+        self.db.refresh(row)
+        return _block_out(row)
+
+    def cancel_unavailability(self, venue_id: str, unavailability_id: str, caller: dict) -> None:
+        """Remove the block. Search and approval treat that time as free again; the activity log keeps the record."""
+        row = self._require_block(venue_id, unavailability_id)
+        self.log_dao.log(
+            venue_id, "unavailability cancelled", caller, {"unavailability": {"old": _block_changes(row)}}
+        )
+        self.unavailability_dao.delete(row)
+        self.db.commit()
+
+    def unavailability_alerts(self, venue_id: str, starts_at: datetime, ends_at: datetime) -> list[dict]:
+        """One notice per event whose approved booking or active hold overlaps the block. Events are not read here."""
+        venue = self._require_venue(venue_id)
+        alerts = {}
+        for row in self._affected_bookings(venue_id, starts_at, ends_at):
+            alerts.setdefault(
+                row.eventId,
+                {
+                    "eventId": row.eventId,
+                    "eventName": (row.eventSnapshot or {}).get("eventName") or "",
+                    "venueName": venue.name,
+                },
+            )
+        return list(alerts.values())
+
+    def _period(self, starts_at: datetime, ends_at: datetime) -> tuple[datetime, datetime]:
+        starts_at, ends_at = suitability._utc(starts_at), suitability._utc(ends_at)
+        if ends_at <= starts_at:
+            raise HTTPException(status_code=422, detail="The end time must be after the start time.")
+        return starts_at, ends_at
+
+    def _require_block(self, venue_id: str, unavailability_id: str) -> VenueUnavailability:
+        self._require_venue(venue_id)
+        row = self.unavailability_dao.get(unavailability_id)
+        if row is None or row.venueId != venue_id:
+            raise HTTPException(status_code=404, detail="Unavailability block not found.")
+        return row
+
+    def _affected_bookings(self, venue_id: str, starts_at: datetime, ends_at: datetime) -> list[VenueBooking]:
+        """Approved bookings, and pending requests with an active hold, whose occupied window overlaps.
+
+        A pending request with no hold does not reserve the venue, so it is not listed. Windows that
+        only touch do not overlap.
+        """
+        now = datetime.utcnow()
+        hits = []
+        for row in self.booking_dao.list(None, None, venue_id):
+            if row.status not in ("approved", "pending") or not self._window_overlaps(row, starts_at, ends_at):
+                continue
+            if row.status == "pending" and occupancy.hold_state(row, now) != "active":
+                continue
+            hits.append(row)
+        return hits
+
+    def _require_acknowledgement(self, venue_id: str, starts_at: datetime, ends_at: datetime, acknowledged: bool) -> None:
+        hits = self._affected_bookings(venue_id, starts_at, ends_at)
+        if not hits or acknowledged:
+            return
+        parts = []
+        for row in hits:
+            name = (row.eventSnapshot or {}).get("eventName")
+            label = f"event {row.eventId}" + (f" ({name})" if name else "")
+            kind = "confirmed booking" if row.status == "approved" else "active tentative hold"
+            parts.append(f"{kind} for {label}")
+        raise conflict(
+            "This block overlaps a confirmed booking or an active hold and needs to be confirmed before it is recorded: "
+            + "; ".join(parts)
+            + ". The booking stays as it is."
+        )
+
+    def _window_overlaps(self, row: VenueBooking, starts_at: datetime, ends_at: datetime) -> bool:
+        window_start, window_end = _occupied_window(row)
+        return starts_at < window_end and ends_at > window_start
+
+    def request_replacement(
+        self, booking_id: str, data: ReplacementRequest, caller: dict, event: EventFacts
+    ) -> VenueBookingOut:
+        """Request another venue for one approved booking affected by a block.
+
+        The new venue is checked on its own. The original booking is cancelled only
+        after that check passes, and it stays readable. Nothing on the event is written.
+        """
+        if event.coordinatorId != caller["userId"]:
+            raise forbidden("Only the coordinator assigned to this event can request a replacement venue.")
+        if event.status not in PLANNING_STATUSES:
+            raise conflict(
+                "A venue can only be requested once the event has been approved for planning. "
+                f"This event is currently {event.status or 'not yet approved'}."
+            )
+        original = self._require_booking(booking_id)
+        if original.status != "approved":
+            raise conflict(f"Only an approved booking can be replaced. This booking is already {original.status}.")
+        if not self._block_overlaps(original):
+            raise conflict(
+                "This booking is not affected by a venue unavailability block, so it cannot be replaced."
+            )
+        live = self.booking_dao.find_live_for_event_venue(original.eventId, data.venueId)
+        if live:
+            article = "an" if live.status == "approved" else "a"
+            raise conflict(
+                f"This event already has {article} {live.status} booking for {self._venue_name(data.venueId)}. "
+                "Withdraw, reject, or cancel that booking before requesting this venue again."
+            )
+        check = self.check_suitability(
+            SuitabilityRequest(
+                eventId=original.eventId,
+                venueId=data.venueId,
+                startsAt=original.startsAt,
+                endsAt=original.endsAt,
+            ),
+            event,
+        )
+        failures = [reason.message for reason in check.reasons if reason.severity == "failure"]
+        warnings = [reason.message for reason in check.reasons if reason.severity == "warning"]
+        if failures:
+            raise conflict(
+                "This venue is not suitable for this event, so the replacement cannot be sent. " + " ".join(failures)
+            )
+        if warnings and not data.acknowledgeWarnings:
+            raise conflict(
+                "This venue has warnings. Please read them and confirm before sending the replacement. "
+                + " ".join(warnings)
+            )
+        venue = self._require_venue(data.venueId)
+        setup_from, turnaround_until = occupancy.occupied_window(
+            original.startsAt, original.endsAt, venue.setupMinutes, venue.turnaroundMinutes
+        )
+        created = VenueBooking(
+            bookingId=str(uuid4()),
+            venueId=data.venueId,
+            eventId=original.eventId,
+            requestedBy=caller["userId"],
+            status="pending",
+            startsAt=original.startsAt,
+            endsAt=original.endsAt,
+            setupStartsAt=setup_from,
+            teardownEndsAt=turnaround_until,
+            requirementsSnapshot=original.requirementsSnapshot,
+            eventSnapshot=_event_snapshot(event),
+            coordinatorNotes=data.coordinatorNotes,
+            warnings=warnings or [],
+            createdAt=datetime.utcnow(),
+        )
+        self.booking_dao.add(created)
+        original.status = "cancelled"
+        self.db.commit()
+        self.db.refresh(created)
+        return _booking_to_out(created)
+
+    def flag_for_reverification(
+        self, event_id: str, reason: str, authorization: str | None = None
+    ) -> list[VenueBookingOut]:
         """SPM-71 AC4: mark the event's confirmed bookings as needing
-        re-verification. They stay approved, so the venue stays held."""
+        re-verification. They stay approved, so the venue stays held.
+        SPM-86 AC03: Venue Staff who approved them are told."""
         rows = self.booking_dao.list("approved", event_id, None)
         for row in rows:
             row.needsReverification = True
             row.reverificationNote = reason
         self.db.commit()
+        if authorization and rows:
+            notify_role(
+                "venue",
+                event_id,
+                "A booking needs re-verification",
+                f"A confirmed booking for {event_id} needs re-verification. {reason}",
+                authorization,
+                "venue.reverification",
+            )
         return [_booking_to_out(row) for row in rows]
+
+    def _arrangement_verdict(self, row: VenueBooking, event: EventFacts, start, end) -> tuple[str, list[str]]:
+        """Suitability plus the occupied-window clash check, excluding this event's own bookings."""
+        if start is None or end is None or end <= start:
+            return "not suitable", ["The event's end time must be after its start time."]
+        checked = self.check_suitability(
+            SuitabilityRequest(eventId=row.eventId, venueId=row.venueId, startsAt=start, endsAt=end),
+            event,
+        )
+        failures = [reason.message for reason in checked.reasons if reason.severity == "failure"]
+        return checked.verdict, failures
+
+    def recheck_booking(
+        self, booking_id: str, event: EventFacts, proposed_start: datetime | None, proposed_end: datetime | None
+    ) -> BookingRecheckOut:
+        """SPM-86 AC04: report whether the booking still fits a proposed window. The row is not moved."""
+        row = self._require_booking(booking_id)
+        if row.status != "approved":
+            raise conflict(f"Only an approved booking can be re-checked. This booking is already {row.status}.")
+        start = suitability._utc(proposed_start) or suitability._utc(event.proposedStartAt)
+        end = suitability._utc(proposed_end) or suitability._utc(event.proposedEndAt)
+        kept = (row.startsAt, row.endsAt, row.setupStartsAt, row.teardownEndsAt, row.status)
+        verdict, failures = self._arrangement_verdict(row, event, start, end)
+        row.startsAt, row.endsAt, row.setupStartsAt, row.teardownEndsAt, row.status = kept
+        return BookingRecheckOut(
+            bookingId=row.bookingId,
+            movedSilently=False,
+            status=row.status,
+            conflict=bool(failures),
+            verdict=verdict,
+            reasons=failures,
+            startsAt=row.startsAt,
+            endsAt=row.endsAt,
+        )
+
+    def reconfirm_booking(self, booking_id: str, event: EventFacts, authorization: str | None) -> VenueBookingOut:
+        """SPM-86 AC05 and AC06: one action by Venue Staff. A venue that still suits and is free
+        takes the event's current times and the flag clears. One that does not is released;
+        the event's other bookings are left alone."""
+        row = self._require_booking(booking_id)
+        if row.status != "approved" or not row.needsReverification:
+            raise conflict("This booking does not need re-verification.")
+        start = suitability._utc(event.proposedStartAt)
+        end = suitability._utc(event.proposedEndAt)
+        verdict, failures = self._arrangement_verdict(row, event, start, end)
+        if failures or verdict == "not suitable":
+            reason = " ".join(failures) or "The venue is not suitable at the event's current details."
+            row.status = "cancelled"
+            row.needsReverification = False
+            row.reverificationNote = f"Released after re-verification. {reason}"
+            self.db.commit()
+            if authorization:
+                if event.coordinatorId:
+                    notify_coordinator(
+                        event.coordinatorId,
+                        row.eventId,
+                        "Search for a venue again",
+                        f"The booking at {row.venue.name if row.venue else row.venueId} for {event.eventName or row.eventId} "
+                        f"was released because it no longer fits. {reason} Search for a venue again.",
+                        authorization,
+                        "venue.reverification",
+                    )
+                notify_attendees(row.eventId, "venue", authorization)
+                settle_reverification(row.eventId, authorization)
+            raise conflict(
+                "This venue is not suitable or not free for the event's current details, so the booking was "
+                f"released. Search for a venue again. {reason}"
+            )
+        venue = self._require_venue(row.venueId)
+        if suitability._utc(row.startsAt) != start or suitability._utc(row.endsAt) != end:
+            row.startsAt, row.endsAt = start, end
+            row.setupStartsAt, row.teardownEndsAt = occupancy.occupied_window(
+                start, end, venue.setupMinutes, venue.turnaroundMinutes
+            )
+        row.needsReverification = False
+        row.reverificationNote = None
+        self.db.commit()
+        self.db.refresh(row)
+        if authorization:
+            settle_reverification(row.eventId, authorization)
+        return _booking_to_out(row)
 
     def withdraw_booking(self, booking_id: str, caller: dict, event_coordinator_id: str | None) -> VenueBookingOut:
         """SPM-63 AC8. A withdrawn request no longer counts anywhere: the
@@ -397,10 +1009,57 @@ class VenueService(BaseService):
             raise forbidden("Only the coordinator assigned to this event can withdraw its venue request.")
         if row.status != "pending":
             raise conflict(f"Only a pending request can be withdrawn. This request is already {row.status}.")
+        _end_hold(row, "withdrawn")
         row.status = "withdrawn"
         self.db.commit()
         self.db.refresh(row)
         return _booking_to_out(row)
+
+    def cancel_booking(self, booking_id: str, caller: dict, event_coordinator_id: str | None) -> VenueBookingOut:
+        """SPM-114: release one approved booking. The event's other bookings stay."""
+        row = self._require_booking(booking_id)
+        assigned = event_coordinator_id and event_coordinator_id == caller["userId"]
+        if caller.get("role") != "venue" and not assigned:
+            raise forbidden(
+                "Only the coordinator assigned to this event, or Venue Staff, can cancel an approved booking."
+            )
+        if row.status != "approved":
+            raise conflict(f"Only an approved booking can be cancelled. This booking is already {row.status}.")
+        row.status = "cancelled"
+        self.db.commit()
+        self.db.refresh(row)
+        return _booking_to_out(row)
+
+    def check_release_allowed(self, caller: dict, event: EventFacts) -> None:
+        """Only the people who can cancel the event (SPM-88 AC1) may release its
+        bookings: its assigned coordinator, or an organiser from its own client
+        organisation. Anyone else would be freeing another event's rooms."""
+        if caller.get("role") == "coordinator" and event.coordinatorId and caller["userId"] == event.coordinatorId:
+            return
+        if caller.get("role") == "organiser" and event.organisationId and caller.get("organisationId") == event.organisationId:
+            return
+        raise forbidden("Only the coordinator assigned to this event, or its organiser, can release its venue bookings.")
+
+    def release_event_bookings(self, event_id: str) -> list[VenueBookingOut]:
+        """SPM-114: cancelling the event frees every pending request and approved booking.
+
+        Rejected, withdrawn, and already cancelled rows are left as they are.
+        """
+        rows = self.booking_dao.list_open_for_event(event_id)
+        for row in rows:
+            _end_hold(row, "cancelled")
+            row.status = "cancelled"
+        self.db.commit()
+        return [_booking_to_out(row) for row in rows]
+
+    def arrangements_complete(self, event_id: str) -> bool:
+        """True only when the event has requested venues and every one of them is approved.
+
+        Pending requests are still requested. Withdrawn, rejected, and cancelled
+        rows are no longer part of the arrangement.
+        """
+        requested = self.booking_dao.list_open_for_event(event_id)
+        return bool(requested) and all(row.status == "approved" for row in requested)
 
     def _venue_name(self, venue_id: str) -> str:
         row = self.venue_dao.get_by_id(venue_id)
@@ -417,31 +1076,145 @@ class VenueService(BaseService):
                 f"New venue request: {event} at {venue}",
                 f"A coordinator has requested {venue} for {event}, {when}. It is waiting in your pending queue.",
             )
+        if action == "cancelled":
+            return (
+                f"Venue booking cancelled: {event} at {venue}",
+                f"The booking of {venue} for {event}, {when}, has been cancelled. The venue is free for that time.",
+            )
         return (
             f"Venue request withdrawn: {event} at {venue}",
             f"The coordinator has withdrawn their request for {venue} for {event}, {when}. No action is needed.",
         )
 
-    def approve_booking(self, booking_id: str, reviewer_id: str, reason: str | None) -> VenueBookingOut:
+    def place_hold(self, booking_id: str, expires_at: datetime, caller: dict) -> VenueBookingOut:
+        """SPM-116 AC1 and AC2: Venue Staff hold a pending request's venue until
+        `expires_at`, which must be in the future and no later than the event's
+        start, while its coordinator finishes the arrangements (Week 7 change 4).
+        The venue must be free for the request's occupied window, so two holds,
+        or a hold and a confirmed booking, never overlap."""
         row = self._require_booking(booking_id)
         if row.status != "pending":
-            raise conflict(f"Booking is already {row.status}")
-        row.status = "approved"
-        row.decisionReason = reason
-        row.reviewedBy = reviewer_id
-        row.reviewedAt = datetime.utcnow()
+            raise conflict(f"Only a pending booking request can be held. This request is already {row.status}.")
+        now = datetime.utcnow()
+        expires_at = suitability._utc(expires_at)
+        if expires_at <= now:
+            raise HTTPException(status_code=422, detail="The hold must expire at a future date and time.")
+        if expires_at > row.startsAt:
+            raise HTTPException(
+                status_code=422,
+                detail=f"The hold must expire no later than the event's start ({suitability._moment(row.startsAt)}).",
+            )
+        if occupancy.hold_state(row, now) == "active":
+            raise conflict(
+                f"This request is already held until {suitability._moment(row.holdExpiresAt)}. "
+                "Release that hold first to set a new expiry."
+            )
+        venue = self._require_venue(row.venueId)
+        held = self.commitments(venue, row.startsAt, row.endsAt, lock=True, exclude_booking_id=row.bookingId)
+        if held.conflicts:
+            raise conflict(f"{_taken_by(venue, held)}, so this request cannot be held.")
+        row.holdExpiresAt, row.holdPlacedBy, row.holdPlacedAt = expires_at, caller["userId"], now
+        row.holdEndedAt = row.holdEndReason = None
         self.db.commit()
         self.db.refresh(row)
         return _booking_to_out(row)
 
-    def reject_booking(self, booking_id: str, reviewer_id: str, reason: str | None) -> VenueBookingOut:
+    def release_hold(self, booking_id: str) -> VenueBookingOut:
+        """SPM-116 AC2: Venue Staff end a hold before it expires; the venue is free again."""
+        row = self._require_booking(booking_id)
+        if occupancy.hold_state(row, datetime.utcnow()) != "active":
+            raise conflict("This request has no active hold to release.")
+        _end_hold(row, "released")
+        self.db.commit()
+        self.db.refresh(row)
+        return _booking_to_out(row)
+
+    def hold_notice(self, booking: VenueBookingOut, event: EventFacts) -> tuple[str, str]:
+        """SPM-116 AC5: the coordinator is told, before it expires, when the hold ends."""
+        name = event.eventName or booking.eventId
+        return (
+            "Venue on hold for your event",
+            f'{booking.venueName or booking.venueId} is on a tentative hold for "{name}" until '
+            f"{suitability._moment(booking.hold.expiresAt)}. If the request is not approved by then, the hold "
+            "expires and the venue becomes available to other requests.",
+        )
+
+    def approve_booking(
+        self, booking_id: str, reviewer_id: str, reason: str | None, reviewer_name: str | None = None
+    ) -> VenueBookingOut:
+        """Approval is where a venue becomes committed, so it applies the SPM-64
+        rule: refused when a confirmed booking or unavailability overlaps the
+        occupied window (AC3, AC4). The nearby bookings are read with a lock, which
+        in MySQL also covers the gaps between them, so two approvals for clashing
+        requests are checked one after the other and only one can pass (AC7).
+        The database refuses an overlap on its own as well (AC3)."""
         row = self._require_booking(booking_id)
         if row.status != "pending":
             raise conflict(f"Booking is already {row.status}")
+        venue = self._require_venue(row.venueId)
+        # SPM-116: the request's own hold never stands in its way.
+        held = self.commitments(venue, row.startsAt, row.endsAt, lock=True, exclude_booking_id=row.bookingId)
+        if held.conflicts:
+            raise conflict(_approval_blocked(venue, held))
+        row.setupStartsAt, row.teardownEndsAt = occupancy.occupied_window(
+            row.startsAt, row.endsAt, venue.setupMinutes, venue.turnaroundMinutes
+        )
+        # SPM-116: the arrangement it held the venue for is done; the booking now holds it.
+        _end_hold(row, "approved")
+        row.status = "approved"
+        row.decisionReason = reason
+        # SPM-8 AC5: who approved it and when; the row is never deleted, so this stays.
+        row.reviewedBy, row.reviewedByName = reviewer_id, reviewer_name
+        row.reviewedAt = datetime.utcnow()
+        try:
+            self.db.commit()
+        except DBAPIError as exc:
+            self.db.rollback()
+            if getattr(exc.orig, "args", (None,))[0] == SIGNALLED_ERROR:
+                raise conflict(APPROVED_ELSEWHERE) from exc
+            raise
+        self.db.refresh(row)
+        return _booking_to_out(row)
+
+    def reject_booking(
+        self,
+        booking_id: str,
+        reviewer_id: str,
+        reason: str | None,
+        reviewer_name: str | None = None,
+        suggested_venue_id: str | None = None,
+    ) -> VenueBookingOut:
+        """SPM-10: Venue Staff turn down a pending request. A reason is required (AC2) and
+        another venue may be suggested (AC3). The request leaves the queue for good, since
+        every action on a booking needs it pending or approved (AC4); its hold ends, so it
+        reserves nothing (AC5, SPM-116 AC6); and who, why and when are kept (AC6)."""
+        row = self._require_booking(booking_id)
+        if row.status != "pending":
+            raise conflict(f"Booking is already {row.status}")
+        reason = (reason or "").strip()
+        if not reason:
+            raise HTTPException(status_code=422, detail="Give a reason for rejecting this request.")
+        suggested = None
+        if suggested_venue_id:
+            suggested = self.venue_dao.get_by_id(suggested_venue_id)
+            if suggested is None or not suggested.isActive:
+                raise HTTPException(
+                    status_code=422,
+                    detail="The suggested venue does not exist or has been retired. "
+                    "Choose another venue, or leave the suggestion empty.",
+                )
+            if suggested.venueId == row.venueId:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Suggest a different venue from the one being rejected, or leave the suggestion empty.",
+                )
+        _end_hold(row, "rejected")  # SPM-116 AC6
         row.status = "rejected"
         row.decisionReason = reason
-        row.reviewedBy = reviewer_id
+        row.reviewedBy, row.reviewedByName = reviewer_id, reviewer_name
         row.reviewedAt = datetime.utcnow()
+        row.suggestedVenueId = suggested.venueId if suggested else None
+        row.suggestedVenueName = suggested.name if suggested else None
         self.db.commit()
         self.db.refresh(row)
         return _booking_to_out(row)

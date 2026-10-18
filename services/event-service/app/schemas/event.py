@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_serializer, model_validator
 
 
 class EventCreate(BaseModel):
@@ -18,7 +18,7 @@ class EventCreate(BaseModel):
     category: str | None = None
     proposedStartAt: datetime
     proposedEndAt: datetime
-    expectedAttendance: int = Field(ge=0)
+    expectedAttendance: int = Field(ge=1, description="At least one. A draft may still save zero.")
     venueRequirements: str = ""
     accessibilityNeeds: str = ""
     equipmentRequirements: str = ""
@@ -43,7 +43,7 @@ class EventCreate(BaseModel):
                 "eventName": "AI in Events Summit",
                 "purpose": "Share AI practices for event operations.",
                 "description": "A one-day summit for ConnectSphere clients.",
-                "category": "conference",
+                "category": "Conference",
                 "proposedStartAt": "2026-10-06T09:00:00",
                 "proposedEndAt": "2026-10-06T17:00:00",
                 "expectedAttendance": 120,
@@ -74,12 +74,21 @@ class EventOut(BaseModel):
     accessibilityNeeds: str = ""
     equipmentRequirements: str
     layoutPreference: str | None = None
+    preferredLocation: str = ""
+    requiredFacilities: list[str] = Field(default_factory=list)
+    accessibilityNote: str = ""
+    accessibilitySelections: list[str] = Field(default_factory=list)
+    equipmentLines: list[dict] = Field(default_factory=list)
     registrationEnabled: bool
     registrationOpensAt: datetime | None = None
     registrationClosesAt: datetime | None = None
     capacity: int
     submittedAt: datetime | None = None
     organisationId: str | None = None
+    organiserId: str | None = Field(
+        default=None,
+        description="The organiser who owns the event. Other services use it to notify them.",
+    )
     organisationName: str | None = Field(
         default=None, description="Resolved from user-service; null if that service is down."
     )
@@ -96,11 +105,26 @@ class EventOut(BaseModel):
     registeredCount: int = Field(
         default=0, description="Live count from registration-service; 0 if that service is down."
     )
+    confirmedBy: str | None = Field(default=None, description="SPM-72: the coordinator who confirmed the event.")
+    confirmedAt: datetime | None = Field(default=None, description="SPM-72: when the event was confirmed.")
+    safetyReviewStatus: str | None = Field(
+        default=None,
+        description="SPM-121: the latest safety review's status (`pending`, `approved`, `rejected`, "
+        "`changes_requested`, `superseded`). Only on `GET /events/mine`; null when never reviewed.",
+    )
     hasOpenClarifications: bool = Field(
         default=False,
         description="True while any clarification on the event is still open (SPM-68). "
         "Approving it then needs `confirmOpenClarifications`.",
     )
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_internal_notes(self, handler):
+        # Organisers and attendees must not see the staff-notes field at all (SPM-15).
+        data = handler(self)
+        if data.get("internalNotes") is None:
+            data.pop("internalNotes", None)
+        return data
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -120,8 +144,37 @@ class EventOut(BaseModel):
     )
 
 
-class EventDecision(BaseModel):
-    reason: str | None = None
+class EventRejection(BaseModel):
+    """SPM-70 AC2: a reason from the list and a free-text explanation, both required."""
+
+    reason: Literal[
+        "no suitable venue available",
+        "insufficient equipment",
+        "insufficient notice",
+        "outside ConnectSphere services",
+    ]
+    explanation: str = Field(max_length=2000, description="Shown to the organiser alongside the reason.")
+
+    @field_validator("explanation")
+    @classmethod
+    def _explanation_given(cls, value: str) -> str:
+        return _required_text(value)
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"reason": "no suitable venue available", "explanation": "No hall fits those dates."}
+        }
+    )
+
+
+class EventRejectionOut(EventOut):
+    """SPM-70 AC4: the rejected event, with the reason, explanation, who decided, and when."""
+
+    decision: Literal["rejected"] = "rejected"
+    decisionReason: str
+    decisionNote: str
+    decidedBy: str
+    decidedAt: datetime
 
 
 class EventApproval(BaseModel):
@@ -150,6 +203,7 @@ class EventDecisionOut(BaseModel):
 
     eventId: str
     decision: Literal["approved", "rejected"] | None = None
+    decisionReason: str | None = Field(default=None, description="SPM-70: the listed reason, for a rejection.")
     decisionNote: str | None = None
     decidedBy: str | None = None
     decidedAt: datetime | None = None
@@ -433,6 +487,20 @@ class EventUpdateOut(EventOut):
     )
 
 
+class ReverificationSettleOut(BaseModel):
+    """SPM-86 AC10: only a `reconsidering` event can return to `confirmed`, and only when nothing is still flagged."""
+
+    eventId: str
+    status: str
+    restored: bool = False
+
+
+class AttendeeChangeNotice(BaseModel):
+    """SPM-86 AC09: `schedule` is a new date or time; `venue` is a released or replaced venue."""
+
+    change: Literal["schedule", "venue"]
+
+
 # SPM-106 AC3: what an organiser can ask to change. The date is part of the
 # start and end.
 CHANGEABLE_FIELDS = (
@@ -534,6 +602,210 @@ class ChangeRequestOut(BaseModel):
     )
 
 
+class SafetySubmission(BaseModel):
+    """SPM-120: what the coordinator adds when submitting for a safety review."""
+
+    crowdMovement: str = Field(
+        min_length=1, max_length=4000, description="How people arrive, move through, and leave the venue."
+    )
+    equipmentPlacement: str = Field(
+        default="",
+        max_length=4000,
+        description="Where each piece of equipment goes. Required when equipment is reserved for the event.",
+    )
+
+    @field_validator("crowdMovement")
+    @classmethod
+    def crowd_movement_not_blank(cls, value: str) -> str:
+        return _required_text(value)
+
+    @field_validator("equipmentPlacement")
+    @classmethod
+    def trim_placement(cls, value: str) -> str:
+        return value.strip()
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "crowdMovement": "Guests enter by the lift lobby and leave by the promenade doors; aisles stay 2 m wide.",
+                "equipmentPlacement": "Projector at the back of the hall; PA speakers either side of the stage, clear of exits.",
+            }
+        }
+    )
+
+
+class SafetyVenueHandoff(BaseModel):
+    """SPM-120, change 6: what Venue Staff send with the confirmed venue arrangements."""
+
+    crowdMovement: str = Field(
+        min_length=1, max_length=4000, description="How people arrive, move through, and leave the venue."
+    )
+
+    @field_validator("crowdMovement")
+    @classmethod
+    def crowd_movement_not_blank(cls, value: str) -> str:
+        return _required_text(value)
+
+
+class SafetyTechnicalHandoff(BaseModel):
+    """SPM-120, change 6: what technical support send with the reserved equipment."""
+
+    equipmentPlacement: str = Field(min_length=1, max_length=4000, description="Where each piece of equipment goes.")
+
+    @field_validator("equipmentPlacement")
+    @classmethod
+    def placement_not_blank(cls, value: str) -> str:
+        return _required_text(value)
+
+
+class SafetyApproval(BaseModel):
+    note: str = Field(default="", max_length=2000, description="Optional; shown to the coordinator and organiser.")
+
+
+class SafetyRejection(BaseModel):
+    reason: str = Field(min_length=1, max_length=2000, description="Why the plan is unsafe. Required.")
+
+    @field_validator("reason")
+    @classmethod
+    def reason_not_blank(cls, value: str) -> str:
+        return _required_text(value)
+
+
+class SafetyChangeRequest(BaseModel):
+    requiredChanges: str = Field(min_length=1, max_length=4000, description="What must change. Required.")
+    affected: list[Literal["venue", "technical"]] = Field(
+        default=[], description="Arrangements to flag so venue staff or technical support review them again."
+    )
+
+    @field_validator("requiredChanges")
+    @classmethod
+    def changes_not_blank(cls, value: str) -> str:
+        return _required_text(value)
+
+    @field_validator("affected")
+    @classmethod
+    def no_repeats(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(value))
+
+
+class SafetyVenueFacts(BaseModel):
+    venueId: str
+    venueName: str
+    location: str = ""
+    startsAt: datetime
+    endsAt: datetime
+    layout: str | None = Field(default=None, description="The event's layout, when the venue offers it.")
+    capacityInLayout: int = Field(description="What the venue holds in that layout; its largest layout otherwise.")
+    venueCapacity: int
+    layouts: list[dict] = []
+    accessibilityFeatures: list[str] = []
+    emergencyAccess: str = ""
+    restrictions: str = ""
+    operatingHours: list[dict] = []
+    needsReverification: bool = False
+    reverificationNote: str | None = None
+
+
+class SafetyEquipmentLine(BaseModel):
+    equipmentId: str
+    name: str
+    quantity: int
+    status: str
+    technicalRequirements: str = ""
+    needsReverification: bool = False
+
+
+class SafetyPackage(BaseModel):
+    """SPM-120 AC2: everything the Safety Officer judges, as it stood when submitted."""
+
+    eventName: str
+    proposedStartAt: datetime | None = None
+    proposedEndAt: datetime | None = None
+    expectedAttendance: int
+    layout: str | None = None
+    accessibilityRequirements: list[str] = []
+    accessibilityNote: str = ""
+    venues: list[SafetyVenueFacts]
+    equipment: list[SafetyEquipmentLine] = []
+    crowdMovement: str
+    equipmentPlacement: str = ""
+
+
+class ConfirmationGap(BaseModel):
+    """One thing standing between the event and Confirmed (SPM-72 AC2)."""
+
+    kind: Literal["venue", "equipment", "safety", "status"]
+    message: str
+    equipmentId: str | None = Field(
+        default=None, description="On an equipment line that can be recorded as not required."
+    )
+
+
+class ConfirmationOut(BaseModel):
+    eventId: str
+    ready: bool = Field(description="True when nothing is missing and the coordinator can confirm.")
+    missing: list[ConfirmationGap] = []
+
+
+class EventConfirmOut(EventOut):
+    """SPM-72 AC3: the confirmed event, with who confirmed it and when."""
+
+    decidedBy: str
+    decidedAt: datetime
+
+
+class EquipmentNotRequired(BaseModel):
+    reason: str = Field(min_length=1, max_length=2000, description="Why this equipment is no longer needed.")
+
+    @field_validator("reason")
+    @classmethod
+    def reason_not_blank(cls, value: str) -> str:
+        return _required_text(value)
+
+
+class SafetyReviewOut(BaseModel):
+    reviewId: str
+    eventId: str
+    status: Literal["pending", "approved", "rejected", "changes_requested", "superseded"]
+    submittedBy: str
+    submittedAt: datetime
+    package: SafetyPackage
+    safetyOfficerId: str | None = Field(
+        default=None,
+        description="The Safety Officer who claimed the event's safety review; null until one claims it. "
+        "Only they can decide, and every later round goes to them.",
+    )
+    decidedBy: str | None = Field(default=None, description="The officer who decided, or who changed the event (superseded).")
+    decidedAt: datetime | None = None
+    decisionNote: str | None = Field(
+        default=None, description="Approval note, rejection reason, required changes, or what changed (superseded)."
+    )
+    affected: list[str] = Field(default=[], description="Arrangements flagged for re-checking (changes requested).")
+    flaggedArrangements: list[AffectedArrangement] = Field(
+        default=[], description="On request changes: the bookings and reservations now marked for re-checking."
+    )
+
+
+class SafetyHandoffPart(BaseModel):
+    sentBy: str
+    sentAt: datetime
+    note: str = Field(description="The crowd movement (venue) or the equipment placement (technical).")
+
+
+class SafetyHandoffOut(BaseModel):
+    """SPM-120, change 6: the arrangements sent to the Safety Officer this round."""
+
+    eventId: str
+    venue: SafetyHandoffPart | None = Field(default=None, description="Sent by Venue Staff; null until then.")
+    technical: SafetyHandoffPart | None = Field(default=None, description="Sent by technical support; null until then.")
+    technicalNeeded: bool = Field(
+        description="False when the event has no equipment, so the venue arrangements alone open the review."
+    )
+    review: SafetyReviewOut | None = Field(
+        default=None, description="The safety review, when this hand-off was the last part and opened it."
+    )
+
+
 class ChangeableFieldsOut(BaseModel):
     fields: list[str] = Field(description="Fields an organiser can ask to change (SPM-106 AC3).")
 
@@ -546,6 +818,115 @@ class SignificantFieldsOut(BaseModel):
 class EventInternalNotesOut(BaseModel):
     eventId: str
     internalNotes: str = ""
+
+
+class EquipmentLineIn(BaseModel):
+    """One equipment requirement. A type from the catalogue, never a unit id."""
+
+    equipmentId: str = Field(min_length=1)
+    quantity: int = Field(ge=1)
+    technicalNotes: str = ""
+
+    @field_validator("quantity", mode="before")
+    @classmethod
+    def whole_quantity(cls, value):
+        if isinstance(value, bool) or isinstance(value, float):
+            raise ValueError("quantity must be a whole number of at least 1")
+        return value
+
+
+class OrganiserDraftPatch(BaseModel):
+    """Fields an organiser can change on their own draft (SPM-80). Only fields sent are saved."""
+
+    eventName: str | None = Field(default=None, min_length=1, max_length=255)
+    purpose: str | None = None
+    description: str | None = None
+    category: str | None = None
+    proposedStartAt: datetime | None = None
+    proposedEndAt: datetime | None = None
+    expectedAttendance: int | None = Field(default=None, ge=0)
+    venueRequirements: str | None = None
+    equipmentRequirements: str | None = None
+    layoutPreference: str | None = None
+    preferredLocation: str | None = None
+    requiredFacilities: list[str] | None = None
+    accessibilityNeeds: str | list[str] | None = None
+    accessibilityNote: str | None = None
+    equipmentLines: list[EquipmentLineIn] | None = None
+
+    @field_validator("proposedStartAt", "proposedEndAt")
+    @classmethod
+    def as_naive_utc(cls, value: datetime | None) -> datetime | None:
+        return _naive_utc(value)
+
+    @model_validator(mode="after")
+    def check_windows(self):
+        if self.proposedStartAt and self.proposedEndAt and self.proposedEndAt <= self.proposedStartAt:
+            raise ValueError("proposedEndAt must be after proposedStartAt")
+        return self
+
+
+class RequirementOptionsOut(BaseModel):
+    layouts: list[str]
+    facilities: list[str]
+    accessibility: list[str]
+
+
+class EventIntake(BaseModel):
+    """POST /events. A name alone saves a draft; dates and attendance submit it."""
+
+    eventName: str = Field(min_length=1, max_length=255)
+    purpose: str = ""
+    description: str = ""
+    category: str | None = None
+    proposedStartAt: datetime | None = None
+    proposedEndAt: datetime | None = None
+    expectedAttendance: int | None = Field(default=None, ge=0)
+    venueRequirements: str = ""
+    # The organiser form sends the ticked options as a list. The event record stores one string.
+    accessibilityNeeds: str | list[str] = ""
+    equipmentRequirements: str = ""
+    layoutPreference: str | None = None
+    registrationEnabled: bool = False
+    registrationOpensAt: datetime | None = None
+    registrationClosesAt: datetime | None = None
+    capacity: int = Field(default=0, ge=0)
+
+    def to_create(self) -> EventCreate:
+        needs = self.accessibilityNeeds
+        if isinstance(needs, list):
+            needs = ", ".join(str(item).strip() for item in needs if str(item).strip())
+        return EventCreate(
+            eventName=self.eventName,
+            purpose=self.purpose,
+            description=self.description,
+            category=self.category,
+            proposedStartAt=self.proposedStartAt,
+            proposedEndAt=self.proposedEndAt,
+            expectedAttendance=self.expectedAttendance if self.expectedAttendance is not None else 1,
+            venueRequirements=self.venueRequirements,
+            accessibilityNeeds=needs or "",
+            equipmentRequirements=self.equipmentRequirements,
+            layoutPreference=self.layoutPreference,
+            registrationEnabled=self.registrationEnabled,
+            registrationOpensAt=self.registrationOpensAt,
+            registrationClosesAt=self.registrationClosesAt,
+            capacity=self.capacity,
+        )
+
+    def to_draft(self) -> "EventDraftUpsert":
+        return EventDraftUpsert(
+            eventName=self.eventName,
+            purpose=self.purpose,
+            description=self.description,
+            category=self.category,
+            proposedStartAt=self.proposedStartAt,
+            proposedEndAt=self.proposedEndAt,
+            expectedAttendance=self.expectedAttendance,
+            venueRequirements=self.venueRequirements,
+            equipmentRequirements=self.equipmentRequirements,
+            layoutPreference=self.layoutPreference,
+        )
 
 
 class EventDraftUpsert(BaseModel):
@@ -564,12 +945,38 @@ class EventDraftUpsert(BaseModel):
     expectedAttendance: int | None = Field(default=None, ge=0)
     venueRequirements: str = ""
     equipmentRequirements: str = ""
+    layoutPreference: str | None = None
+    preferredLocation: str = ""
+    requiredFacilities: list[str] = Field(default_factory=list)
+    accessibilityNeeds: str | list[str] = ""
+    accessibilityNote: str = ""
+    equipmentLines: list[EquipmentLineIn] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def check_windows(self):
         if self.proposedStartAt and self.proposedEndAt and self.proposedEndAt <= self.proposedStartAt:
             raise ValueError("proposedEndAt must be after proposedStartAt")
         return self
+
+
+class SupervisedEventOut(BaseModel):
+    """SPM-119: one active event under a coordinator, enough to recognise and open it."""
+
+    eventId: str
+    eventName: str
+    status: str
+    proposedStartAt: datetime | None = None
+    proposedEndAt: datetime | None = None
+    organisationName: str | None = None
+
+
+class CoordinatorAssignmentsOut(BaseModel):
+    """SPM-119: an Event Coordinator and the active events assigned to them."""
+
+    userId: str
+    name: str
+    email: str = ""
+    events: list[SupervisedEventOut] = Field(default_factory=list)
 
 
 class EventAssignmentCreate(BaseModel):

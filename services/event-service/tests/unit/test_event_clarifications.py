@@ -39,6 +39,7 @@ class ClarificationCase(EventCase):
             "names": patch("app.services.event_service.organisation_names", return_value={}),
             "users": patch("app.services.event_service.list_users", return_value=DIRECTORY),
             "notify": patch("app.services.event_service.send_notification", return_value=True),
+            "publish": patch("app.services.event_service.publish_notification", return_value=True),
         }
         self.mocks = {name: p.start() for name, p in self.patches.items()}
 
@@ -169,6 +170,7 @@ class TestRaisingRequestsChanges(ClarificationCase):
         self.raise_()
 
         self.assertIn(f"about Summit: {QUESTION}", self.last_email()[2])
+        self.mocks["publish"].assert_not_called()
 
     def test_a_second_clarification_adds_no_status_change(self):
         self.event()
@@ -224,9 +226,16 @@ class TestThread(ClarificationCase):
         self.reply(raised.clarificationId, ORGANISER)
         self.assertEqual(self.last_email()[0], "ben@connectsphere.com")
         self.assertIn("Attendance stays at 80.", self.last_email()[2])
+        self.assertIn("e1", self.last_email()[2])
+        trigger, event_id, _occurrence, recipients, context = self.mocks["publish"].call_args.args[:5]
+        self.assertEqual((trigger, event_id, recipients[0]["userId"]), ("clarification.replied", "e1", "coord-1"))
+        self.assertEqual(context["message"], "Attendance stays at 80.")
+        self.assertNotIn("reviewStatus", context)
 
+        self.mocks["publish"].reset_mock()
         self.reply(raised.clarificationId, COORDINATOR, "Thanks")
         self.assertEqual(self.last_email()[0], "amy@apex.com")
+        self.mocks["publish"].assert_not_called()
 
     def test_a_colleague_in_the_organisation_can_reply(self):
         self.event()
@@ -269,6 +278,7 @@ class TestThread(ClarificationCase):
         self.reply(raised.clarificationId, ORGANISER)
 
         self.assertIn("no longer awaiting review; it is now planning", self.last_email()[2])
+        self.assertEqual(self.mocks["publish"].call_args.args[4]["reviewStatus"], "planning")
 
     def test_a_reply_with_no_coordinator_to_tell_is_still_saved(self):
         self.event(coordinatorId=None)
@@ -279,6 +289,7 @@ class TestThread(ClarificationCase):
 
         self.assertEqual(len(thread.entries), 2)
         self.mocks["notify"].assert_not_called()
+        self.mocks["publish"].assert_not_called()
 
 
 class TestTrackedIndependently(ClarificationCase):
@@ -397,6 +408,7 @@ class TestClarificationRoutes(ServiceTestCase):
             patch("app.services.event_service.organisation_names", return_value={}),
             patch("app.services.event_service.list_users", return_value=DIRECTORY),
             patch("app.services.event_service.send_notification", return_value=True),
+            patch("app.services.event_service.publish_notification", return_value=True),
         ]
         for p in self.patches:
             p.start()

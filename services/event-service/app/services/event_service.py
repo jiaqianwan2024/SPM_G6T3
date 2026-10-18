@@ -1,6 +1,7 @@
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import NamedTuple
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -12,6 +13,8 @@ from app.dao.event_change_request_dao import EventChangeRequestDAO
 from app.dao.event_dao import EventDAO
 from app.dao.event_field_change_dao import EventFieldChangeDAO
 from app.dao.event_review_dao import EventReviewDAO
+from app.dao.event_safety_handoff_dao import EventSafetyHandoffDAO
+from app.dao.event_safety_review_dao import EventSafetyReviewDAO
 from app.dao.event_status_history_dao import EventStatusHistoryDAO
 from app.models.event import Event
 from app.models.event_assignment import EventAssignment
@@ -19,19 +22,32 @@ from app.models.event_change_request import EventChangeRequest
 from app.models.event_clarification_reply import EventClarificationReply
 from app.models.event_field_change import EventFieldChange
 from app.models.event_review import EventReview
+from app.models.event_safety_handoff import EventSafetyHandoff
+from app.models.event_safety_review import EventSafetyReview
 from app.models.event_status_history import EventStatusHistory
+from app.services.audiences import people
 from app.core.config import settings
 from app.orchestration.clients import (
     affected_arrangements,
     booked_venue_capacities,
     current_registration_count,
+    equipment_names,
+    event_bookings,
+    equipment_requests_for,
+    equipment_reservations_for,
     flag_arrangements,
+    flag_technical_arrangements,
+    flag_venue_arrangements,
     list_users,
     organisation_names,
+    publish_notification,
     record_notification,
+    release_event_holds,
+    release_event_venue_bookings,
     registered_attendees,
     registration_count,
     send_notification,
+    venue_details,
 )
 from app.schemas.event import (
     CHANGEABLE_FIELDS,
@@ -45,6 +61,9 @@ from app.schemas.event import (
     ClarificationEntryOut,
     ClarificationOut,
     ClarificationReplyCreate,
+    ConfirmationGap,
+    ConfirmationOut,
+    CoordinatorAssignmentsOut,
     CoordinatorCandidateOut,
     EventActivityOut,
     EventApprovalOut,
@@ -52,16 +71,42 @@ from app.schemas.event import (
     EventAssignmentOut,
     EventCoordinatorOut,
     EventCreate,
+    EventConfirmOut,
     EventDecisionOut,
+    EventRejection,
+    EventRejectionOut,
+    EquipmentNotRequired,
     EventDraftUpsert,
     EventInternalNotesOut,
     EventOut,
+    OrganiserDraftPatch,
+    RequirementOptionsOut,
     EventUpdate,
     EventUpdateOut,
     RegistrationAccessOut,
     RegistrationSettingsOut,
     RegistrationSettingsUpdate,
+    SafetyApproval,
+    SafetyChangeRequest,
+    SafetyEquipmentLine,
+    SafetyHandoffOut,
+    SafetyHandoffPart,
+    SafetyPackage,
+    SafetyRejection,
+    SafetyReviewOut,
+    SafetySubmission,
+    SafetyTechnicalHandoff,
+    SafetyVenueFacts,
+    SafetyVenueHandoff,
+    SupervisedEventOut,
     SignificantFieldsOut,
+)
+from app.services.arrangements import (
+    SETTLED_REQUESTS,
+    equipment_gaps,
+    requested_lines,
+    technical_needed,
+    venue_gaps,
 )
 from shared.exceptions.http import conflict, forbidden, not_found
 from shared.services.base import BaseService
@@ -79,6 +124,9 @@ EVENT_STATUSES = (
     "changes requested",
     "approved",
     "rejected",
+    "planning",
+    "safety review",
+    "safety approved",
     "preparing",
     "prepared",
     "confirmed",
@@ -89,12 +137,9 @@ EVENT_STATUSES = (
 
 # Statuses the coordinator review queue (GET /events/queue) includes.
 QUEUE_STATUSES = ("submitted", "under review", "changes requested")
-# Reject applies while the request waits for a decision. Assigning a
-# coordinator moves a submitted request to "under review" (SPM-66 AC6), and it
-# must still be decidable from there.
-DECIDABLE_STATUSES = ("submitted", "under review")
 # An assigned request under review, or waiting on the organiser. Its assigned
-# coordinator can raise clarifications on it (SPM-68) or approve it (SPM-69).
+# coordinator can raise clarifications on it (SPM-68), approve it (SPM-69) or
+# reject it (SPM-70).
 IN_REVIEW_STATUSES = ("under review", "changes requested")
 # SPM-68 AC2/AC5: raising a clarification moves a request to this status, and
 # resolving the last open one returns it to "under review".
@@ -107,7 +152,15 @@ RESOLVED = "resolved"
 DECISIONS = {"approve": "approved", "reject": "rejected"}
 # Staff who can see an event's coordinator; organisers see it only for their
 # own organisation's events, and attendees not at all (SPM-59 AC5).
-STAFF_ROLES = ("coordinator", "venue", "techsupport")
+# The Event Coordinator Lead assigns requests to Event Coordinators and oversees
+# them; it is not itself a coordinator, so it never manages an event.
+COORDINATOR_LEAD = "coordinatorlead"
+STAFF_ROLES = ("coordinator", COORDINATOR_LEAD, "venue", "techsupport", "safety")
+
+# SPM-80: published lists the organiser picks from. "No preference" is a real choice.
+LAYOUT_OPTIONS = ["Theatre", "Boardroom", "Classroom", "Banquet", "U-shape", "No preference"]
+FACILITY_OPTIONS = ["Projector", "PA system", "Video-conferencing", "Stage"]
+ACCESSIBILITY_OPTIONS = ["Wheelchair accessible", "Hearing loop", "Accessible restrooms nearby"]
 
 # SPM-71 AC1: these save without any warning.
 QUIET_FIELDS = ("eventName", "description", "purpose", "category", "internalNotes", "organiserContact")
@@ -152,7 +205,18 @@ RECONSIDERING = "reconsidering"
 # SPM-90 AC1: registration is set up from planning until the event is
 # confirmed. "approved" is planning's older name, and a reconsidering event is
 # still confirmed while its arrangements are re-checked.
-REGISTRATION_SETUP_STATUSES = ("approved", "planning", "preparing", "prepared", "confirmed", RECONSIDERING)
+# SPM-120: once the venue and equipment are confirmed, the coordinator sends a
+# planning event for a safety review. Approval leaves it waiting for the
+# coordinator to confirm it (SPM-72), after which preparation can begin;
+# rejection or a change request returns it to planning, never cancelled.
+SAFETY_REVIEW = "safety review"
+SAFETY_APPROVED = "safety approved"
+# A significant change in either sends the event back to planning for a new review.
+SAFETY_STAGES = (SAFETY_REVIEW, SAFETY_APPROVED)
+SAFETY_SUBMITTABLE_STATUSES = ("approved", "planning")
+REGISTRATION_SETUP_STATUSES = (
+    "approved", "planning", SAFETY_REVIEW, SAFETY_APPROVED, "preparing", "prepared", "confirmed", RECONSIDERING
+)
 # SPM-106 AC1: Under Review, Approved, Planning, or Confirmed, as the organiser
 # sees them. Waiting on clarifications is still under review; preparing and
 # prepared are planning; reconsidering is still confirmed. A submitted request
@@ -163,6 +227,8 @@ CHANGE_REQUEST_STATUSES = (
     AWAITING_CLARIFICATION,
     "approved",
     "planning",
+    SAFETY_REVIEW,
+    SAFETY_APPROVED,
     "preparing",
     "prepared",
     "confirmed",
@@ -213,6 +279,66 @@ def _change_request_out(row: EventChangeRequest, flagged: list[dict] = ()) -> Ch
         reviewedBy=row.reviewedBy,
         reviewedAt=row.reviewedAt,
         decisionReason=row.decisionReason,
+        flaggedArrangements=[AffectedArrangement(**arrangement) for arrangement in flagged],
+    )
+
+
+class Arrangements(NamedTuple):
+    """An event's venue and equipment arrangements as just read, with what is missing."""
+
+    gaps: list[dict]
+    bookings: list[dict]
+    requests: list[dict]
+    reservations: list[dict]
+    names: dict[str, str]
+
+
+def _set_part(handoff: EventSafetyHandoff, kind: str, note: str | None, sender: str | None, at: datetime | None) -> None:
+    """Record, or clear with Nones, the venue or technical part of a hand-off."""
+    if kind == "venue":
+        handoff.crowdMovement, handoff.venueSentBy, handoff.venueSentAt = note, sender, at
+    else:
+        handoff.equipmentPlacement, handoff.technicalSentBy, handoff.technicalSentAt = note, sender, at
+
+
+def _handoff_out(event_id: str, handoff: EventSafetyHandoff | None, needed: bool) -> SafetyHandoffOut:
+    venue = technical = None
+    if handoff is not None and handoff.venueSentAt:
+        venue = SafetyHandoffPart(sentBy=handoff.venueSentBy, sentAt=handoff.venueSentAt, note=handoff.crowdMovement)
+    if handoff is not None and handoff.technicalSentAt:
+        technical = SafetyHandoffPart(
+            sentBy=handoff.technicalSentBy, sentAt=handoff.technicalSentAt, note=handoff.equipmentPlacement
+        )
+    return SafetyHandoffOut(eventId=event_id, venue=venue, technical=technical, technicalNeeded=needed)
+
+
+def _missing(gaps: list[dict]) -> HTTPException:
+    """409 naming everything missing: each gap, and the kinds for a quick check."""
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "message": " ".join(gap["message"] for gap in gaps),
+            "missing": list(dict.fromkeys(gap["kind"] for gap in gaps)),
+            "gaps": gaps,
+        },
+    )
+
+
+def _safety_review_out(
+    row: EventSafetyReview, officer_id: str | None, flagged: list[dict] = ()
+) -> SafetyReviewOut:
+    return SafetyReviewOut(
+        reviewId=row.reviewId,
+        eventId=row.eventId,
+        status=row.status,
+        submittedBy=row.submittedBy,
+        submittedAt=row.submittedAt,
+        package=SafetyPackage(**row.package),
+        safetyOfficerId=officer_id,
+        decidedBy=row.decidedBy,
+        decidedAt=row.decidedAt,
+        decisionNote=row.decisionNote,
+        affected=list(row.affected or []),
         flaggedArrangements=[AffectedArrangement(**arrangement) for arrangement in flagged],
     )
 
@@ -274,10 +400,64 @@ def _has_open_clarifications(event: Event) -> bool:
     return any(review.action == CLARIFICATION and review.status == OPEN for review in event.reviews)
 
 
+def _equipment_line_dicts(lines) -> list[dict]:
+    """One line per equipment type. A repeat of the same type replaces the earlier line."""
+    ordered: list[str] = []
+    by_id: dict[str, dict] = {}
+    for line in lines or []:
+        data = line.model_dump() if hasattr(line, "model_dump") else dict(line)
+        equipment_id = data["equipmentId"]
+        if equipment_id not in by_id:
+            ordered.append(equipment_id)
+        by_id[equipment_id] = {
+            "equipmentId": equipment_id,
+            "quantity": data["quantity"],
+            "technicalNotes": data.get("technicalNotes") or "",
+        }
+    return [by_id[equipment_id] for equipment_id in ordered]
+
+
+def _accessibility_pair(value) -> tuple[str, list]:
+    if isinstance(value, list):
+        chosen = [str(item) for item in value if str(item).strip()]
+        return ", ".join(chosen), chosen
+    text = (value or "").strip()
+    return text, [text] if text else []
+
+
+def _write_requirements(event: Event, data, only_sent: bool) -> None:
+    sent = data.model_fields_set
+
+    def include(name: str) -> bool:
+        return name in sent if only_sent else True
+
+    if include("layoutPreference"):
+        event.layoutPreference = data.layoutPreference
+    if include("preferredLocation"):
+        event.preferredLocation = data.preferredLocation or ""
+    if include("requiredFacilities"):
+        event.requiredFacilities = list(data.requiredFacilities or [])
+    if include("accessibilityNote"):
+        event.accessibilityNote = data.accessibilityNote or ""
+    if include("accessibilityNeeds"):
+        text, chosen = _accessibility_pair(data.accessibilityNeeds)
+        event.accessibilityNeeds = text
+        event.accessibilitySelections = chosen
+    if include("equipmentLines"):
+        event.equipmentLines = _equipment_line_dicts(data.equipmentLines)
+
+
 def _date_near(proposed_start: datetime | None) -> bool:
+    """True when the proposed start is within the configured lead, inclusive.
+
+    ``timedelta.days`` drops the leftover hours, so a start 14 days and 23
+    hours away would still look like 14 days. Compare the full span instead:
+    the instant exactly ``event_proposed_date_near_days`` ahead is near, and
+    one second later is not. A start already in the past is near.
+    """
     if proposed_start is None:
         return False
-    return (proposed_start - datetime.utcnow()).days <= settings.event_proposed_date_near_days
+    return proposed_start - datetime.utcnow() <= timedelta(days=settings.event_proposed_date_near_days)
 
 
 def _to_out(
@@ -304,17 +484,25 @@ def _to_out(
         accessibilityNeeds=row.accessibilityNeeds or "",
         equipmentRequirements=row.equipmentRequirements,
         layoutPreference=row.layoutPreference,
+        preferredLocation=row.preferredLocation or "",
+        requiredFacilities=list(row.requiredFacilities or []),
+        accessibilityNote=row.accessibilityNote or "",
+        accessibilitySelections=list(row.accessibilitySelections or []),
+        equipmentLines=list(row.equipmentLines or []),
         registrationEnabled=row.registrationEnabled,
         registrationOpensAt=row.registrationOpensAt,
         registrationClosesAt=row.registrationClosesAt,
         capacity=row.capacity,
         submittedAt=row.submittedAt,
         organisationId=row.organisationId,
+        organiserId=row.organiserId,
         organisationName=org_names.get(row.organisationId) if row.organisationId else None,
         coordinatorId=row.coordinatorId,
         organiserContact=row.organiserContact or "",
         dateNear=_date_near(row.proposedStartAt),
         registeredCount=registration_count(row.eventId, authorization),
+        confirmedBy=row.confirmedBy,
+        confirmedAt=row.confirmedAt,
         hasOpenClarifications=_has_open_clarifications(row),
     )
 
@@ -358,6 +546,8 @@ class EventService(BaseService):
         field_change_dao: EventFieldChangeDAO | None = None,
         review_dao: EventReviewDAO | None = None,
         change_request_dao: EventChangeRequestDAO | None = None,
+        safety_dao: EventSafetyReviewDAO | None = None,
+        handoff_dao: EventSafetyHandoffDAO | None = None,
     ):
         super().__init__(db)
         self.event_dao = event_dao
@@ -366,6 +556,8 @@ class EventService(BaseService):
         self.field_change_dao = field_change_dao or EventFieldChangeDAO(db)
         self.review_dao = review_dao or EventReviewDAO(db)
         self.change_request_dao = change_request_dao or EventChangeRequestDAO(db)
+        self.safety_dao = safety_dao or EventSafetyReviewDAO(db)
+        self.handoff_dao = handoff_dao or EventSafetyHandoffDAO(db)
 
     def _require_event(self, event_id: str) -> Event:
         return self._require(self.event_dao.get_by_id(event_id), "Event not found")
@@ -393,12 +585,7 @@ class EventService(BaseService):
         return _to_out_list(rows, authorization, "list_all_events")
 
     def list_confirmed_events(self, authorization: str | None = None) -> list[EventOut]:
-        """Only events that have been confirmed.
-
-        NOTE: no transition in this service currently sets status to
-        "confirmed" - create_event() only ever sets "created". This will return
-        an empty list until an approval workflow exists that writes that status.
-        """
+        """Only events that have been confirmed (SPM-72 confirm_event sets the status)."""
         query_start = time.perf_counter()
         rows = self.event_dao.list_by_status("confirmed")
         logger.info(
@@ -538,7 +725,7 @@ class EventService(BaseService):
             venueRequirements=data.venueRequirements,
             accessibilityNeeds="",
             equipmentRequirements=data.equipmentRequirements,
-            layoutPreference=None,
+            layoutPreference=data.layoutPreference,
             registrationEnabled=False,
             registrationOpensAt=None,
             registrationClosesAt=None,
@@ -548,6 +735,7 @@ class EventService(BaseService):
             createdAt=now,
             updatedAt=now,
         )
+        _write_requirements(row, data, only_sent=False)
         self.event_dao.add(row)
         self.db.commit()
         self.db.refresh(row)
@@ -578,7 +766,78 @@ class EventService(BaseService):
         event.expectedAttendance = data.expectedAttendance or 0
         event.venueRequirements = data.venueRequirements
         event.equipmentRequirements = data.equipmentRequirements
+        _write_requirements(event, data, only_sent=True)
         event.updatedAt = datetime.utcnow()
+        self.db.commit()
+        self.db.refresh(event)
+        return _to_out(event, authorization)
+
+    def requirement_options(self) -> RequirementOptionsOut:
+        return RequirementOptionsOut(
+            layouts=list(LAYOUT_OPTIONS),
+            facilities=list(FACILITY_OPTIONS),
+            accessibility=list(ACCESSIBILITY_OPTIONS),
+        )
+
+    def patch_own_draft(
+        self,
+        event_id: str,
+        data: OrganiserDraftPatch,
+        organiser_id: str,
+        authorization: str | None = None,
+    ) -> EventOut:
+        """SPM-80: the owning organiser records structured requirements on a draft."""
+        event = self._get_own_draft(event_id, organiser_id)
+        sent = data.model_fields_set
+        for field in (
+            "eventName",
+            "purpose",
+            "description",
+            "category",
+            "proposedStartAt",
+            "proposedEndAt",
+            "venueRequirements",
+            "equipmentRequirements",
+        ):
+            if field in sent:
+                setattr(event, field, getattr(data, field))
+        if "expectedAttendance" in sent and data.expectedAttendance is not None:
+            event.expectedAttendance = data.expectedAttendance
+        _write_requirements(event, data, only_sent=True)
+        event.updatedAt = datetime.utcnow()
+        self.db.commit()
+        self.db.refresh(event)
+        return _to_out(event, authorization)
+
+    def submit_stored_draft(
+        self, event_id: str, organiser_id: str, authorization: str | None = None
+    ) -> EventOut:
+        """Submit a draft from the fields already saved on it."""
+        event = self._get_own_draft(event_id, organiser_id)
+        missing = []
+        if not event.eventName:
+            missing.append("eventName")
+        if event.proposedStartAt is None:
+            missing.append("proposedStartAt")
+        if event.proposedEndAt is None:
+            missing.append("proposedEndAt")
+        if not event.expectedAttendance or event.expectedAttendance < 1:
+            missing.append("expectedAttendance")
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Missing {', '.join(missing)}",
+            )
+        if event.proposedEndAt <= event.proposedStartAt:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="proposedEndAt must be after proposedStartAt",
+            )
+        now = datetime.utcnow()
+        self._record_status_change(event, "submitted", organiser_id)
+        event.status = "submitted"
+        event.submittedAt = now
+        event.updatedAt = now
         self.db.commit()
         self.db.refresh(event)
         return _to_out(event, authorization)
@@ -620,9 +879,15 @@ class EventService(BaseService):
         return _to_out_list(rows, authorization, "list_my_drafts")
 
     def list_my_events(self, organiser_id: str, authorization: str | None = None) -> list[EventOut]:
-        """Every event the caller organises, at any stage, other than one they discarded."""
+        """Every event the caller organises, at any stage, other than one they discarded.
+        SPM-121: each carries its latest safety review status, so the organiser can
+        see an event waiting on the review or sent back for safety changes."""
         rows = self.event_dao.list_by_organiser_excluding_statuses(organiser_id, ["discarded"])
-        return _to_out_list(rows, authorization, "list_my_events")
+        events = _to_out_list(rows, authorization, "list_my_events")
+        latest = self.safety_dao.latest_status_by_event([row.eventId for row in rows])
+        for event in events:
+            event.safetyReviewStatus = latest.get(event.eventId)
+        return events
 
     def discard_draft(
         self, event_id: str, organiser_id: str, authorization: str | None = None
@@ -724,9 +989,11 @@ class EventService(BaseService):
         event = self._require_event(event_id)
         if event.coordinatorId != coordinator_id:
             raise forbidden("Only the event's assigned coordinator can edit it")
-        flagged = self._apply_changes(event, data, coordinator_id, authorization)
+        flagged, schedule_changed = self._apply_changes(event, data, coordinator_id, authorization)
         self.db.commit()
         self.db.refresh(event)
+        if schedule_changed:
+            self._tell_registered_attendees(event, "schedule", authorization)
         return _to_out(
             event,
             authorization,
@@ -756,7 +1023,7 @@ class EventService(BaseService):
                 detail="The end must be after the start",
             )
         if not changes:
-            return []
+            return [], False
 
         significant = [field for field in SIGNIFICANT_FIELDS if field in changes]
         flagged: list[dict] = []
@@ -769,15 +1036,21 @@ class EventService(BaseService):
                 flagged = flag_arrangements(event.eventId, summary, authorization)
             else:
                 affected = affected_arrangements(event.eventId, authorization)
-                if affected or event.status == "confirmed":
+                if affected or event.status in ("confirmed", *SAFETY_STAGES):
                     raise self._confirmation_required(event, significant, affected)
 
         now = datetime.utcnow()
         if significant and event.status == "confirmed":
             self._record_status_change(event, RECONSIDERING, changed_by, summary, now)
             event.status = RECONSIDERING
+        elif significant and event.status in SAFETY_STAGES:
+            self._supersede_safety_review(event, changed_by, summary, now)
+        handoff = self.handoff_dao.get(event.eventId)
+        if significant and handoff is not None:
+            # SPM-120: arrangements sent before the change must be sent again.
+            self.handoff_dao.delete(handoff)
         self._log_and_set(event, changes, changed_by, now)
-        return flagged
+        return flagged, "proposedStartAt" in changes or "proposedEndAt" in changes
 
     def _log_and_set(self, event: Event, changes: dict, changed_by: str, now: datetime) -> None:
         """Write each change to the activity log (SPM-71 AC5, SPM-90 AC7), then apply it."""
@@ -813,8 +1086,23 @@ class EventService(BaseService):
                 f"Changing {labels} affects arrangements that are already in place. They will be marked "
                 "for re-verification. Confirm to save the change."
             )
+        elif event.status == SAFETY_REVIEW:
+            message = (
+                f"Changing {labels} withdraws the pending safety review, and the event goes back to planning. "
+                "Confirm to save the change."
+            )
+        elif event.status == SAFETY_APPROVED:
+            message = (
+                f"Changing {labels} withdraws the safety approval, and the event goes back to planning for a new "
+                "safety review. Confirm to save the change."
+            )
         else:
             message = f"Changing {labels} means this event will no longer read as confirmed. Confirm to save the change."
+        status_change = None
+        if event.status == "confirmed":
+            status_change = {"from": event.status, "to": RECONSIDERING}
+        elif event.status in SAFETY_STAGES:
+            status_change = {"from": event.status, "to": "planning"}
         return HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -822,9 +1110,7 @@ class EventService(BaseService):
                 "requiresConfirmation": True,
                 "significantFields": significant,
                 "arrangements": affected,
-                "statusChange": (
-                    {"from": event.status, "to": RECONSIDERING} if event.status == "confirmed" else None
-                ),
+                "statusChange": status_change,
             },
         )
 
@@ -1091,10 +1377,12 @@ class EventService(BaseService):
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="This request's proposed values cannot be applied. Decline it and ask for a new one.",
             )
-        flagged = self._apply_changes(event, update, coordinator_id, authorization)
+        flagged, schedule_changed = self._apply_changes(event, update, coordinator_id, authorization)
         self._close_change_request(change_request, "accepted", coordinator_id, data.reason.strip() or None)
         self.db.commit()
         self.db.refresh(change_request)
+        if schedule_changed:
+            self._tell_registered_attendees(event, "schedule", authorization)
         self._notify_decision(event, change_request, authorization)
         return _change_request_out(change_request, flagged)
 
@@ -1171,6 +1459,39 @@ class EventService(BaseService):
             key=lambda candidate: candidate.name.lower(),
         )
 
+    def list_coordinator_assignments(self, authorization: str | None = None) -> list[CoordinatorAssignmentsOut]:
+        """SPM-119: every Event Coordinator, by name, with the active events
+        assigned to them (not completed, cancelled, rejected, draft, or
+        discarded), soonest first. A coordinator with none is still listed, and
+        an event assigned to someone no longer listed as a coordinator is not
+        lost from view. The router lets only the Lead read it."""
+        directory = {user["userId"]: user for user in list_users(authorization)}
+        org_names = organisation_names(authorization)
+        groups = {
+            user_id: CoordinatorAssignmentsOut(userId=user_id, name=user["userName"], email=user["email"])
+            for user_id, user in directory.items()
+            if user.get("role") == "coordinator"
+        }
+        for row in self.event_dao.list_assigned_excluding_statuses(list(LOCKED_STATUSES)):
+            if row.coordinatorId not in groups:
+                known = directory.get(row.coordinatorId, {})
+                groups[row.coordinatorId] = CoordinatorAssignmentsOut(
+                    userId=row.coordinatorId,
+                    name=known.get("userName") or row.coordinatorId,
+                    email=known.get("email") or "",
+                )
+            groups[row.coordinatorId].events.append(
+                SupervisedEventOut(
+                    eventId=row.eventId,
+                    eventName=row.eventName,
+                    status=row.status,
+                    proposedStartAt=row.proposedStartAt,
+                    proposedEndAt=row.proposedEndAt,
+                    organisationName=org_names.get(row.organisationId or ""),
+                )
+            )
+        return sorted(groups.values(), key=lambda group: group.name.lower())
+
     def get_event_coordinator(
         self, event_id: str, caller: dict, authorization: str | None = None
     ) -> EventCoordinatorOut:
@@ -1195,13 +1516,16 @@ class EventService(BaseService):
         assigned_by: str,
         authorization: str | None = None,
     ) -> EventAssignmentOut:
-        """SPM-66: assign (or reassign) the event's coordinator.
+        """The Event Coordinator Lead assigns (or reassigns) the event's
+        coordinator; the router refuses everyone else. A new request stays
+        unassigned until then.
 
-        The assignee must be an Event Coordinator (AC8); there is no workload
-        limit (AC3). The assignment row records who assigned whom and when and
-        appears in the activity log (AC4). A submitted request moves to
+        The assignee must be an Event Coordinator (SPM-66 AC8); there is no
+        workload limit (AC3). The assignment row records who assigned whom and
+        when and appears in the activity log. A submitted request moves to
         "under review" (AC6). The new coordinator and the organiser are
-        notified (AC5) after the save, best effort.
+        notified, and on a reassignment the coordinator it was taken from,
+        after the save, best effort.
         """
         event = self._require_event(event_id)
         if event.status in LOCKED_STATUSES:
@@ -1213,6 +1537,10 @@ class EventService(BaseService):
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="An event can only be assigned to an Event Coordinator",
             )
+        if event.coordinatorId == data.coordinatorId:
+            # SPM-118 AC1: a reassignment moves the event to a different coordinator.
+            raise conflict(f"{assignee['userName']} is already the coordinator for this event")
+        previous = event.coordinatorId
         now = datetime.utcnow()
         row = EventAssignment(
             assignmentId=str(uuid4()),
@@ -1229,7 +1557,18 @@ class EventService(BaseService):
         event.updatedAt = now
         self.db.commit()
         self.db.refresh(row)
-        self._notify_assignment(event, assignee, users.get(event.organiserId), authorization)
+        replaced = users.get(previous) if previous else None
+        self._notify_assignment(event, assignee, users.get(event.organiserId), replaced, authorization)
+        # SPM-93: the new coordinator's in-app notice, worded by notification-service.
+        publish_notification(
+            "booking.assigned",
+            event.eventId,
+            f"{event.eventId}:booking.assigned:{row.assignmentId}",
+            [{"userId": row.coordinatorId, "role": "coordinator"}],
+            {"eventName": event.eventName},
+            actor_id=assigned_by,
+            resource={"type": "event", "id": event.eventId},
+        )
         return EventAssignmentOut(
             assignmentId=row.assignmentId,
             eventId=row.eventId,
@@ -1240,23 +1579,38 @@ class EventService(BaseService):
 
     @staticmethod
     def _notify_assignment(
-        event: Event, assignee: dict, organiser: dict | None, authorization: str | None
+        event: Event, assignee: dict, organiser: dict | None, replaced: dict | None, authorization: str | None
     ) -> None:
+        """Best effort: the new coordinator by email (their in-app notice is
+        SPM-93's "booking.assigned", published by the caller), and by email and
+        in-app the coordinator a reassignment took the event from and the organiser."""
+
+        def tell(user: dict, kind: str, title: str, body: str) -> None:
+            send_notification(user["email"], title, body, authorization)
+            record_notification(user["userId"], event.eventId, kind, title, body, authorization)
+
         send_notification(
             assignee["email"],
             f"You are now the coordinator for {event.eventName}",
             f"{event.eventName} has been assigned to you. It is currently {event.status}.",
             authorization,
         )
+        if replaced is not None:
+            tell(
+                replaced,
+                "event.reassigned",
+                f"{event.eventName} has been reassigned",
+                f"{event.eventName} is now with {assignee['userName']}, so you are no longer its coordinator.",
+            )
         if organiser is None:
             logger.warning("organiser %s of event %s not in the user directory", event.organiserId, event.eventId)
             return
-        send_notification(
-            organiser["email"],
+        tell(
+            organiser,
+            "event.coordinator",
             f"Your coordinator for {event.eventName}",
             f"{assignee['userName']} is now your coordinator for {event.eventName}. "
             f"You can reach them at {assignee['email']}.",
-            authorization,
         )
 
     def _record_status_change(
@@ -1278,24 +1632,6 @@ class EventService(BaseService):
                 createdAt=at or datetime.utcnow(),
             )
         )
-
-    def _decide_event(
-        self,
-        event_id: str,
-        coordinator_id: str,
-        new_status: str,
-        reason: str,
-        authorization: str | None = None,
-    ) -> EventOut:
-        event = self._require_event(event_id)
-        if event.status not in DECIDABLE_STATUSES:
-            raise conflict(f"Event is already {event.status}")
-        self._record_status_change(event, new_status, coordinator_id, reason)
-        event.status = new_status
-        event.updatedAt = datetime.utcnow()
-        self.db.commit()
-        self.db.refresh(event)
-        return _to_out(event, authorization)
 
     def approve_event(
         self,
@@ -1401,6 +1737,7 @@ class EventService(BaseService):
         return EventDecisionOut(
             eventId=event.eventId,
             decision=DECISIONS[review.action],
+            decisionReason=review.reason,
             decisionNote=review.comment,
             decidedBy=review.reviewerId,
             decidedAt=review.createdAt,
@@ -1483,7 +1820,8 @@ class EventService(BaseService):
     ) -> ClarificationOut:
         """SPM-68 AC3: the organiser (or a colleague in their organisation) or
         the assigned coordinator adds to an open thread. The other side is
-        emailed after the save, best effort."""
+        emailed after the save. An organiser reply also lands in the assigned
+        coordinator's inbox (SPM-6), best effort."""
         event = self._require_event(event_id)
         clarification = self._require_clarification(event.eventId, clarification_id)
         coordinator = caller.get("role") == "coordinator" and caller.get("userId") == event.coordinatorId
@@ -1491,26 +1829,45 @@ class EventService(BaseService):
             raise forbidden("Only the event's organiser or its assigned coordinator can reply to a clarification")
         if clarification.status == RESOLVED:
             raise conflict("This clarification is resolved, so it can no longer be replied to")
-        self.review_dao.add(
-            EventClarificationReply(
-                replyId=str(uuid4()),
-                reviewId=clarification.reviewId,
-                authorId=caller["userId"],
-                authorRole=caller["role"],
-                message=data.message,
-                createdAt=datetime.utcnow(),
-            )
+        reply = EventClarificationReply(
+            replyId=str(uuid4()),
+            reviewId=clarification.reviewId,
+            authorId=caller["userId"],
+            authorRole=caller["role"],
+            message=data.message,
+            createdAt=datetime.utcnow(),
         )
+        self.review_dao.add(reply)
         self.db.commit()
         self.db.refresh(clarification)
         users = self._directory(authorization)
-        recipient = self._recipient(users, event.organiserId if coordinator else event.coordinatorId, event)
+        recipient_id = event.organiserId if coordinator else event.coordinatorId
+        recipient = self._recipient(users, recipient_id, event)
+        past_review = not coordinator and event.status not in IN_REVIEW_STATUSES
         if recipient is not None:
-            body = f"There is a new reply about {event.eventName}: {data.message}"
-            if not coordinator and event.status not in IN_REVIEW_STATUSES:
-                # SPM-06 AC4: a late answer still reaches the coordinator, flagged as such.
+            body = f"There is a new reply about {event.eventName} ({event.eventId}): {data.message}"
+            if past_review:
+                # SPM-6 AC4: a late answer still reaches the coordinator, and says
+                # the request is no longer waiting on review.
                 body += f" This request is no longer awaiting review; it is now {event.status}."
-            send_notification(recipient["email"], f"New reply on a clarification for {event.eventName}", body, authorization)
+            send_notification(
+                recipient["email"], f"New reply on a clarification for {event.eventName}", body, authorization
+            )
+        if not coordinator and event.coordinatorId:
+            # The organiser's own token cannot write the coordinator's inbox, so this
+            # goes through the service-key publish, which also stores the event link.
+            context = {"eventName": event.eventName, "eventId": event.eventId, "message": data.message}
+            if past_review:
+                context["reviewStatus"] = event.status
+            publish_notification(
+                "clarification.replied",
+                event.eventId,
+                reply.replyId,
+                [{"userId": event.coordinatorId, "role": "coordinator"}],
+                context,
+                actor_id=caller["userId"],
+                resource={"type": "clarification", "id": clarification.reviewId},
+            )
         return self._clarification_out(clarification, users)
 
     def resolve_clarification(
@@ -1588,10 +1945,80 @@ class EventService(BaseService):
         self,
         event_id: str,
         coordinator_id: str,
-        reason: str = "",
+        data: EventRejection,
         authorization: str | None = None,
-    ) -> EventOut:
-        return self._decide_event(event_id, coordinator_id, "rejected", reason, authorization)
+    ) -> EventRejectionOut:
+        """SPM-70: the assigned coordinator turns down a request ConnectSphere cannot take on.
+
+        Only the assigned coordinator can reject, and only while the request is
+        under review or changes requested (AC1). The listed reason and the
+        explanation are stored as a `reject` review that the organiser reads
+        through `GET /events/{id}/decision` (AC4). Rejected is terminal (AC3):
+        every later edit, approval and clarification is refused because the
+        status is no longer a review status. The status change goes in the
+        activity log with the listed reason only, so the explanation stays out
+        of the log that attendees can read (AC6). After the save, the venue
+        bookings and equipment reservations held for the event are released
+        (AC5) and the organiser is emailed (AC4), both best effort.
+        """
+        event = self._require_event(event_id)
+        _require_assigned_coordinator(event, coordinator_id, "reject it")
+        if event.status not in IN_REVIEW_STATUSES:
+            raise conflict(f"Only a request under review can be rejected (this one is {event.status})")
+        now = datetime.utcnow()
+        self.review_dao.add(
+            EventReview(
+                reviewId=str(uuid4()),
+                eventId=event.eventId,
+                reviewerId=coordinator_id,
+                action="reject",
+                reason=data.reason,
+                comment=data.explanation,
+                createdAt=now,
+            )
+        )
+        self._record_status_change(event, "rejected", coordinator_id, data.reason, now)
+        event.status = "rejected"
+        event.updatedAt = now
+        self.db.commit()
+        self.db.refresh(event)
+        release_event_venue_bookings(event.eventId, authorization)
+        release_event_holds(event.eventId, authorization)
+        self._notify_rejection(event, data, coordinator_id, authorization)
+        return _to_out(
+            event,
+            authorization,
+            out_type=EventRejectionOut,
+            decisionReason=data.reason,
+            decisionNote=data.explanation,
+            decidedBy=coordinator_id,
+            decidedAt=now,
+        )
+
+    def _notify_rejection(
+        self, event: Event, data: EventRejection, coordinator_id: str, authorization: str | None
+    ) -> None:
+        """Best effort: the rejection is already saved, so a directory or email
+        failure is logged rather than raised. The organiser gets an in-app
+        notification (SPM-93) as well as the email."""
+        publish_notification(
+            "event.rejected",
+            event.eventId,
+            f"{event.eventId}:event.rejected",
+            people(event, ["organiser"], {}),
+            {"eventName": event.eventName, "reason": data.reason, "explanation": data.explanation},
+            actor_id=coordinator_id,
+            resource={"type": "event", "id": event.eventId},
+        )
+        organiser = self._recipient(self._directory(authorization), event.organiserId, event)
+        if organiser is None:
+            return
+        body = (
+            f"ConnectSphere cannot take on {event.eventName}, so the request has been rejected. "
+            f"Reason: {data.reason}. {data.explanation} "
+            "Any venue or equipment held for it has been released. You can submit a new request at any time."
+        )
+        send_notification(organiser["email"], f"{event.eventName} was rejected", body, authorization)
 
     def complete_event(
         self, event_id: str, coordinator_id: str, authorization: str | None = None
@@ -1638,4 +2065,696 @@ class EventService(BaseService):
         event.updatedAt = datetime.utcnow()
         self.db.commit()
         self.db.refresh(event)
+        release_event_holds(event.eventId, authorization)
+        return _to_out(event, authorization)
+
+    # SPM-120: safety review --------------------------------------------------
+
+    def submit_safety_review(
+        self, event_id: str, data: SafetySubmission, coordinator_id: str, authorization: str | None = None
+    ) -> SafetyReviewOut:
+        """SPM-120: the assigned coordinator sends a planning event to the
+        Safety Officers with both notes at once, for example after revising
+        rejected arrangements (AC9). Venue Staff and technical support usually
+        send their parts instead (`send_venue_arrangements`); this replaces any
+        part already sent.
+
+        Only once its venue booking and its technical arrangements are
+        confirmed (AC1). The venue, equipment, and event facts are copied into
+        the review with the crowd-movement and placement notes, so the officer
+        judges exactly what was sent (AC2). The event moves to `safety review`,
+        and every Safety Officer is told, best effort.
+        """
+        event = self._require_event(event_id)
+        _require_assigned_coordinator(event, coordinator_id, "submit it for a safety review")
+        if event.status not in SAFETY_SUBMITTABLE_STATUSES:
+            raise conflict(f"An event is submitted for a safety review from planning (this one is {event.status})")
+        review = self._open_safety_review(event, data, coordinator_id, "Submitted for safety review", authorization)
+        return _safety_review_out(review, event.safetyOfficerId)
+
+    def safety_handoff(self, event_id: str, caller: dict, authorization: str | None = None) -> SafetyHandoffOut:
+        """SPM-120, change 6: which arrangements have been sent to the Safety
+        Officer this round, and whether the event needs technical ones at all."""
+        event = self._require_event(event_id)
+        _require_organiser_or_staff(event, caller, "safety reviews")
+        arrangements = self._check_arrangements(event, authorization)
+        needed = technical_needed(event.equipmentLines or [], arrangements.requests, arrangements.reservations)
+        return _handoff_out(event.eventId, self.handoff_dao.get(event.eventId), needed)
+
+    def send_venue_arrangements(
+        self, event_id: str, data: SafetyVenueHandoff, sender_id: str, authorization: str | None = None
+    ) -> SafetyHandoffOut:
+        """SPM-120, change 6: Venue Staff send the confirmed venue arrangements
+        to the Safety Officer, with how the crowd moves. Every requested venue
+        must be approved for the event's date and time."""
+        return self._send_arrangements(event_id, "venue", data.crowdMovement, sender_id, authorization)
+
+    def send_technical_arrangements(
+        self, event_id: str, data: SafetyTechnicalHandoff, sender_id: str, authorization: str | None = None
+    ) -> SafetyHandoffOut:
+        """SPM-120, change 6: technical support send the confirmed technical
+        arrangements, with where the equipment goes. Every equipment line must
+        be reserved or recorded as not required."""
+        return self._send_arrangements(event_id, "equipment", data.equipmentPlacement, sender_id, authorization)
+
+    def _send_arrangements(
+        self, event_id: str, kind: str, note: str, sender_id: str, authorization: str | None
+    ) -> SafetyHandoffOut:
+        """Record one part, then open the review once every part the event
+        needs is in. The other part, if its arrangements changed since it was
+        sent, is cleared and must be sent again."""
+        event = self._require_event(event_id)
+        if event.status not in SAFETY_SUBMITTABLE_STATUSES:
+            raise conflict(f"Arrangements are sent to the Safety Officer from planning (this one is {event.status})")
+        arrangements = self._check_arrangements(event, authorization)
+        needed = technical_needed(event.equipmentLines or [], arrangements.requests, arrangements.reservations)
+        if kind == "equipment" and not needed:
+            raise conflict("This event has no equipment, so there are no technical arrangements to send.")
+        own = [gap for gap in arrangements.gaps if gap["kind"] == kind]
+        if own:
+            raise _missing(own)
+        handoff = self.handoff_dao.get(event.eventId)
+        if handoff is None:
+            handoff = EventSafetyHandoff(eventId=event.eventId)
+            self.handoff_dao.add(handoff)
+            # Written now, so opening the review below finds it and removes it.
+            self.db.flush()
+        _set_part(handoff, kind, note, sender_id, datetime.utcnow())
+        other = "equipment" if kind == "venue" else "venue"
+        if any(gap["kind"] == other for gap in arrangements.gaps):
+            _set_part(handoff, other, None, None, None)
+        out = _handoff_out(event.eventId, handoff, needed)
+        if handoff.venueSentAt and (handoff.technicalSentAt or not needed):
+            data = SafetySubmission(crowdMovement=handoff.crowdMovement, equipmentPlacement=handoff.equipmentPlacement or "")
+            review = self._open_safety_review(
+                event, data, sender_id, "Arrangements sent for safety review", authorization, arrangements
+            )
+            self._notify_review_opened(event, authorization)
+            out.review = _safety_review_out(review, event.safetyOfficerId)
+        else:
+            self.db.commit()
+        return out
+
+    def _open_safety_review(
+        self,
+        event: Event,
+        data: SafetySubmission,
+        submitted_by: str,
+        note: str,
+        authorization: str | None,
+        arrangements: "Arrangements | None" = None,
+    ) -> EventSafetyReview:
+        """Take the package, start the review, and tell every Safety Officer.
+        Arrangements sent separately this round are now part of it."""
+        package = self._safety_package(event, data, authorization, arrangements)
+        now = datetime.utcnow()
+        review = EventSafetyReview(
+            reviewId=str(uuid4()),
+            eventId=event.eventId,
+            status=PENDING,
+            submittedBy=submitted_by,
+            submittedAt=now,
+            crowdMovement=data.crowdMovement,
+            equipmentPlacement=data.equipmentPlacement,
+            package=package,
+        )
+        self.safety_dao.add(review)
+        handoff = self.handoff_dao.get(event.eventId)
+        if handoff is not None:
+            self.handoff_dao.delete(handoff)
+        self._record_status_change(event, SAFETY_REVIEW, submitted_by, note, now)
+        event.status = SAFETY_REVIEW
+        event.updatedAt = now
+        self.db.commit()
+        self.db.refresh(review)
+        self._notify_safety_officers(event, review, authorization)
+        return review
+
+    @staticmethod
+    def _check_arrangements(event: Event, authorization: str | None) -> "Arrangements":
+        """The venue and equipment rules shared by the safety review gate
+        (SPM-120) and confirmation (SPM-72). Reads are strict: an arrangement
+        that cannot be checked is never treated as confirmed."""
+        bookings = event_bookings(event.eventId, authorization)
+        requests = equipment_requests_for(event.eventId, authorization)
+        reservations = equipment_reservations_for(event.eventId, authorization)
+        lines = list(event.equipmentLines or [])
+        names = equipment_names(authorization) if requests or lines else {}
+        gaps = venue_gaps(bookings, event.proposedStartAt, event.proposedEndAt) + equipment_gaps(
+            lines, requests, reservations, names
+        )
+        return Arrangements(gaps, bookings, requests, reservations, names)
+
+    def _safety_package(
+        self,
+        event: Event,
+        data: SafetySubmission,
+        authorization: str | None,
+        arrangements: "Arrangements | None" = None,
+    ) -> dict:
+        """AC1's gate, then AC2's facts. Every requested venue must be approved
+        for the event's date and time, and every equipment line reserved or
+        recorded as not required. A booking or reservation flagged for
+        re-verification is a gap (SPM-86), so it cannot be sent for review or
+        confirmed until staff re-confirm it. The flag is still shown on the package."""
+        if arrangements is None:
+            arrangements = self._check_arrangements(event, authorization)
+        if arrangements.gaps:
+            raise _missing(arrangements.gaps)
+        bookings = [row for row in arrangements.bookings if row.get("status") == "approved"]
+        reservations, names = arrangements.reservations, arrangements.names
+        lines = requested_lines(arrangements.requests)
+        if technical_needed(event.equipmentLines or [], arrangements.requests, reservations) and not data.equipmentPlacement:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Say where the reserved equipment will be placed.",
+            )
+        flagged_requests = {row.get("requestId") for row in reservations if row.get("needsReverification")}
+        venues = []
+        for booking in bookings:
+            venue = venue_details(booking["venueId"], authorization)
+            by_layout = {row["name"].lower(): row["capacity"] for row in venue.get("layouts", [])}
+            wanted = (event.layoutPreference or "").lower()
+            layout = event.layoutPreference if wanted in by_layout else None
+            venues.append(
+                SafetyVenueFacts(
+                    venueId=venue["venueId"],
+                    venueName=venue["name"],
+                    location=venue.get("location") or "",
+                    startsAt=booking["startsAt"],
+                    endsAt=booking["endsAt"],
+                    layout=layout,
+                    capacityInLayout=by_layout[wanted] if layout else venue["capacity"],
+                    venueCapacity=venue["capacity"],
+                    layouts=venue.get("layouts", []),
+                    accessibilityFeatures=venue.get("accessibility", []),
+                    emergencyAccess=venue.get("emergencyAccess") or "",
+                    restrictions=venue.get("restrictions") or "",
+                    operatingHours=venue.get("operatingHours", []),
+                    needsReverification=bool(booking.get("needsReverification")),
+                    reverificationNote=booking.get("reverificationNote"),
+                )
+            )
+        accessibility = list(event.accessibilitySelections or []) or (
+            [event.accessibilityNeeds] if event.accessibilityNeeds else []
+        )
+        return SafetyPackage(
+            eventName=event.eventName,
+            proposedStartAt=event.proposedStartAt,
+            proposedEndAt=event.proposedEndAt,
+            expectedAttendance=event.expectedAttendance,
+            layout=event.layoutPreference,
+            accessibilityRequirements=accessibility,
+            accessibilityNote=event.accessibilityNote or "",
+            venues=venues,
+            equipment=[
+                SafetyEquipmentLine(
+                    equipmentId=row["equipmentId"],
+                    name=names.get(row["equipmentId"], row["equipmentId"]),
+                    quantity=row["quantity"],
+                    status=row["status"],
+                    technicalRequirements=row.get("technicalRequirements") or "",
+                    needsReverification=row.get("requestId") in flagged_requests,
+                )
+                for row in lines
+            ],
+            crowdMovement=data.crowdMovement,
+            equipmentPlacement=data.equipmentPlacement,
+        ).model_dump(mode="json")
+
+    def list_safety_reviews(self, review_status: str = PENDING) -> list[SafetyReviewOut]:
+        """The Safety Officers' queue, longest-waiting first."""
+        rows = self.safety_dao.list_with_status(review_status)
+        officers = self.event_dao.safety_officers(list({row.eventId for row in rows}))
+        return [_safety_review_out(row, officers.get(row.eventId)) for row in rows]
+
+    def get_safety_reviews(self, event_id: str, caller: dict) -> list[SafetyReviewOut]:
+        """Every safety review of the event, newest first, for the organiser's
+        organisation and staff (AC9: the organiser sees the outcome)."""
+        event = self._require_event(event_id)
+        _require_organiser_or_staff(event, caller, "safety reviews")
+        return [_safety_review_out(row, event.safetyOfficerId) for row in self.safety_dao.list_by_event(event.eventId)]
+
+    def approve_safety_review(
+        self, event_id: str, review_id: str, data: SafetyApproval, officer_id: str, authorization: str | None = None
+    ) -> SafetyReviewOut:
+        """AC3/AC4: the plan is safe. The decision, the officer, and the time
+        are recorded, and the event waits for the coordinator to confirm it
+        (SPM-72); preparation begins once it is confirmed."""
+        event, review = self._pending_safety_review(event_id, review_id, officer_id)
+        now = datetime.utcnow()
+        self._close_safety_review(review, "approved", officer_id, data.note.strip() or None, now)
+        self._record_status_change(event, SAFETY_APPROVED, officer_id, "Safety review approved", now)
+        event.status = SAFETY_APPROVED
+        event.updatedAt = now
+        self.db.commit()
+        self.db.refresh(review)
+        self._notify_safety_decision(event, review, authorization)
+        return _safety_review_out(review, event.safetyOfficerId)
+
+    def reject_safety_review(
+        self, event_id: str, review_id: str, data: SafetyRejection, officer_id: str, authorization: str | None = None
+    ) -> SafetyReviewOut:
+        """AC5/AC9: the plan is unsafe. The reason is recorded and the event
+        returns to planning, so it does not proceed to preparation, but it is
+        not cancelled: the coordinator can revise the arrangements and submit
+        again. The coordinator and the organiser are told."""
+        event, review = self._pending_safety_review(event_id, review_id, officer_id)
+        now = datetime.utcnow()
+        self._close_safety_review(review, "rejected", officer_id, data.reason, now)
+        self._record_status_change(event, "planning", officer_id, "Safety review rejected", now)
+        event.status = "planning"
+        event.updatedAt = now
+        self.db.commit()
+        self.db.refresh(review)
+        self._notify_safety_decision(event, review, authorization)
+        return _safety_review_out(review, event.safetyOfficerId)
+
+    def request_safety_changes(
+        self,
+        event_id: str,
+        review_id: str,
+        data: SafetyChangeRequest,
+        officer_id: str,
+        authorization: str | None = None,
+    ) -> SafetyReviewOut:
+        """AC6: what must change is recorded and the event returns to planning.
+        The arrangements the officer names are flagged for re-checking, so
+        venue staff or technical support review them again; the flags go out
+        before the save, so a change never returns without them."""
+        event, review = self._pending_safety_review(event_id, review_id, officer_id)
+        reason = f"Safety review: {data.requiredChanges}"
+        flagged: list[dict] = []
+        if "venue" in data.affected:
+            flagged += flag_venue_arrangements(event.eventId, reason, authorization)
+        if "technical" in data.affected:
+            flagged += flag_technical_arrangements(event.eventId, reason, authorization)
+        now = datetime.utcnow()
+        self._close_safety_review(review, "changes_requested", officer_id, data.requiredChanges, now)
+        review.affected = list(data.affected)
+        self._record_status_change(event, "planning", officer_id, "Safety review: changes requested", now)
+        event.status = "planning"
+        event.updatedAt = now
+        self.db.commit()
+        self.db.refresh(review)
+        self._notify_safety_decision(event, review, authorization)
+        return _safety_review_out(review, event.safetyOfficerId, flagged)
+
+    def claim_safety_review(
+        self, event_id: str, review_id: str, officer_id: str, authorization: str | None = None
+    ) -> SafetyReviewOut:
+        """SPM-120: a Safety Officer takes the event's pending review. One officer
+        per event: only they can decide on it, and every later round goes to them.
+        Claiming again is a no-op for the same officer and 409 for anyone else."""
+        event, review = self._pending_safety_review(event_id, review_id)
+        if event.safetyOfficerId is None:
+            claimed = self.event_dao.claim_safety_review(event.eventId, officer_id)
+            self.db.commit()
+            self.db.refresh(event)
+            if claimed:
+                self._notify_safety_claimed(event, officer_id, authorization)
+        if event.safetyOfficerId != officer_id:
+            raise conflict(f"{self._officer_name(event.safetyOfficerId, authorization)} has already claimed this safety review")
+        return _safety_review_out(review, event.safetyOfficerId)
+
+    def _pending_safety_review(
+        self, event_id: str, review_id: str, officer_id: str | None = None
+    ) -> tuple[Event, EventSafetyReview]:
+        """The event's pending review. With `officer_id` (a decision), the
+        officer must be the one who claimed the event."""
+        event = self._require_event(event_id)
+        review = self._require(
+            next((row for row in self.safety_dao.list_by_event(event.eventId) if row.reviewId == review_id), None),
+            "Safety review not found",
+        )
+        if review.status != PENDING:
+            raise conflict(f"This safety review is already {review.status.replace('_', ' ')}")
+        if officer_id is not None:
+            if event.safetyOfficerId is None:
+                raise conflict("Claim this safety review before deciding on it")
+            if event.safetyOfficerId != officer_id:
+                raise forbidden("Only the Safety Officer who claimed this event can decide on its safety review")
+        return event, review
+
+    def _officer_name(self, officer_id: str | None, authorization: str | None) -> str:
+        return self._directory(authorization).get(officer_id, {}).get("userName") or "Another Safety Officer"
+
+    def _notify_safety_claimed(self, event: Event, officer_id: str, authorization: str | None) -> None:
+        """Best effort: the coordinator learns who is reviewing the event."""
+        directory = self._directory(authorization)
+        name = directory.get(officer_id, {}).get("userName") or "A Safety Officer"
+        title = f"{name} is reviewing {event.eventName}"
+        body = f"{name} has taken the safety review of {event.eventName} and will decide on it."
+        recipient = self._recipient(directory, event.coordinatorId, event)
+        if recipient is not None:
+            send_notification(recipient["email"], title, body, authorization)
+        if event.coordinatorId:
+            record_notification(event.coordinatorId, event.eventId, "event.safety_review", title, body, authorization)
+
+    @staticmethod
+    def _close_safety_review(
+        review: EventSafetyReview, outcome: str, decided_by: str, note: str | None, now: datetime
+    ) -> None:
+        review.status = outcome
+        review.decidedBy = decided_by
+        review.decidedAt = now
+        review.decisionNote = note
+
+    def _supersede_safety_review(self, event: Event, changed_by: str, summary: str, now: datetime) -> None:
+        """A significant change during the review, or after approval but before
+        confirmation (SPM-72), withdraws it, and the event goes back to planning
+        to be submitted again. An approval stays in the history as it was given."""
+        review = self.safety_dao.pending_for_event(event.eventId)
+        if review is not None:
+            self._close_safety_review(review, "superseded", changed_by, summary, now)
+        withdrawn = "Safety approval withdrawn" if event.status == SAFETY_APPROVED else "Safety review withdrawn"
+        self._record_status_change(event, "planning", changed_by, f"{withdrawn}. {summary}", now)
+        event.status = "planning"
+
+    def _notify_safety_officers(self, event: Event, review: EventSafetyReview, authorization: str | None) -> None:
+        """Best effort: the submission is already saved. Officers are emailed here;
+        their in-app notification is the published "Event details submitted" trigger (SPM-93).
+        An event a Safety Officer has claimed goes to them alone; otherwise every
+        officer is told, so one of them can claim it."""
+        title = f"{event.eventName} is ready for a safety review"
+        body = f"The venue and equipment for {event.eventName} are confirmed and have been sent for a safety review."
+
+        directory = self._directory(authorization)
+        if event.safetyOfficerId:
+            recipients = [{"userId": event.safetyOfficerId, "role": "safety"}]
+        else:
+            recipients = people(event, ["safety"], directory)
+        for recipient in recipients:
+            officer = directory.get(recipient["userId"])
+            if officer is not None:
+                send_notification(officer["email"], title, body, authorization)
+        publish_notification(
+            "safety.submitted",
+            event.eventId,
+            f"{event.eventId}:safety.submitted:{review.reviewId}",
+            recipients,
+            {"eventName": event.eventName},
+            actor_id=review.submittedBy,
+            resource={"type": "safety_review", "id": review.reviewId},
+        )
+
+    def _notify_review_opened(self, event: Event, authorization: str | None) -> None:
+        """SPM-120, change 6, best effort: the coordinator did not send it
+        themselves, so they are told the safety review has started."""
+        title = f"{event.eventName} is with the Safety Officer"
+        body = f"The arrangements for {event.eventName} were sent to the Safety Officer, and its safety review has started."
+        recipient = self._recipient(self._directory(authorization), event.coordinatorId, event)
+        if recipient is not None:
+            send_notification(recipient["email"], title, body, authorization)
+        record_notification(event.coordinatorId, event.eventId, "event.safety_review", title, body, authorization)
+
+    def _notify_safety_decision(self, event: Event, review: EventSafetyReview, authorization: str | None) -> None:
+        """AC9: the assigned coordinator and the organiser, by email and in-app. Best effort."""
+        if review.status == "approved":
+            title = f"{event.eventName} passed its safety review"
+            body = (
+                f"The safety officer approved the plan for {event.eventName}. The coordinator can now confirm it, "
+                "and preparation begins once it is confirmed."
+            )
+            if review.decisionNote:
+                body += f" Note: {review.decisionNote}"
+        elif review.status == "rejected":
+            title = f"{event.eventName} did not pass its safety review"
+            body = (
+                f"The safety officer rejected the plan for {event.eventName}. Reason: {review.decisionNote} "
+                "The event is not cancelled: the coordinator can revise the arrangements and submit it again."
+            )
+        else:
+            title = f"Changes needed before {event.eventName} passes its safety review"
+            body = f"The safety officer asked for these changes to {event.eventName}: {review.decisionNote}"
+            if review.affected:
+                body += f" Flagged for re-checking: {', '.join(review.affected)} arrangements."
+            body += " The event is back in planning until it is submitted again."
+        users = self._directory(authorization)
+        for user_id in dict.fromkeys(user for user in (event.coordinatorId, event.organiserId) if user):
+            recipient = self._recipient(users, user_id, event)
+            if recipient is not None:
+                send_notification(recipient["email"], title, body, authorization)
+        self._publish_safety_decision(event, review, users)
+
+    @staticmethod
+    def _publish_safety_decision(event: Event, review: EventSafetyReview, directory: dict[str, dict]) -> None:
+        """SPM-93: the coordinator, the organiser, venue staff and technical staff are told the outcome."""
+        context = {"eventName": event.eventName}
+        if review.status == "approved":
+            trigger = "safety.approved"
+            context["note"] = review.decisionNote or ""
+        elif review.status == "rejected":
+            trigger = "safety.rejected"
+            context["reason"] = review.decisionNote or ""
+        else:
+            trigger = "safety.changes_requested"
+            reason = review.decisionNote or ""
+            if review.affected:
+                reason += f" Flagged for re-checking: {', '.join(review.affected)} arrangements."
+            context["reason"] = reason
+        publish_notification(
+            trigger,
+            event.eventId,
+            f"{event.eventId}:safety.decided:{review.reviewId}",
+            people(event, ["coordinator", "organiser", "venue", "techsupport"], directory),
+            context,
+            actor_id=review.decidedBy,
+            resource={"type": "safety_review", "id": review.reviewId},
+        )
+
+    # SPM-72: confirm an event -------------------------------------------------
+
+    def confirmation(self, event_id: str, coordinator_id: str, authorization: str | None = None) -> ConfirmationOut:
+        """SPM-72 AC2: whether the assigned coordinator can confirm the event
+        now, and if not, everything that is missing."""
+        event = self._require_event(event_id)
+        _require_assigned_coordinator(event, coordinator_id, "confirm it")
+        gaps, _ = self._confirmation_gaps(event, authorization)
+        return ConfirmationOut(eventId=event.eventId, ready=not gaps, missing=[ConfirmationGap(**gap) for gap in gaps])
+
+    def confirm_event(self, event_id: str, coordinator_id: str, authorization: str | None = None) -> EventConfirmOut:
+        """SPM-72: the assigned coordinator confirms the event so it can start
+        officially.
+
+        Only once the Safety Officer has approved it (SPM-120), and only while
+        every requested venue is approved for its date and time and every
+        equipment line is reserved or recorded as not required, checked again
+        now rather than taken from the safety review (AC1). Anything missing is
+        a 409 naming it (AC2). Confirming records who and when (AC3), tells the
+        organiser (AC4) and the venue staff and technical support who handled
+        the arrangements (AC5). A confirmed event with registration enabled is
+        listed for attendees once its period opens (AC6).
+        """
+        event = self._require_event(event_id)
+        _require_assigned_coordinator(event, coordinator_id, "confirm it")
+        gaps, arrangements = self._confirmation_gaps(event, authorization)
+        if gaps:
+            raise _missing(gaps)
+        now = datetime.utcnow()
+        self._record_status_change(event, "confirmed", coordinator_id, "Confirmed", now)
+        event.status = "confirmed"
+        event.confirmedBy = coordinator_id
+        event.confirmedAt = now
+        event.updatedAt = now
+        self.db.commit()
+        self.db.refresh(event)
+        self._notify_confirmation(event, arrangements, authorization)
+        return _to_out(event, authorization, out_type=EventConfirmOut, decidedBy=coordinator_id, decidedAt=now)
+
+    def _confirmation_gaps(self, event: Event, authorization: str | None) -> tuple[list[dict], Arrangements | None]:
+        """Everything standing between the event and Confirmed: its stage, its
+        safety review, and its arrangements."""
+        if event.status == "confirmed":
+            return [{"kind": "status", "message": "This event is already confirmed."}], None
+        if event.status not in (*SAFETY_SUBMITTABLE_STATUSES, SAFETY_REVIEW, SAFETY_APPROVED):
+            return [
+                {
+                    "kind": "status",
+                    "message": f"Only an event that has passed its safety review can be confirmed. This one is {event.status}.",
+                }
+            ], None
+        arrangements = self._check_arrangements(event, authorization)
+        safety = self._safety_gap(event)
+        return arrangements.gaps + ([safety] if safety else []), arrangements
+
+    def settle_reverification(self, event_id: str, changed_by: str, authorization: str | None) -> "ReverificationSettleOut":
+        """SPM-86 AC10: a reconsidering event reads as confirmed again only when every
+        flagged arrangement has been re-verified and the venue and equipment rules pass.
+        Planning and safety approved are left as they are."""
+        from app.schemas.event import ReverificationSettleOut
+
+        event = self._require_event(event_id)
+        if event.status != RECONSIDERING:
+            return ReverificationSettleOut(eventId=event.eventId, status=event.status, restored=False)
+        arrangements = self._check_arrangements(event, authorization)
+        if arrangements.gaps:
+            return ReverificationSettleOut(eventId=event.eventId, status=event.status, restored=False)
+        now = datetime.utcnow()
+        self._record_status_change(event, "confirmed", changed_by, "Arrangements re-verified", now)
+        event.status = "confirmed"
+        event.updatedAt = now
+        self.db.commit()
+        return ReverificationSettleOut(eventId=event.eventId, status=event.status, restored=True)
+
+    def notify_attendees_of_change(self, event_id: str, change: str, authorization: str | None) -> dict:
+        """SPM-86 AC09: registered attendees hear when the date, time, or venue changed."""
+        event = self._require_event(event_id)
+        told = self._tell_registered_attendees(event, change, authorization)
+        return {"eventId": event.eventId, "notified": told}
+
+    def _tell_registered_attendees(self, event: Event, change: str, authorization: str | None) -> int:
+        try:
+            attendees = registered_attendees(event.eventId, authorization)
+        except Exception:
+            logger.warning("could not list attendees for %s", event.eventId)
+            return 0
+        if change == "venue":
+            title = f"The venue for {event.eventName} has changed"
+            body = (
+                f"The venue arrangement for {event.eventName} ({event.eventId}) has changed. "
+                "Please check the event for the venue that will be used."
+            )
+        else:
+            start = _setting_text(event.proposedStartAt)
+            end = _setting_text(event.proposedEndAt)
+            title = f"{event.eventName} has a new date or time"
+            body = (
+                f"The date or time of {event.eventName} ({event.eventId}) has changed. "
+                f"It now runs from {start} to {end}."
+            )
+        told = 0
+        for row in attendees:
+            user_id = row.get("userId")
+            email = row.get("attendeeEmail") or row.get("email")
+            if user_id and record_notification(user_id, event.eventId, "event.changed", title, body, authorization):
+                told += 1
+            if email:
+                send_notification(email, title, body, authorization)
+        return told
+
+    def _safety_gap(self, event: Event) -> dict | None:
+        """SPM-121 AC4: confirm stays unavailable while the safety check is
+        outstanding, rejected, or returned for changes."""
+        if event.status == SAFETY_APPROVED:
+            return None
+        if event.status == SAFETY_REVIEW:
+            return {"kind": "safety", "message": "The Safety Officer has not reviewed it yet."}
+        latest = next(iter(self.safety_dao.list_by_event(event.eventId)), None)
+        handoff = self.handoff_dao.get(event.eventId)
+        if handoff is not None and handoff.venueSentAt:
+            message = (
+                "Venue Staff have sent the venue arrangements for the safety review. Waiting on technical support "
+                "to send the technical arrangements."
+            )
+        elif handoff is not None and handoff.technicalSentAt:
+            message = (
+                "Technical support have sent the technical arrangements for the safety review. Waiting on Venue "
+                "Staff to send the venue arrangements."
+            )
+        elif latest is None:
+            message = (
+                "It has not been sent for a safety review yet. Venue Staff and technical support send their "
+                "arrangements once they are confirmed."
+            )
+        elif latest.status == "rejected":
+            message = f"The safety review was rejected: {latest.decisionNote} Revise the arrangements and submit it again."
+        elif latest.status == "changes_requested":
+            message = f"The Safety Officer asked for changes: {latest.decisionNote} Submit it again once they are made."
+        else:
+            message = "It needs a new safety review because the event changed. Submit it again."
+        return {"kind": "safety", "message": message}
+
+    def _notify_confirmation(self, event: Event, arrangements: Arrangements, authorization: str | None) -> None:
+        """AC4/AC5, best effort: the organiser, and the venue staff and technical
+        support who approved this event's bookings and equipment."""
+        venues = [row for row in arrangements.bookings if row.get("status") == "approved"]
+        venue_names = ", ".join(row.get("venueName") or row["venueId"] for row in venues)
+        when = _setting_text(event.proposedStartAt)
+        # What was requested, then any line on the event not requested and not recorded as not required.
+        quantities: dict[str, int] = {}
+        for row in requested_lines(arrangements.requests):
+            quantities[row["equipmentId"]] = quantities.get(row["equipmentId"], 0) + int(row["quantity"])
+        for line in event.equipmentLines or []:
+            if not line.get("notRequired"):
+                quantities.setdefault(line["equipmentId"], int(line["quantity"]))
+        equipment = ", ".join(
+            f"{quantity} × {arrangements.names.get(equipment_id, equipment_id)}"
+            for equipment_id, quantity in quantities.items()
+        )
+        title = f"{event.eventName} is confirmed"
+        body = (
+            f"{event.eventName} is confirmed for {when} at {venue_names}. "
+            f"Layout: {event.layoutPreference or 'not set'}. Equipment: {equipment or 'none'}."
+        )
+        if event.registrationEnabled:
+            body += f" Registration opens {_setting_text(event.registrationOpensAt)}."
+        staff_body = f"{event.eventName}, which you arranged for, is confirmed for {when} at {venue_names}."
+        recipients = [(event.organiserId, body)]
+        for row in venues + [row for row in arrangements.requests if row.get("status") in SETTLED_REQUESTS]:
+            if row.get("reviewedBy"):
+                recipients.append((row["reviewedBy"], staff_body))
+        messages: dict[str, str] = {}
+        for user_id, message in recipients:
+            messages.setdefault(user_id, message)
+        users = self._directory(authorization)
+        for user_id, message in messages.items():
+            recipient = self._recipient(users, user_id, event)
+            if recipient is not None:
+                send_notification(recipient["email"], title, message, authorization)
+            record_notification(user_id, event.eventId, "event.confirmed", title, message, authorization)
+
+    def mark_equipment_not_required(
+        self,
+        event_id: str,
+        equipment_id: str,
+        data: EquipmentNotRequired,
+        coordinator_id: str,
+        authorization: str | None = None,
+    ) -> EventOut:
+        """SPM-72 AC1: the assigned coordinator records that an equipment line is
+        not needed after all, with a reason, while the event is in planning."""
+        return self._set_equipment_requirement(event_id, equipment_id, coordinator_id, data.reason, authorization)
+
+    def mark_equipment_required(
+        self, event_id: str, equipment_id: str, coordinator_id: str, authorization: str | None = None
+    ) -> EventOut:
+        """Undo: the equipment line is needed again."""
+        return self._set_equipment_requirement(event_id, equipment_id, coordinator_id, None, authorization)
+
+    def _set_equipment_requirement(
+        self, event_id: str, equipment_id: str, coordinator_id: str, reason: str | None, authorization: str | None
+    ) -> EventOut:
+        event = self._require_event(event_id)
+        _require_assigned_coordinator(event, coordinator_id, "change its equipment needs")
+        if event.status not in SAFETY_SUBMITTABLE_STATUSES:
+            raise conflict(f"Equipment needs can be changed while the event is in planning (this one is {event.status})")
+        lines = [dict(line) for line in event.equipmentLines or []]
+        line = self._require(
+            next((row for row in lines if row["equipmentId"] == equipment_id), None),
+            f"This event has no equipment line for {equipment_id}",
+        )
+        before = f"not required: {line['notRequiredReason']}" if line.get("notRequired") else "required"
+        now = datetime.utcnow()
+        for key in ("notRequired", "notRequiredReason", "notRequiredBy", "notRequiredAt"):
+            line.pop(key, None)
+        if reason is not None:
+            line.update(notRequired=True, notRequiredReason=reason, notRequiredBy=coordinator_id, notRequiredAt=now.isoformat())
+        after = f"not required: {reason}" if reason is not None else "required"
+        if after != before:
+            self.field_change_dao.add(
+                EventFieldChange(
+                    changeId=str(uuid4()),
+                    eventId=event.eventId,
+                    field=f"equipmentLine:{equipment_id}",
+                    oldValue=before,
+                    newValue=after,
+                    changedBy=coordinator_id,
+                    createdAt=now,
+                )
+            )
+            event.equipmentLines = lines
+            event.updatedAt = now
+            self.db.commit()
+            self.db.refresh(event)
         return _to_out(event, authorization)

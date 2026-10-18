@@ -1,6 +1,7 @@
 from fastapi import Depends
 
 from app.core.config import settings
+from app.routers.internal import router as internal_router
 from app.routers.venue import router as venue_router
 from shared.auth.deps import require_authenticated_user
 from shared.config import parse_origins
@@ -25,3 +26,5 @@ Coordinators create booking requests. Venue staff approve or reject them. Catalo
 )
 
 app.include_router(venue_router, dependencies=[Depends(require_authenticated_user)])
+# Service-key routes for jobs with no user token (SPM-95); the key is checked in the route.
+app.include_router(internal_router)

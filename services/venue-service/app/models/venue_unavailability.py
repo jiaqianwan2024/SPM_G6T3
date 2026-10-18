@@ -14,6 +14,7 @@ class VenueUnavailability(Base):
     startsAt: Mapped[datetime] = mapped_column("starts_at", DateTime)
     endsAt: Mapped[datetime] = mapped_column("ends_at", DateTime)
     reason: Mapped[str] = mapped_column(Text, default="")
+    note: Mapped[str] = mapped_column(Text, default="")
     createdBy: Mapped[str] = mapped_column("created_by", String(64))
     createdAt: Mapped[datetime] = mapped_column("created_at", DateTime, default=datetime.utcnow)
 

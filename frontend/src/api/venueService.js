@@ -16,13 +16,61 @@ export const retireVenue = (venueId, confirm = false) =>
 
 export const getVenueActivityLog = (venueId) => axiosClient.get(`/venues/${venueId}/activity-log`);
 
+// SPM-122: confirmed bookings whose occupied windows overlap under each venue's
+// current setup and turnaround times. Read only.
+export const getBookingClashes = (params = {}) => axiosClient.get("/venues/bookings/clashes", { params });
+
 // SPM-62: anything left out of `body` is taken from the event record.
 export const checkSuitability = (eventId, venueId, body = {}) =>
   axiosClient.post("/venues/suitability", { eventId, venueId, ...body });
+
+// SPM-61: `facility` and `accessibility` are lists, sent as repeated keys
+// (facility=A&facility=B), which is the form the server reads.
+export const searchVenues = (params = {}) =>
+  axiosClient.get("/venues/search", { params, paramsSerializer: { indexes: null } });
 
 // SPM-63: venue booking requests.
 export const requestVenueBooking = (body) => axiosClient.post("/venues/bookings", body);
 
 export const getVenueBookings = (params = {}) => axiosClient.get("/venues/bookings", { params });
 
+export const getPublicVenue = (eventId) =>
+  axiosClient.get("/venues/bookings/public-summary", { params: { eventId } });
+
 export const withdrawVenueBooking = (bookingId) => axiosClient.post(`/venues/bookings/${bookingId}/withdraw`);
+
+export const cancelVenueBooking = (bookingId) => axiosClient.post(`/venues/bookings/${bookingId}/cancel`);
+
+// SPM-8: Venue Staff approve a pending request; `reason` is an optional note kept on the booking.
+export const approveVenueBooking = (bookingId, reason = null) =>
+  axiosClient.post(`/venues/bookings/${bookingId}/approve`, { reason });
+
+// SPM-10: Venue Staff reject a pending request. `reason` is required; `suggestedVenueId` is optional.
+export const rejectVenueBooking = (bookingId, reason, suggestedVenueId = null) =>
+  axiosClient.post(`/venues/bookings/${bookingId}/reject`, { reason, suggestedVenueId });
+
+export const reconfirmVenueBooking = (bookingId) =>
+  axiosClient.post(`/venues/bookings/${bookingId}/reconfirm`);
+
+// SPM-115: another venue for an approved booking affected by an unavailability block.
+// The server keeps the booking's time and the event's details, then cancels the original.
+export const requestVenueReplacement = (bookingId, body) =>
+  axiosClient.post(`/venues/bookings/${bookingId}/replacement`, body);
+
+// SPM-9: a block keeps the venue out of search and approval for its period.
+export const getVenueUnavailability = (venueId) => axiosClient.get(`/venues/${venueId}/unavailability`);
+
+export const createVenueUnavailability = (venueId, body) =>
+  axiosClient.post(`/venues/${venueId}/unavailability`, body);
+
+export const updateVenueUnavailability = (venueId, unavailabilityId, body) =>
+  axiosClient.patch(`/venues/${venueId}/unavailability/${unavailabilityId}`, body);
+
+export const cancelVenueUnavailability = (venueId, unavailabilityId) =>
+  axiosClient.delete(`/venues/${venueId}/unavailability/${unavailabilityId}`);
+
+// SPM-116: Venue Staff hold a pending request's venue until `expiresAt` (UTC), or release it early.
+export const placeVenueHold = (bookingId, expiresAt) =>
+  axiosClient.post(`/venues/bookings/${bookingId}/hold`, { expiresAt });
+
+export const releaseVenueHold = (bookingId) => axiosClient.post(`/venues/bookings/${bookingId}/hold/release`);

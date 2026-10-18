@@ -3,13 +3,20 @@ import dotenv from 'dotenv'
 
 dotenv.config({ path: '.env', quiet: true })
 
+const isCI = !!process.env.CI
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
   workers: 1,
   timeout: 45_000,
   expect: { timeout: 10_000 },
-  reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
+  forbidOnly: isCI,
+  reporter: [
+    ['list'],
+    ...(isCI ? [['github']] : []),
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
+  ],
   use: {
     baseURL: 'http://127.0.0.1:5173',
     trace: 'retain-on-failure',
@@ -26,13 +33,13 @@ export default defineConfig({
     {
       command: 'python scripts/dev-backend.py',
       url: 'http://127.0.0.1:8001/health',
-      timeout: 120_000,
+      timeout: 180_000,
       reuseExistingServer: true,
     },
     {
       command: 'npm run dev --prefix frontend -- --host 127.0.0.1',
       url: 'http://127.0.0.1:5173',
-      timeout: 120_000,
+      timeout: 180_000,
       reuseExistingServer: true,
     },
   ],

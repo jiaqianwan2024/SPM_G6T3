@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { THEATRE_EVENT, approvedEvent } from './support/venue-request.js'
+import { assignCoordinator } from './support/event.js'
 
 // Each test makes its own event, approved for planning and assigned to EC-01 (u2).
 
@@ -61,7 +62,7 @@ test.describe('SPM-46 Assigned Coordinator Event Permissions (UI)', () => {
     await page.goto(`/app/events/${event.eventId}/venues`)
 
     await expect(page.getByTestId('venue-request-read-only')).toHaveText(
-      'Only the coordinator assigned to this event can request or withdraw a venue for it. You can still check how each venue suits the event.',
+      'Only the coordinator assigned to this event can request, withdraw, or cancel a venue for it. You can still check how each venue suits the event.',
     )
     await page.getByTestId('venue-select-v1').click()
     await expect(page.getByTestId('suitability-verdict')).toBeVisible()
@@ -75,11 +76,11 @@ test.describe('SPM-46 Assigned Coordinator Event Permissions (UI)', () => {
     const controls = planningControls(page)
     await expect(controls.edit).toBeVisible()
 
-    await page.getByTestId('assign-coordinator').click()
-    await page.getByTestId('assign-candidate-u6').click()
-    await page.getByTestId('assign-confirm').click()
+    // Only the Event Coordinator Lead reassigns; EC-01 has no Assign button.
+    await expect(page.getByTestId('assign-coordinator')).toHaveCount(0)
+    await assignCoordinator(event.eventId, 'u6')
+    await page.reload()
 
-    await expect(page.getByTestId('assign-dialog')).toHaveCount(0)
     await expect(controls.edit).toHaveCount(0)
     await expect(controls.chooseVenue).toHaveCount(0)
     await expect(controls.requestEquipment).toHaveCount(0)

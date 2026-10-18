@@ -115,7 +115,7 @@ test.describe('SPM-05 Follow-up pending items of the given request', () => {
     await page.goto(`/app/events/${EVENT}/readiness`)
     await page.getByTestId('readiness-row').first().getByTestId('readiness-confirm-status').click()
     await expect(page.getByTestId('readiness-confirm-dialog')).toBeVisible()
-    await page.getByRole('button', { name: /confirm/i }).click()
+    await page.getByTestId('readiness-confirm-dialog').getByRole('button', { name: /^confirm$/i }).click()
     await expect(page.getByTestId('readiness-row').first()).toContainText(/confirmed|settled/i)
   })
 

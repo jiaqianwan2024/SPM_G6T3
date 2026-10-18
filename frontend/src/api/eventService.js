@@ -31,8 +31,9 @@ export const approveEvent = (eventId, note = "", confirmOpenClarifications = fal
 // Organisers (their own organisation's events) and staff only.
 export const getEventDecision = (eventId) => axiosClient.get(`/events/${eventId}/decision`);
 
-export const rejectEvent = (eventId, reason) =>
-  axiosClient.post(`/events/${eventId}/reject`, { reason });
+// SPM-70: `reason` is one of REJECTION_REASONS, `explanation` is free text. Both are required.
+export const rejectEvent = (eventId, reason, explanation) =>
+  axiosClient.post(`/events/${eventId}/reject`, { reason, explanation });
 
 // Draft-stage requests — only eventName is required on save (see EventDraftUpsert).
 export const saveDraft = (draft) => axiosClient.post("/events/drafts", draft);
@@ -50,6 +51,11 @@ export const getMyEvents = () => axiosClient.get("/events/mine");
 // Only allowed while the event is still a draft — the backend enforces this.
 export const discardEvent = (eventId) => axiosClient.delete(`/events/${eventId}`);
 
+// SPM-73: the assigned coordinator closes out a confirmed event once it has
+// taken place. 409 if the event isn't confirmed or its proposedEndAt hasn't
+// passed yet; 403 if the caller isn't the assigned coordinator.
+export const completeEvent = (eventId) => axiosClient.post(`/events/${eventId}/complete`);
+
 export const getActivityLog = (eventId) => axiosClient.get(`/events/${eventId}/activity-log`);
 
 // SPM-71: the assigned coordinator edits an event. Send only the changed fields.
@@ -62,9 +68,31 @@ export const updateEvent = (eventId, changes, confirmSignificantChange = false) 
 // { fields: [...significant], quietFields: [...] }
 export const getSignificantFields = () => axiosClient.get("/events/significant-fields");
 
+export const getRequirementOptions = () => axiosClient.get("/events/requirement-options");
+
+export const getOpenEvents = (params = {}) => axiosClient.get("/events/open-for-registration", { params });
+
+export const getOpenEvent = (eventId) => axiosClient.get(`/events/open-for-registration/${eventId}`);
+
+export const getReadiness = (eventId) => axiosClient.get(`/events/${eventId}/readiness`);
+
+export const createReadinessItem = (eventId, body) =>
+  axiosClient.post(`/events/${eventId}/readiness-items`, body);
+
+export const updateReadinessItem = (eventId, itemId, body) =>
+  axiosClient.patch(`/events/${eventId}/readiness-items/${itemId}`, body);
+
+export const deleteReadinessItem = (eventId, itemId) =>
+  axiosClient.delete(`/events/${eventId}/readiness-items/${itemId}`);
+
+export const saveDraftRequirements = (eventId, body) => axiosClient.patch(`/events/${eventId}`, body);
+
 // SPM-66: coordinators who can be assigned, each with { userId, name, email,
 // activeEventCount } — the count is information only, there is no limit.
 export const getCoordinatorCandidates = () => axiosClient.get("/events/coordinators");
+
+// SPM-119, Event Coordinator Lead only: each coordinator with their active events.
+export const getCoordinatorAssignments = () => axiosClient.get("/events/assignments");
 
 // Assigning a submitted request moves it to "under review".
 export const assignCoordinator = (eventId, coordinatorId) =>
@@ -123,3 +151,54 @@ export const resolveClarification = (eventId, clarificationId) =>
 
 // Coordinator only — internal notes are never on the shared event read.
 export const getInternalNotes = (eventId) => axiosClient.get(`/events/${eventId}/internal-notes`);
+// SPM-120: safety review. The assigned coordinator can also submit a planning event, with
+// both notes at once, once its venue and equipment are confirmed; a 409 names what is still `missing`.
+export const submitSafetyReview = (eventId, crowdMovement, equipmentPlacement = "") =>
+  axiosClient.post(`/events/${eventId}/safety-reviews`, { crowdMovement, equipmentPlacement });
+
+// SPM-120, change 6: Venue Staff send the venue arrangements and technical support the
+// technical ones. The review opens once every part the event needs is in (`review` is then set).
+export const getSafetyHandoff = (eventId) => axiosClient.get(`/events/${eventId}/safety-handoff`);
+
+export const sendVenueArrangements = (eventId, crowdMovement) =>
+  axiosClient.post(`/events/${eventId}/safety-handoff/venue`, { crowdMovement });
+
+export const sendTechnicalArrangements = (eventId, equipmentPlacement) =>
+  axiosClient.post(`/events/${eventId}/safety-handoff/technical`, { equipmentPlacement });
+
+// Safety Officers only: reviews with this status, longest-waiting first.
+export const getSafetyReviewQueue = (status = "pending") =>
+  axiosClient.get("/events/safety-reviews", { params: { status } });
+
+// Every review of the event, newest first, each with the facts submitted and the outcome.
+export const getSafetyReviews = (eventId) => axiosClient.get(`/events/${eventId}/safety-reviews`);
+
+// Safety Officers only; every other role gets 403. The officer becomes the
+// event's Safety Officer, and only they can decide on it.
+export const claimSafetyReview = (eventId, reviewId) =>
+  axiosClient.post(`/events/${eventId}/safety-reviews/${reviewId}/claim`);
+
+// The Safety Officer who claimed the event only; anyone else gets 403.
+export const approveSafetyReview = (eventId, reviewId, note = "") =>
+  axiosClient.post(`/events/${eventId}/safety-reviews/${reviewId}/approve`, { note });
+
+export const rejectSafetyReview = (eventId, reviewId, reason) =>
+  axiosClient.post(`/events/${eventId}/safety-reviews/${reviewId}/reject`, { reason });
+
+// affected: any of "venue", "technical" — flagged for venue staff or technical support to review again.
+export const requestSafetyChanges = (eventId, reviewId, requiredChanges, affected = []) =>
+  axiosClient.post(`/events/${eventId}/safety-reviews/${reviewId}/request-changes`, { requiredChanges, affected });
+
+// SPM-72: { ready, missing: [{ kind: "venue"|"equipment"|"safety"|"status", message, equipmentId? }] }.
+// Assigned coordinator only.
+export const getConfirmation = (eventId) => axiosClient.get(`/events/${eventId}/confirmation`);
+
+// Moves the event to Confirmed; a 409 names what is still missing (detail.gaps).
+export const confirmEvent = (eventId) => axiosClient.post(`/events/${eventId}/confirm`);
+
+// Record an equipment line as not required (with a reason), or needed again. Planning only.
+export const markEquipmentNotRequired = (eventId, equipmentId, reason) =>
+  axiosClient.post(`/events/${eventId}/equipment-lines/${equipmentId}/not-required`, { reason });
+
+export const markEquipmentRequired = (eventId, equipmentId) =>
+  axiosClient.delete(`/events/${eventId}/equipment-lines/${equipmentId}/not-required`);

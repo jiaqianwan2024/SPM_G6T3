@@ -13,7 +13,7 @@ import { createPendingRequest, equipmentApi } from './support/equipment.js'
 
 async function cancellableEvent(name) {
   const event = await createSubmittedEvent('EO-01', name)
-  await assignCoordinator(event.eventId, 'u2', 'EC-01')
+  await assignCoordinator(event.eventId, 'u2')
   return event
 }
 

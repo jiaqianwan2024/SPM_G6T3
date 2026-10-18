@@ -1,11 +1,13 @@
 # Acceptance Testing
 
-Unit tests and the Coverage.py demo are in [unit-tests.md](unit-tests.md).
+Unit tests and the Coverage.py demo are in [unit-tests.md](unit-tests.md). Integration tests are in [integration-tests.md](integration-tests.md).
+
+Before pushing, especially after a merge, run `npm run test:ci` for the fast suite, then `npm run test:e2e` for Playwright. `test:ci` is unit coverage plus the SQLite workflows; it needs no Docker or Firebase, and it skips the venue MySQL overlap file when Docker is down. GitHub Actions runs every passing automated suite: the `test` job starts MySQL, migrates, and runs unit plus all integration tests; the `e2e` job runs the Playwright specs that `npm run test:acceptance` selects, which also needs Docker and the Firebase secrets listed under Run. Specs for stories that are not built yet (the ones `test:acceptance` omits, such as SPM-04) stay out of the pipeline until those stories exist; `test:e2e` still runs them locally.
 
 Playwright covers SPM-43, the current SPM-45 API, the current SPM-46 API,
 the SPM-47 tenant-isolation contract, the role-home contracts for
 SPM-55 through SPM-59, the venue-catalogue contracts for SPM-8, SPM-9,
-SPM-10, SPM-17, and SPM-60 through SPM-64 and SPM-108, and the
+SPM-10, SPM-17, SPM-60 through SPM-64, SPM-108, SPM-112, SPM-116, and SPM-122, and the
 planning-review contracts for SPM-5, SPM-15, and SPM-65 through SPM-73,
 and the equipment contracts for SPM-2, SPM-3, SPM-4, and SPM-75 through
 SPM-78, and the request-and-change contracts for SPM-14, SPM-79 through
@@ -33,7 +35,23 @@ npm run test:acceptance
 ```
 
 This starts MySQL, migrates, seeds, starts the backends and Vue app, then runs
-the suite.
+the filtered suite. `npm run test:e2e` does the same preparation and then runs
+every spec under `e2e/`, including the stories that `test:acceptance` omits.
+That is the command the `e2e` job runs on pushes to `dev` and `main`, and on
+pull requests into either branch.
+
+The job reads these Actions secrets and writes them to a gitignored `.env` on
+the runner. They must be the Firebase project that owns the accounts in
+`Test Data/credentials-valid.txt`:
+
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_APP_ID`
+- `FIREBASE_CREDENTIALS_JSON` (the Admin service account JSON)
+
+If branch protection requires status checks, require `e2e` as well as `test`.
+A failed run uploads `playwright-report/` and `test-results/` as an artifact.
 
 ```bash
 npm run test:spm43
@@ -55,6 +73,10 @@ npm run test:spm62
 npm run test:spm63
 npm run test:spm64
 npm run test:spm108
+npm run test:spm112
+npm run test:spm122
+npm run test:spm116
+npm run test:spm115
 npm run test:spm05
 npm run test:spm15
 npm run test:spm65
@@ -97,7 +119,7 @@ npm run test:spm95
 npm run test:spm51
 ```
 
-`test:acceptance` omits SPM-47, SPM-55 through SPM-59, the venue epic
+`test:acceptance` omits SPM-45 (its API specs collide with the seeded e1/v1 bookings), SPM-47, SPM-55 through SPM-59, the venue epic
 above, the planning-review epic (SPM-5, SPM-15, SPM-65 through SPM-73),
 the equipment epic (SPM-2, SPM-3, SPM-4, SPM-75 through SPM-78), the
 request-and-change epic (SPM-14, SPM-79 through SPM-83, SPM-85 through
@@ -106,6 +128,24 @@ SPM-88, and SPM-106), and the registration-and-notification epic
 SPM-51. Use the story commands as their contracts.
 
 Failures: `test-results/`. HTML report: `playwright-report/`.
+
+## Writing reliable specs
+
+The venue booking specs (SPM-8, SPM-61 to SPM-64, SPM-112, SPM-116, SPM-122) follow the
+FIRST principles and the Week 9 advice on flaky tests, through `e2e/support/venue-suite.js`:
+
+- Fresh state: each suite creates the venues it books in `beforeAll` and retires them in
+  `afterAll`, so it never meets bookings that another suite or an earlier run left on the
+  seeded venues.
+- No randomness: each test books its own fixed day (`period(n)`), worked out from a date
+  taken once per run, so every run sends the same inputs and midnight UTC cannot move them.
+- Wait for a condition, never a fixed time: `waitForHoldToExpire` polls until the server
+  reports the hold expired; a slow response is awaited with `page.waitForResponse`.
+- Locators by role, label and text for anything a user clicks or types into; test ids
+  only for cards and values that have no accessible name.
+- Fewer calls to Firebase: `authedApi` and `venueRequest` reuse one token per account
+  until shortly before it expires, instead of signing in on every call, which hit
+  Firebase's `QUOTA_EXCEEDED` limit.
 
 ## Specs
 
@@ -123,16 +163,20 @@ Failures: `test-results/`. HTML report: `playwright-report/`.
 | SPM-57 | TC-SPM57-AC01–AC06 | `e2e/spm57.spec.js` |
 | SPM-58 | TC-SPM58-AC01–AC07 | `e2e/spm58.spec.js` |
 | SPM-59 | TC-SPM59-AC01–AC06 | `e2e/spm59.spec.js` |
-| SPM-8 | TC-SPM08-AC01–AC09 | `e2e/spm08.spec.js` |
+| SPM-8 | TC-SPM08-AC01–AC11 (and AC01b, AC02b, AC06b, AC06c) | `e2e/spm08.spec.js` |
 | SPM-9 | TC-SPM09-AC01–AC08 | `e2e/spm09.spec.js` |
-| SPM-10 | TC-SPM10-AC01–AC07 | `e2e/spm10.spec.js` |
+| SPM-10 | TC-SPM10-AC01–AC08 (and AC02b) | `e2e/spm10.spec.js` |
 | SPM-17 | TC-SPM17-AC01–AC06 | `e2e/spm17.spec.js` |
 | SPM-60 | TC-SPM60-AC01–AC09 | `e2e/spm60.spec.js` |
 | SPM-61 | TC-SPM61-AC01–AC08 | `e2e/spm61.spec.js` |
 | SPM-62 | TC-SPM62-AC01–AC09 | `e2e/spm62.spec.js` |
 | SPM-63 | TC-SPM63-AC01–AC09 | `e2e/spm63.spec.js` |
-| SPM-64 | TC-SPM64-AC01–AC07 | `e2e/spm64.spec.js` |
+| SPM-64 | TC-SPM64-AC01–AC08 | `e2e/spm64.spec.js` |
 | SPM-108 | TC-SPM108-AC01–AC08 | `e2e/spm108.spec.js` |
+| SPM-112 | TC-SPM112-AC01–AC04 (and AC02b) | `e2e/spm112.spec.js` |
+| SPM-122 | TC-SPM122-AC01–AC04 (and AC01b) | `e2e/spm122.spec.js` |
+| SPM-116 | TC-SPM116-AC01–AC06 (and AC01b, AC01c, AC02b) | `e2e/spm116.spec.js` |
+| SPM-115 | TC-SPM115-AC01–AC05 | `e2e/spm115.spec.js` |
 | SPM-5 | TC-SPM05-AC01–AC09 | `e2e/spm05.spec.js` |
 | SPM-15 | TC-SPM15-AC01–AC09 | `e2e/spm15.spec.js` |
 | SPM-65 | TC-SPM65-AC01–AC07 | `e2e/spm65.spec.js` |
@@ -161,6 +205,11 @@ Failures: `test-results/`. HTML report: `playwright-report/`.
 | SPM-87 | TC-SPM87-AC01–AC09 | `e2e/spm87.spec.js` |
 | SPM-88 | TC-SPM88-AC01–AC11 | `e2e/spm88.spec.js` |
 | SPM-106 | TC-SPM106-AC01–AC10 | `e2e/spm106.spec.js` |
+| SPM-120 | TC-SPM120-AC01–AC08 | `e2e/spm120.spec.js` |
+| SPM-121 | TC-SPM121-AC01–AC05 | `e2e/spm121.spec.js` |
+| SPM-117 | TC-SPM117-AC01–AC07 | `e2e/spm117.spec.js` |
+| SPM-118 | TC-SPM118-AC01–AC05 | `e2e/spm118.spec.js` |
+| SPM-119 | TC-SPM119-AC01–AC03 | `e2e/spm119.spec.js` |
 | SPM-11 | TC-SPM11-AC01–AC10 | `e2e/spm11.spec.js` |
 | SPM-12 | TC-SPM12-AC01–AC09 | `e2e/spm12.spec.js` |
 | SPM-89 | TC-SPM89-AC01–AC07 | `e2e/spm89.spec.js` |

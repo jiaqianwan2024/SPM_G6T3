@@ -44,10 +44,10 @@ export function account(id) {
 }
 
 export const expectedTabs = {
-  'EO-01': ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Notifications', 'Profile'],
-  'EO-02': ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Notifications', 'Profile'],
-  'EO-03': ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Notifications', 'Profile'],
-  'EO-04': ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Notifications', 'Profile'],
+  'EO-01': ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Profile'],
+  'EO-02': ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Profile'],
+  'EO-03': ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Profile'],
+  'EO-04': ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Profile'],
   'EC-01': [
     'Dashboard',
     'Assigned Events',
@@ -66,6 +66,7 @@ export const expectedTabs = {
     'Reports',
     'Profile',
   ],
+  'ECL-01': ['Dashboard', 'Review Queue', 'Assignments', 'Profile'],
   'VS-01': [
     'Dashboard',
     'Venue Calendar',
@@ -100,6 +101,7 @@ export const expectedTabs = {
     'Maintenance Status',
     'Profile',
   ],
+  'SO-01': ['Dashboard', 'Safety Reviews', 'Profile'],
   'ATT-01': ['Dashboard', 'Browse Events', 'My Registrations', 'Waiting List', 'Profile'],
   'ATT-02': ['Dashboard', 'Browse Events', 'My Registrations', 'Waiting List', 'Profile'],
 }

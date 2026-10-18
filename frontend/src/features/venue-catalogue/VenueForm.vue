@@ -24,14 +24,41 @@
         <input id="vf-floor" v-model="form.floor" type="text" placeholder="e.g. 2" />
       </div>
       <div class="field">
+        <label for="vf-setup">Setup (minutes)</label>
+        <input id="vf-setup" v-model.number="form.setupMinutes" type="number" min="0" step="1" required />
+      </div>
+      <div class="field">
         <label for="vf-turnaround">Turnaround (minutes)</label>
-        <input id="vf-turnaround" v-model.number="form.turnaroundMinutes" type="number" min="0" />
+        <input id="vf-turnaround" v-model.number="form.turnaroundMinutes" type="number" min="0" step="1" required />
       </div>
     </div>
 
     <div class="field">
       <label for="vf-description">Description</label>
       <textarea id="vf-description" v-model="form.description" rows="2"></textarea>
+    </div>
+
+    <!-- SPM-120: what a Safety Officer reviews about the venue itself. -->
+    <div class="field">
+      <label for="vf-emergency-access">Emergency access</label>
+      <textarea
+        id="vf-emergency-access"
+        v-model="form.emergencyAccess"
+        rows="2"
+        placeholder="Exits, assembly point, emergency vehicle access"
+        data-testid="venue-emergency-access"
+      ></textarea>
+    </div>
+
+    <div class="field">
+      <label for="vf-restrictions">Known restrictions</label>
+      <textarea
+        id="vf-restrictions"
+        v-model="form.restrictions"
+        rows="2"
+        placeholder="For example: no open flames, sound limits, floor load"
+        data-testid="venue-restrictions"
+      ></textarea>
     </div>
 
     <div class="field-grid">
@@ -147,7 +174,10 @@ const form = reactive({
   address: props.venue?.address ?? '',
   floor: props.venue?.floor ?? '',
   description: props.venue?.description ?? '',
-  turnaroundMinutes: props.venue?.turnaroundMinutes ?? 0,
+  emergencyAccess: props.venue?.emergencyAccess ?? '',
+  restrictions: props.venue?.restrictions ?? '',
+  setupMinutes: props.venue?.setupMinutes ?? '',
+  turnaroundMinutes: props.venue?.turnaroundMinutes ?? '',
   layouts: props.venue ? props.venue.layouts.map(toLayoutFormRow) : [],
   operatingHours: props.venue ? props.venue.operatingHours.map((h) => ({ ...h })) : [],
 })
@@ -225,6 +255,10 @@ function addHours() {
   form.operatingHours.push({ day: nextDay, opens: '09:00', closes: '17:00' })
 }
 
+function wholeMinutes(value) {
+  return Number.isInteger(value) && value >= 0
+}
+
 function toList(text) {
   return text.split(',').map((s) => s.trim()).filter(Boolean)
 }
@@ -232,7 +266,8 @@ function toList(text) {
 const TOP_LEVEL_FIELD_NAMES = {
   code: 'Code', name: 'Name', location: 'Location', address: 'Address', floor: 'Floor',
   description: 'Description', facilities: 'Facilities', accessibility: 'Accessibility',
-  turnaroundMinutes: 'Turnaround (minutes)',
+  setupMinutes: 'Setup (minutes)', turnaroundMinutes: 'Turnaround (minutes)',
+  emergencyAccess: 'Emergency access', restrictions: 'Known restrictions',
 }
 
 // Translates one raw FastAPI/Pydantic validation error (e.g. loc
@@ -281,15 +316,29 @@ async function submit() {
     errorMessage.value = `${[...duplicateDays.value].join(', ')} ${duplicateDays.value.size > 1 ? 'are' : 'is'} listed more than once in operating hours. Remove or change the duplicate before saving.`
     return
   }
+  const missing = []
+  if (!form.name.trim()) missing.push('Name')
+  if (!form.location.trim()) missing.push('Location')
+  if (missing.length) {
+    errorMessage.value = `${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} required.`
+    return
+  }
+  if (!wholeMinutes(form.setupMinutes) || !wholeMinutes(form.turnaroundMinutes)) {
+    errorMessage.value = 'Setup and turnaround must be whole minutes, zero or greater.'
+    return
+  }
   submitting.value = true
   try {
     const payload = {
-      code: form.code,
-      name: form.name,
-      location: form.location,
+      code: form.code.trim(),
+      name: form.name.trim(),
+      location: form.location.trim(),
       address: form.address,
       floor: form.floor,
       description: form.description,
+      emergencyAccess: form.emergencyAccess,
+      restrictions: form.restrictions,
+      setupMinutes: form.setupMinutes,
       turnaroundMinutes: form.turnaroundMinutes,
       facilities: toList(facilitiesText.value),
       accessibility: toList(accessibilityText.value),

@@ -55,7 +55,7 @@ test.describe('SPM-77 Respond to an equipment request that cannot be fully met',
     })
     await login(page, account('EC-01'))
     await page.goto('/app/events/e3')
-    const notice = page.getByTestId('equipment-request-outcome')
+    const notice = page.getByTestId('equipment-request-outcome').first()
     await expect(notice).toBeVisible()
     await expect(notice).toContainText(/eq3|LED|shortfall|unavailable/i)
     await expect(notice).toContainText(/maintenance|eq1|projector/i)

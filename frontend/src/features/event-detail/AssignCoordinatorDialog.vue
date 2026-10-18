@@ -15,6 +15,7 @@
           class="candidate"
           :class="{ selected: chosen === candidate.userId }"
           :aria-checked="chosen === candidate.userId"
+          :disabled="candidate.userId === event.coordinatorId"
           :data-testid="`assign-candidate-${candidate.userId}`"
           @click="chosen = candidate.userId"
         >
@@ -41,7 +42,7 @@
           data-testid="assign-confirm"
           @click="confirm"
         >
-          {{ saving ? 'Assigning…' : 'Assign' }}
+          {{ saving ? 'Saving…' : event.coordinatorId ? 'Reassign' : 'Assign' }}
         </button>
       </div>
     </div>
@@ -57,7 +58,9 @@ const props = defineProps({ event: { type: Object, required: true } })
 const emit = defineEmits(['close', 'assigned'])
 
 const candidates = ref([])
-const chosen = ref(props.event.coordinatorId || '')
+// SPM-118: a reassignment must pick a different coordinator, so the current one
+// is shown but cannot be chosen, and nothing is preselected.
+const chosen = ref('')
 const loading = ref(true)
 const loadError = ref('')
 const saving = ref(false)
@@ -128,6 +131,7 @@ onMounted(load)
   cursor: pointer;
 }
 .candidate:hover { border-color: rgba(167, 139, 250, .4); }
+.candidate:disabled { opacity: .55; cursor: not-allowed; border-color: var(--hairline); }
 .candidate.selected {
   border-color: rgba(167, 139, 250, .75);
   background: rgba(124, 77, 255, .14);

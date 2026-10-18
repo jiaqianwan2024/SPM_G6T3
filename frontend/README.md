@@ -98,6 +98,32 @@ pattern — don't add it to `components/shared/`.
   Coordinators can only view (Technical Support can read venues through the
   API but has no catalogue tab)
 - Every change is shown in the venue's activity log, with times in UTC
+- Venue Staff see confirmed bookings that clash once setup and turnaround are
+  included (SPM-122): a banner over the venue list names each venue with clashes,
+  and the venue's details list each pair with both events, their times, and the
+  overlap in UTC. The list refreshes after a venue is saved. It only reads; the
+  bookings and their events are kept as they are
+- Venue Staff can place a tentative hold on a venue's pending request until a
+  date and time (UTC), or release it early (SPM-116), in the venue's "Tentative
+  holds" section. The coordinator's Choose venues page shows "Held until ..."
+  on that request, or "Hold expired" once the time has passed
+
+**Booking Requests (SPM-8)**
+- `features/booking-requests/` is Venue Staff's "Booking Requests" tab. It lists
+  pending requests, oldest first, filtered by venue if wanted. Each shows the event's
+  times, the venue's occupied window (with setup and turnaround), the event's
+  requirements, the coordinator's notes and accepted warnings, the submission time,
+  and any tentative hold, all in UTC
+- Requests that compete for the same venue at overlapping times are marked with
+  their place ("Competing request 1 of 3")
+- "Approve" takes an optional note. A refusal (an overlapping confirmed booking,
+  unavailability, or active hold) is shown on the request, which stays pending
+- The Approved view shows who approved each booking and when
+- "View full details" lists everything the request carries (SPM-10 AC1)
+- "Reject" asks for a reason and, optionally, another venue to suggest; Confirm
+  rejection stays disabled until a reason is typed. The Rejected view shows who
+  rejected each request, when, why, and the suggestion (SPM-10). The coordinator's
+  Choose venues page shows the reason and suggestion next to the rejected booking
 
 **Venue suitability (SPM-62)**
 - `features/venue-request/` opens from "Choose a venue" on an event
@@ -105,14 +131,24 @@ pattern — don't add it to `components/shared/`.
   or not suitable, with a reason for each point
 - "Request this venue" is disabled on any failure and allowed with warnings
 
+**Venue search (SPM-61)**
+- The same page has a search panel filled in from the event (dates, attendance,
+  layout, and any listed facility or accessibility feature named in the event's
+  requirements). Searching narrows the venue list; "Show all venues" restores it
+- Each result shows its capacity in the layout and the spare places, and a
+  "Contested" tag when another event's request for that time is waiting
+- After a search, each venue also shows its suitability verdict (SPM-62 AC9),
+  the same one the check gives when that venue is picked
+
 **Venue booking requests (SPM-63)**
 - On the same page, the assigned coordinator sends the request for an event
   approved for planning, with optional notes for Venue Staff. With warnings,
   they must first tick that they have read them
 - While the event has a pending request, the page shows it with a
-  "Withdraw request" button, and no other venue can be requested
-- The Venue Staff queue screen, the venue calendar, and the readiness view are
-  other stories (SPM-8/SPM-57, SPM-108, SPM-5)
+  "Withdraw request" button. The same venue cannot be requested again while
+  that booking is pending or approved; another venue can be (SPM-114)
+- Venue Staff review requests on Booking Requests (SPM-8). The venue calendar
+  and the readiness view are other stories (SPM-108, SPM-5)
 
 **Attendee registration**
 - `features/browse-events/` — 4 hardcoded events specifically chosen to

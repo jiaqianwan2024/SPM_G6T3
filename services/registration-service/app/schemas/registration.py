@@ -28,6 +28,19 @@ class AttendeeOut(BaseModel):
     status: str = "registered"
     createdAt: datetime | None = None
     withdrawnAt: datetime | None = None
+    eventName: str = ""
+    category: str = ""
+    proposedStartAt: datetime | None = None
+    startsAt: datetime | None = None
+    proposedEndAt: datetime | None = None
+    endsAt: datetime | None = None
+    venueName: str = ""
+    venueLocation: str = ""
+    cancelled: bool = False
+    changed: bool = False
+    dateChanged: bool = False
+    timeChanged: bool = False
+    venueChanged: bool = False
 
     model_config = ConfigDict(
         json_schema_extra={

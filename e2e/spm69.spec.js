@@ -5,7 +5,7 @@ import { assignCoordinator, createSubmittedEvent, eventApi } from './support/eve
 
 async function underReviewEvent() {
   const event = await createSubmittedEvent('EO-01', `AUTO-SPM69-${Date.now()}`)
-  await assignCoordinator(event.eventId, 'u2', 'EC-01')
+  await assignCoordinator(event.eventId, 'u2')
   return event.eventId
 }
 

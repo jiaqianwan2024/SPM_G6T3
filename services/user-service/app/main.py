@@ -1,4 +1,5 @@
 from app.core.config import settings
+from app.routers.internal import router as internal_router
 from app.routers.organisation import router as organisation_router
 from app.routers.user import router as user_router
 from shared.config import parse_origins
@@ -29,4 +30,5 @@ Other services call `GET /users/me` with the caller's bearer token to resolve `u
 )
 
 app.include_router(user_router)
+app.include_router(internal_router)
 app.include_router(organisation_router)

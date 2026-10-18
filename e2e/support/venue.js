@@ -1,13 +1,10 @@
 import { expect } from '@playwright/test'
-import { account } from './test-data.js'
-import { firebaseIdToken, bearer } from './auth.js'
+import { bearer, cachedIdToken } from './auth.js'
 import { serviceUrls, venueBookingPayload } from './api-data.js'
 
-const tokens = {}
-
-export async function venueToken(id) {
-  if (!tokens[id]) tokens[id] = await firebaseIdToken(null, account(id))
-  return tokens[id]
+// Shares the sign-in cache with authedApi, so a long run renews a token before it expires.
+export function venueToken(id) {
+  return cachedIdToken(id)
 }
 
 export async function venueRequest(method, path, accountId, body) {

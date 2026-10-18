@@ -39,10 +39,11 @@ test.describe('SPM-06 Clarification on assigned request', () => {
     const reply = await eventApi('POST', '/e1/clarifications/late-reply/reply', 'EO-01', {
       message: 'Late answer after planning moved on.',
     })
-    expect([201, 404, 409]).toContain(reply.status)
-    if (reply.status === 201) {
-      const inbox = await notificationApi('GET', '/notifications', 'EC-01')
-      expect(JSON.stringify(inbox.body)).toMatch(/no longer awaiting|approved|planning|confirmed/i)
-    }
+    expect(reply.status, JSON.stringify(reply.body)).toBe(201)
+    const inbox = await notificationApi('GET', '/notifications', 'EC-01')
+    const notice = JSON.stringify(inbox.body)
+    expect(notice).toMatch(/Late answer after planning moved on/)
+    expect(notice).toMatch(/no longer awaiting review/i)
+    expect(notice).toMatch(/e1|AI in Events Summit/)
   })
 })

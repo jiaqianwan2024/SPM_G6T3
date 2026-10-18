@@ -2,7 +2,22 @@ import { test, expect } from '@playwright/test'
 import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { venuePeriod, venueUnavailabilityPayload } from './support/api-data.js'
-import { createPendingBooking, notificationRequest, venueRequest } from './support/venue.js'
+import { notificationRequest, venueRequest } from './support/venue.js'
+import { THEATRE_EVENT, approvedEvent, requestVenue } from './support/venue-request.js'
+
+// A booking can only be requested for an event in planning (SPM-63), and v2/v4
+// are closed on Sunday. Pick a day those venues are open, far enough ahead that
+// an earlier run's booking is unlikely to still be sitting on it.
+function openPeriod(hours, { saturday = true } = {}) {
+  let days = 800 + Math.floor(Math.random() * 20000)
+  for (let step = 0; step < 7; step += 1) {
+    const day = new Date(Date.now() + days * 24 * 60 * 60 * 1000).getUTCDay()
+    const closed = day === 0 || (!saturday && day === 6)
+    if (!closed) break
+    days += 1
+  }
+  return venuePeriod(days, hours)
+}
 
 test.describe('SPM-09 Mark a Venue as Unavailable', () => {
   test('TC-SPM09-AC01 record an unavailability period with end after start', async () => {
@@ -66,15 +81,17 @@ test.describe('SPM-09 Mark a Venue as Unavailable', () => {
   })
 
   test('TC-SPM09-AC04 an active block prevents overlapping approval', async () => {
-    const window = venuePeriod(224, 3)
+    const event = await approvedEvent(THEATRE_EVENT)
+    const window = openPeriod(3)
+    const created = await requestVenue(event, 'v3', window)
+    expect(created.status, JSON.stringify(created.body)).toBe(201)
     const block = await venueRequest('POST', '/venues/v3/unavailability', 'VS-01', {
       startsAt: window.startsAt,
       endsAt: window.endsAt,
       reason: 'safety issue',
     })
-    expect(block.status).toBe(201)
-    const created = await createPendingBooking('EC-01', 224, { venueId: 'v3' })
-    const approved = await venueRequest('POST', `/venues/bookings/${created.bookingId}/approve`, 'VS-01', {
+    expect(block.status, JSON.stringify(block.body)).toBe(201)
+    const approved = await venueRequest('POST', `/venues/bookings/${created.body.bookingId}/approve`, 'VS-01', {
       reason: 'blocked',
     })
     expect(approved.status).toBe(409)
@@ -94,21 +111,28 @@ test.describe('SPM-09 Mark a Venue as Unavailable', () => {
     await expect(entry).toBeVisible()
     await expect(entry).toContainText(/unavailable/i)
     await expect(entry).toHaveAttribute('data-kind', 'unavailable')
+    await entry.click()
+    const detail = page.locator('.detail-card')
+    await expect(detail.getByRole('button', { name: 'Edit' })).toBeVisible()
+    await expect(detail.getByRole('button', { name: 'Cancel block' })).toBeVisible()
   })
 
   test('TC-SPM09-AC06 overlapping bookings require acknowledgement and notify coordinators', async () => {
-    const created = await createPendingBooking('EC-01', 226, { venueId: 'v2' })
-    await venueRequest('POST', `/venues/bookings/${created.bookingId}/approve`, 'VS-01', {
+    const event = await approvedEvent({ layoutPreference: 'Classroom', expectedAttendance: 40 })
+    const window = openPeriod(3)
+    const created = await requestVenue(event, 'v2', window)
+    expect(created.status, JSON.stringify(created.body)).toBe(201)
+    const approved = await venueRequest('POST', `/venues/bookings/${created.body.bookingId}/approve`, 'VS-01', {
       reason: 'seed conflict',
     })
-    const window = venuePeriod(226, 3)
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200)
     const blocked = await venueRequest('POST', '/venues/v2/unavailability', 'VS-01', {
       startsAt: window.startsAt,
       endsAt: window.endsAt,
       reason: 'maintenance',
     })
     expect(blocked.status).toBe(409)
-    expect(JSON.stringify(blocked.body)).toMatch(/e1|AI in Events Summit/i)
+    expect(JSON.stringify(blocked.body)).toMatch(new RegExp(event.eventId, 'i'))
 
     const saved = await venueRequest('POST', '/venues/v2/unavailability', 'VS-01', {
       startsAt: window.startsAt,
@@ -124,7 +148,8 @@ test.describe('SPM-09 Mark a Venue as Unavailable', () => {
   })
 
   test('TC-SPM09-AC07 cancelling a block frees the slot', async () => {
-    const window = venuePeriod(227, 3)
+    const event = await approvedEvent({ layoutPreference: 'Boardroom', expectedAttendance: 10 })
+    const window = openPeriod(3, { saturday: false })
     const block = await venueRequest('POST', '/venues/v4/unavailability', 'VS-01', {
       startsAt: window.startsAt,
       endsAt: window.endsAt,
@@ -138,8 +163,9 @@ test.describe('SPM-09 Mark a Venue as Unavailable', () => {
     )
     expect([200, 204]).toContain(cancelled.status)
 
-    const created = await createPendingBooking('EC-01', 227, { venueId: 'v4' })
-    const approved = await venueRequest('POST', `/venues/bookings/${created.bookingId}/approve`, 'VS-01', {
+    const created = await requestVenue(event, 'v4', window)
+    expect(created.status, JSON.stringify(created.body)).toBe(201)
+    const approved = await venueRequest('POST', `/venues/bookings/${created.body.bookingId}/approve`, 'VS-01', {
       reason: 'slot free',
     })
     expect(approved.status).toBe(200)

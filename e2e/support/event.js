@@ -39,7 +39,8 @@ export async function raiseChangeRequest(eventId, accountId, body) {
   return eventApi('POST', `/${eventId}/change-requests`, accountId, body)
 }
 
-export async function assignCoordinator(eventId, coordinatorId, assignedBy = 'EC-01') {
+// Only the Event Coordinator Lead assigns or reassigns a coordinator.
+export async function assignCoordinator(eventId, coordinatorId, assignedBy = 'ECL-01') {
   const result = await eventApi(
     'POST',
     `/${eventId}/assign-coordinator`,

@@ -5,6 +5,7 @@ from datetime import datetime
 import httpx
 
 from app.core.config import settings
+from shared.auth.service_key import service_key_headers
 from shared.exceptions.http import forbidden, service_unavailable, unauthorized
 
 logger = logging.getLogger("perf.clients")
@@ -174,17 +175,34 @@ def affected_arrangements(event_id: str, authorization: str | None) -> list[dict
     ]
 
 
+def flag_venue_arrangements(event_id: str, reason: str, authorization: str | None) -> list[dict]:
+    """Mark the event's confirmed venue bookings as needing re-verification. Returns what was marked."""
+    bookings = _arrangement_rows(
+        "POST",
+        f"{settings.venue_service_url}/venues/bookings/reverification",
+        authorization,
+        json={"eventId": event_id, "reason": reason},
+    )
+    return [_venue_arrangement(row) for row in bookings]
+
+
+def flag_technical_arrangements(event_id: str, reason: str, authorization: str | None) -> list[dict]:
+    """Mark the event's held equipment reservations as needing re-verification. Returns what was marked."""
+    reservations = _arrangement_rows(
+        "POST",
+        f"{settings.equipment_service_url}/equipment/reservations/reverification",
+        authorization,
+        json={"eventId": event_id, "reason": reason},
+    )
+    return [_equipment_arrangement(row) for row in reservations]
+
+
 def flag_arrangements(event_id: str, reason: str, authorization: str | None) -> list[dict]:
     """SPM-71 AC4: mark the event's confirmed venue bookings and held equipment
     reservations as needing re-verification. Returns what was marked."""
-    body = {"eventId": event_id, "reason": reason}
-    bookings = _arrangement_rows(
-        "POST", f"{settings.venue_service_url}/venues/bookings/reverification", authorization, json=body
+    return flag_venue_arrangements(event_id, reason, authorization) + flag_technical_arrangements(
+        event_id, reason, authorization
     )
-    reservations = _arrangement_rows(
-        "POST", f"{settings.equipment_service_url}/equipment/reservations/reverification", authorization, json=body
-    )
-    return [_venue_arrangement(row) for row in bookings] + [_equipment_arrangement(row) for row in reservations]
 
 
 # SPM-90: registration settings are only saved once the registrations and the
@@ -252,6 +270,58 @@ def booked_venue_capacities(event_id: str, layout: str | None, authorization: st
     return capacities
 
 
+# SPM-120: a safety review is only submitted once the venue and equipment it
+# describes have been read; a guess could send an unconfirmed plan for review.
+ARRANGEMENTS_UNCHECKED = (
+    "The venue and equipment arrangements could not be checked right now, so nothing was submitted. "
+    "Please try again shortly."
+)
+
+
+def event_bookings(event_id: str, authorization: str | None) -> list[dict]:
+    """Every venue booking of the event, whatever its status, so a request still
+    waiting for venue staff is seen as well as the approved ones."""
+    return _arrangement_rows(
+        "GET",
+        f"{settings.venue_service_url}/venues/bookings",
+        authorization,
+        ARRANGEMENTS_UNCHECKED,
+        params={"eventId": event_id},
+    )
+
+
+def venue_details(venue_id: str, authorization: str | None) -> dict:
+    """A venue's catalogue record: layouts, accessibility, emergency access, restrictions."""
+    return _arrangement_rows(
+        "GET", f"{settings.venue_service_url}/venues/{venue_id}", authorization, ARRANGEMENTS_UNCHECKED
+    )
+
+
+def equipment_requests_for(event_id: str, authorization: str | None) -> list[dict]:
+    rows = _arrangement_rows(
+        "GET", f"{settings.equipment_service_url}/equipment/requests", authorization, ARRANGEMENTS_UNCHECKED
+    )
+    return [row for row in rows if row.get("eventId") == event_id]
+
+
+def equipment_reservations_for(event_id: str, authorization: str | None) -> list[dict]:
+    return _arrangement_rows(
+        "GET",
+        f"{settings.equipment_service_url}/equipment/reservations",
+        authorization,
+        ARRANGEMENTS_UNCHECKED,
+        params={"eventId": event_id},
+    )
+
+
+def equipment_names(authorization: str | None) -> dict[str, str]:
+    """equipmentId -> catalogue name."""
+    rows = _arrangement_rows(
+        "GET", f"{settings.equipment_service_url}/equipment", authorization, ARRANGEMENTS_UNCHECKED
+    )
+    return {row["equipmentId"]: row["name"] for row in rows}
+
+
 def record_notification(
     user_id: str, event_id: str, kind: str, title: str, body: str, authorization: str | None
 ) -> bool:
@@ -270,6 +340,80 @@ def record_notification(
         return False
     if response.status_code != 201:
         logger.warning("in-app notification to %s got status %s", user_id, response.status_code)
+        return False
+    return True
+
+
+def _service_get(url: str, params: dict | None = None):
+    """GET with the service key, for a job with no user token. None on any failure."""
+    try:
+        response = httpx.get(
+            url, params=params, headers=service_key_headers(settings.internal_service_key), timeout=5.0
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("service call %s raised %r", url, exc)
+        return None
+    if response.status_code != 200:
+        logger.warning("service call %s got status %s", url, response.status_code)
+        return None
+    return response.json()
+
+
+def arrangement_inputs(event_id: str) -> tuple[list, list, dict] | None:
+    """SPM-95: an event's equipment requests, equipment reservations and venue summary, as
+    the readiness view reads them. None when either service cannot be read, so an outage is
+    never mistaken for "nothing arranged"."""
+    equipment = _service_get(f"{settings.equipment_service_url}/internal/equipment/events/{event_id}/arrangements")
+    venue = _service_get(f"{settings.venue_service_url}/internal/venues/bookings/public-summary", {"eventId": event_id})
+    if not isinstance(equipment, dict) or not isinstance(venue, dict):
+        return None
+    return equipment.get("requests", []), equipment.get("reservations", []), venue
+
+
+def users_with_roles(roles: list[str]) -> dict[str, dict] | None:
+    """SPM-95: everyone holding one of the roles, as {userId: {"role": ...}}. None when
+    user-service cannot be read."""
+    users = _service_get(f"{settings.user_service_url}/internal/users", {"roles": ",".join(roles)})
+    if not isinstance(users, list):
+        return None
+    return {user["userId"]: user for user in users}
+
+
+def publish_notification(
+    trigger: str,
+    event_id: str,
+    occurrence_id: str,
+    recipients: list[dict],
+    context: dict[str, str],
+    actor_id: str | None = None,
+    resource: dict | None = None,
+) -> bool:
+    """SPM-93: publish one occurrence of a notification trigger. Notification-service
+    writes the message and drops the actor, attendees and repeats. Authenticated with
+    the service key rather than a user token, so an organiser's action can notify staff.
+    Best effort: callers have already saved their change."""
+    if not recipients:
+        return True
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            response = client.post(
+                f"{settings.notification_service_url}/notifications/publish",
+                json={
+                    "trigger": trigger,
+                    "occurrenceId": occurrence_id,
+                    "eventId": event_id,
+                    "actorId": actor_id,
+                    "recipients": recipients,
+                    "context": context,
+                    "resource": resource,
+                },
+                headers=service_key_headers(settings.internal_service_key),
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("publishing %s for %s raised %r", trigger, event_id, exc)
+        return False
+    if response.status_code != 201:
+        logger.warning("publishing %s for %s got status %s", trigger, event_id, response.status_code)
         return False
     return True
 
@@ -293,6 +437,40 @@ def list_users(authorization: str | None) -> list[dict]:
         logger.info("list_users got status %s", response.status_code)
         raise service_unavailable(USERS_UNREACHABLE)
     return response.json()
+
+
+def release_event_holds(event_id: str, authorization: str | None) -> None:
+    """Ask equipment-service to return stock when an event is rejected or completed.
+
+    Best effort: the status change is already saved, so a down service is logged.
+    """
+    headers = {"Authorization": authorization} if authorization else {}
+    try:
+        with httpx.Client(timeout=0.8) as client:
+            client.post(
+                f"{settings.equipment_service_url}/equipment/reservations/release-for-event",
+                json={"eventId": event_id, "reason": "The event was closed"},
+                headers=headers,
+            )
+    except httpx.HTTPError as exc:
+        logger.info("release_event_holds(%s) raised %r", event_id, exc)
+
+
+def release_event_venue_bookings(event_id: str, authorization: str | None) -> None:
+    """Ask venue-service to cancel every open venue request and booking for a rejected event.
+
+    Best effort: the rejection is already saved, so a down service is logged.
+    """
+    headers = {"Authorization": authorization} if authorization else {}
+    try:
+        with httpx.Client(timeout=0.8) as client:
+            client.post(
+                f"{settings.venue_service_url}/venues/bookings/release",
+                json={"eventId": event_id},
+                headers=headers,
+            )
+    except httpx.HTTPError as exc:
+        logger.info("release_event_venue_bookings(%s) raised %r", event_id, exc)
 
 
 def send_notification(to: str, subject: str, body: str, authorization: str | None) -> bool:

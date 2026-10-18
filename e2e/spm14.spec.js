@@ -30,7 +30,7 @@ test.describe('SPM-14 Establish event with ConnectSphere', () => {
     expect(submitted.status).toBe(200)
     expect(submitted.body.status).toMatch(/submitted/i)
     expect(submitted.body.submittedAt).toBeTruthy()
-    const queue = await eventApi('GET', '/queue', 'EC-01')
+    const queue = await eventApi('GET', '/queue', 'ECL-01')
     expect((queue.body || []).map((row) => row.eventId)).toContain(draft.body.eventId)
   })
 
@@ -75,7 +75,7 @@ test.describe('SPM-14 Establish event with ConnectSphere', () => {
     const event = await createDraftEvent('EO-01', 'AUTO-SPM14-notify')
     const submitted = await submitEvent(event.eventId)
     expect(submitted.status).toBe(200)
-    const queue = await eventApi('GET', '/queue', 'EC-01')
+    const queue = await eventApi('GET', '/queue', 'ECL-01')
     expect((queue.body || []).map((row) => row.eventId)).toContain(event.eventId)
   })
 

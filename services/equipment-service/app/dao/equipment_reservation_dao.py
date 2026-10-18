@@ -33,6 +33,15 @@ class EquipmentReservationDAO(BaseDAO):
             .all()
         )
 
+    def list_needing_reverification(self) -> list[EquipmentReservation]:
+        return (
+            self.db.query(EquipmentReservation)
+            .filter(EquipmentReservation.needsReverification.is_(True))
+            .filter(EquipmentReservation.status.in_(["active", "reserved"]))
+            .order_by(EquipmentReservation.startsAt, EquipmentReservation.reservationId)
+            .all()
+        )
+
     def list_active_for_event(self, event_id: str) -> list[EquipmentReservation]:
         return (
             self.db.query(EquipmentReservation)

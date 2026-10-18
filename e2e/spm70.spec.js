@@ -7,7 +7,7 @@ import { venueRequest } from './support/venue.js'
 
 async function underReviewEvent() {
   const event = await createSubmittedEvent('EO-01', `AUTO-SPM70-${Date.now()}`)
-  await assignCoordinator(event.eventId, 'u2', 'EC-01')
+  await assignCoordinator(event.eventId, 'u2')
   return event.eventId
 }
 
@@ -22,17 +22,40 @@ test.describe('SPM-70 Reject a submitted request with a reason', () => {
     expect(rejected.body.status).toMatch(/rejected/i)
   })
 
+  test('TC-SPM70-AC01 a request with changes requested can also be rejected', async () => {
+    const eventId = await underReviewEvent()
+    const clarification = await eventApi('POST', `/${eventId}/clarifications`, 'EC-01', {
+      message: 'Please confirm expected attendance.',
+    })
+    expect(clarification.status).toBe(201)
+    const rejected = await eventApi('POST', `/${eventId}/reject`, 'EC-01', {
+      reason: 'insufficient notice',
+      explanation: 'Too close to the date.',
+    })
+    expect(rejected.status).toBe(200)
+    expect(rejected.body.status).toMatch(/rejected/i)
+  })
+
   test('TC-SPM70-AC02 a reason is mandatory from the published list, with a free-text explanation', async () => {
     const eventId = await underReviewEvent()
     const missing = await eventApi('POST', `/${eventId}/reject`, 'EC-01', {})
     expect([400, 422]).toContain(missing.status)
+    const unlisted = await eventApi('POST', `/${eventId}/reject`, 'EC-01', {
+      reason: 'dates clash',
+      explanation: 'Not on the list.',
+    })
+    expect([400, 422]).toContain(unlisted.status)
+    const noExplanation = await eventApi('POST', `/${eventId}/reject`, 'EC-01', {
+      reason: 'insufficient notice',
+    })
+    expect([400, 422]).toContain(noExplanation.status)
     const rejected = await eventApi('POST', `/${eventId}/reject`, 'EC-01', {
       reason: 'no suitable venue available',
       explanation: 'No hall fits the dates.',
     })
     expect(rejected.status).toBe(200)
-    expect(rejected.body.decisionReason || rejected.body.reason).toMatch(/venue/)
-    expect(rejected.body.explanation).toMatch(/hall/)
+    expect(rejected.body.decisionReason).toMatch(/venue/)
+    expect(rejected.body.decisionNote).toMatch(/hall/)
   })
 
   test('TC-SPM70-AC03 rejecting moves the event to Rejected, which is terminal', async () => {
@@ -57,7 +80,10 @@ test.describe('SPM-70 Reject a submitted request with a reason', () => {
     })
     await login(page, account('EO-01'))
     await page.goto(`/app/events/${eventId}`)
-    await expect(page.getByTestId('organiser-decision')).toContainText(/rejected|insufficient equipment|LED/i)
+    const decision = page.getByTestId('organiser-decision')
+    await expect(decision).toContainText(/rejected/i)
+    await expect(decision).toContainText('insufficient equipment')
+    await expect(decision).toContainText('LED wall unavailable')
   })
 
   test('TC-SPM70-AC05 rejecting releases venue and equipment holds', async () => {

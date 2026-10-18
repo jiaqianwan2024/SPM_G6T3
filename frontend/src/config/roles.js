@@ -2,7 +2,7 @@
 export const roles = {
   organiser: {
     label: 'Event Organiser',
-    tabs: ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Notifications', 'Profile'],
+    tabs: ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Profile'],
     cards: [
       { title: 'Drafts awaiting submission', sub: '3 requests saved but not yet sent' },
       { title: 'Pending coordinator review', sub: '2 requests under review' },
@@ -19,6 +19,14 @@ export const roles = {
       { title: 'Outstanding arrangements', sub: '1 event missing equipment sign-off' },
       { title: 'Recently confirmed', sub: 'Q3 Partner Summit confirmed' }
     ]
+  },
+  // Oversees incoming requests: each new request waits, unassigned, until the
+  // Lead assigns it to an Event Coordinator. The Lead does not manage events.
+  coordinatorlead: {
+    label: 'Event Coordinator Lead',
+    tabs: ['Dashboard', 'Review Queue', 'Assignments', 'Profile'],
+    // The Dashboard tab is LeadDashboard (live counts, waiting requests, workload), not cards.
+    cards: []
   },
   venue: {
     label: 'Venue Staff',
@@ -40,14 +48,16 @@ export const roles = {
       { title: 'Low availability alert', sub: 'Wireless mics fully booked Thu' }
     ]
   },
+  safety: {
+    label: 'Safety Officer',
+    tabs: ['Dashboard', 'Safety Reviews', 'Profile'],
+    // The Dashboard tab is SafetyDashboard (live counts and decisions), not cards.
+    cards: []
+  },
   attendee: {
     label: 'Attendee',
     tabs: ['Dashboard', 'Browse Events', 'My Registrations', 'Waiting List', 'Profile'],
-    cards: [
-      { title: 'Open for registration', sub: '6 upcoming events accepting sign-ups' },
-      { title: 'My registrations', sub: '2 confirmed events' },
-      { title: 'Waiting list status', sub: '1 event — position 3' },
-      { title: 'Closing soon', sub: 'Registration for AI Summit closes in 2 days' }
-    ]
+    // The Dashboard tab is AttendeeHome (live registrations and open events), not cards.
+    cards: []
   }
 }

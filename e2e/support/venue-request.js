@@ -9,8 +9,8 @@ export const THEATRE_EVENT = { layoutPreference: 'Theatre', expectedAttendance: 
 
 // SPM-63 AC1: only the assigned coordinator may request a venue, and only for
 // an event approved for planning. Each test makes its own such event, assigned
-// to EC-01 (u2), so the one-pending-request-per-event rule (AC7) never makes
-// tests, or reruns of them, collide on a shared seeded event.
+// to EC-01 (u2). SPM-114 allows several venues on that event; a second live
+// booking of the same venue is still refused.
 export async function approvedEvent(overrides = {}) {
   const created = await eventApi('POST', '', 'EO-01', {
     ...newEventPayload(`VENUE-REQ-${Date.now()}`),
@@ -23,10 +23,12 @@ export async function approvedEvent(overrides = {}) {
   return approved.body
 }
 
-// A 10:00 to 12:00 UTC slot on a random day years ahead, so a rerun never
-// overlaps a booking an earlier run left behind.
+// A 10:00 to 12:00 UTC slot on a random day years ahead, so a rerun rarely
+// meets a booking an earlier run left behind. The days span about 80 years:
+// earlier runs leave confirmed bookings on seeded venues such as v1, and over a
+// shorter span a new request often landed on one of those days and was refused.
 export function freshPeriod(hours = 2) {
-  return venuePeriod(300 + Math.floor(Math.random() * 3000), hours)
+  return venuePeriod(300 + Math.floor(Math.random() * 30000), hours)
 }
 
 export function requestVenue(event, venueId, period = freshPeriod(), extras = {}) {

@@ -5,30 +5,36 @@
          "Approve" / "Reject" buttons stay in the accessibility tree alongside the
          dialog's, so a role-based lookup for either matches two elements. -->
     <div :inert="dialogOpen || null" :aria-hidden="dialogOpen ? 'true' : null">
-    <div v-if="!loading && !error" class="queue-filters">
-      <button
-        class="filter-btn"
-        :class="{ active: filter === 'unassigned' }"
-        data-testid="queue-filter-unassigned"
-        @click="toggleFilter('unassigned')"
-      >
-        Unassigned only
-      </button>
-      <button
-        class="filter-btn"
-        :class="{ active: filter === 'mine' }"
-        data-testid="queue-filter-mine"
-        @click="toggleFilter('mine')"
-      >
-        My assignments
-      </button>
-      <button
-        class="filter-btn sort-btn"
-        :class="{ active: sortMode === 'proposedStartAt' }"
-        @click="toggleSort"
-      >
-        {{ sortMode === 'proposedStartAt' ? 'Sorted by event date' : 'Sort by event date' }}
-      </button>
+    <div v-if="!loading && !error" class="queue-toolbar">
+      <label class="search">
+        Search
+        <input v-model="query" type="search" placeholder="Event or organisation" />
+      </label>
+      <div class="queue-filters">
+        <button
+          v-if="isLead"
+          class="filter-btn"
+          :class="{ active: filter === 'unassigned' }"
+          data-testid="queue-filter-unassigned"
+          @click="toggleFilter('unassigned')"
+        >
+          Unassigned only
+        </button>
+        <button
+          class="filter-btn"
+          :class="{ active: sortMode === 'name-asc' }"
+          @click="setSort('name-asc')"
+        >
+          A–Z
+        </button>
+        <button
+          class="filter-btn"
+          :class="{ active: sortMode === 'name-desc' }"
+          @click="setSort('name-desc')"
+        >
+          Z–A
+        </button>
+      </div>
     </div>
 
     <p v-if="loading" class="empty-note">Loading submitted events…</p>
@@ -37,35 +43,35 @@
       {{ emptyMessage }}
     </p>
 
-    <div
-      v-for="event in filteredEvents"
-      :key="event.eventId"
-      class="event-card"
-      :data-testid="`review-queue-${event.eventId}`"
-      :data-assigned="String(!!event.coordinatorId)"
-      role="button"
-      tabindex="0"
-      @click="openDetails(event)"
-      @keydown.enter="openDetails(event)"
-    >
-      <div class="event-head">
-        <div class="event-main">
+    <div v-else class="event-list">
+      <div
+        v-for="event in filteredEvents"
+        :key="event.eventId"
+        class="event-card"
+        :data-testid="`review-queue-${event.eventId}`"
+        :data-assigned="String(!!event.coordinatorId)"
+        role="button"
+        tabindex="0"
+        @click="openDetails(event)"
+        @keydown.enter="openDetails(event)"
+      >
+        <div class="event-top">
           <div class="event-name-row">
             <span class="event-name">{{ event.eventName }}</span>
             <span v-if="event.dateNear" class="near-flag">Date is near</span>
           </div>
-          <div v-if="event.organisationName" class="event-org">{{ event.organisationName }}</div>
-          <div class="event-meta">
-            <span data-testid="queue-datetime">
-              {{ formatLocal(event.proposedStartAt) }} – {{ formatLocal(event.proposedEndAt) }}
-            </span>
-            <span data-testid="queue-attendance">{{ event.expectedAttendance }} attendees</span>
-            <span data-testid="queue-status" class="status-pill">{{ event.status }}</span>
-            <span data-testid="queue-submitted-at">
-              Submitted {{ formatSubmitted(event.submittedAt) }} · waiting {{ waitingFor(event.submittedAt) }}
-            </span>
-          </div>
-          <div class="event-assignee">{{ event.coordinatorId ? 'Assigned' : 'Unassigned' }}</div>
+          <span data-testid="queue-status" class="status-pill">{{ event.status }}</span>
+        </div>
+        <div v-if="event.organisationName" class="event-org">{{ event.organisationName }}</div>
+        <div class="event-when" data-testid="queue-datetime">
+          {{ formatLocal(event.proposedStartAt) }} – {{ formatLocal(event.proposedEndAt) }}
+        </div>
+        <div class="event-wait" data-testid="queue-submitted-at">
+          Submitted {{ formatSubmitted(event.submittedAt) }} · waiting {{ waitingFor(event.submittedAt) }}
+        </div>
+        <div class="event-facts">
+          <span data-testid="queue-attendance">{{ event.expectedAttendance }} attendees</span>
+          <span v-if="isLead" class="event-assignee" data-testid="queue-assignee">{{ assigneeLabel(event) }}</span>
         </div>
         <div class="actions">
           <button
@@ -77,6 +83,7 @@
             Approve
           </button>
           <button
+            v-if="canReject(event)"
             class="btn btn-outline"
             :disabled="isBusy(event.eventId)"
             @click.stop="openReject(event)"
@@ -84,8 +91,8 @@
             Reject
           </button>
         </div>
+        <p v-if="rowErrors[event.eventId]" class="row-error">{{ rowErrors[event.eventId] }}</p>
       </div>
-      <p v-if="rowErrors[event.eventId]" class="row-error">{{ rowErrors[event.eventId] }}</p>
     </div>
 
     <!-- Event details popup -->
@@ -101,7 +108,7 @@
 
         <div class="details-body">
           <dl>
-            <div v-for="row in detailRows(selected)" :key="row.label" class="detail-row">
+            <div v-for="row in detailRows(selected)" :key="row.label" class="detail-row" :class="{ wide: row.wide }">
               <dt>{{ row.label }}</dt>
               <dd :class="{ empty: row.empty }">{{ row.value }}</dd>
             </div>
@@ -112,14 +119,20 @@
 
         <div class="details-actions">
           <button
+            v-if="isLead"
             class="btn btn-outline"
             :disabled="isBusy(selected.eventId)"
             data-testid="queue-assign-coordinator"
             @click="assigning = selected"
           >
-            {{ selected.coordinatorId ? 'Change coordinator' : 'Assign coordinator' }}
+            {{ selected.coordinatorId ? 'Reassign coordinator' : 'Assign coordinator' }}
           </button>
-          <button class="btn btn-outline" :disabled="isBusy(selected.eventId)" @click="openReject(selected)">
+          <button
+            v-if="canReject(selected)"
+            class="btn btn-outline"
+            :disabled="isBusy(selected.eventId)"
+            @click="openReject(selected)"
+          >
             Reject
           </button>
           <button
@@ -135,7 +148,7 @@
     </div>
     </div>
 
-    <!-- SPM-66: assign from the queue (stacks above the details popup) -->
+    <!-- The Event Coordinator Lead assigns from the queue (stacks above the details popup) -->
     <AssignCoordinatorDialog
       v-if="assigning"
       :event="assigning"
@@ -155,11 +168,28 @@
     <div v-if="rejecting" class="modal-backdrop" @click.self="rejecting = null">
       <div class="modal">
         <h3>Reject {{ rejecting.eventName }}</h3>
-        <label>Reason (optional)</label>
-        <textarea v-model="rejectReason" rows="3" placeholder="Let the organiser know why"></textarea>
+        <label for="reject-reason">Reason</label>
+        <select id="reject-reason" v-model="rejectReason" data-testid="reject-reason">
+          <option value="" disabled>Choose a reason</option>
+          <option v-for="reason in REJECTION_REASONS" :key="reason" :value="reason">{{ reason }}</option>
+        </select>
+        <label for="reject-explanation">Explanation for the organiser</label>
+        <textarea
+          id="reject-explanation"
+          v-model="rejectExplanation"
+          rows="3"
+          maxlength="2000"
+          placeholder="Let the organiser know why"
+          data-testid="reject-explanation"
+        ></textarea>
         <div class="modal-actions">
           <button class="btn btn-outline" @click="rejecting = null">Cancel</button>
-          <button class="btn btn-solid" :disabled="isBusy(rejecting.eventId)" @click="confirmReject">
+          <button
+            class="btn btn-solid"
+            data-testid="reject-confirm"
+            :disabled="isBusy(rejecting.eventId) || !rejectReason || !rejectExplanation.trim()"
+            @click="confirmReject"
+          >
             Reject event
           </button>
         </div>
@@ -170,9 +200,10 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { getSubmissionQueue, rejectEvent } from '../../api/eventService.js'
+import { getCoordinatorCandidates, getSubmissionQueue, rejectEvent } from '../../api/eventService.js'
 import { getMe } from '../../api/userService.js'
-import { IN_REVIEW_EVENT_STATUSES } from '../../config/eventStatus.js'
+import { IN_REVIEW_EVENT_STATUSES, REJECTION_REASONS } from '../../config/eventStatus.js'
+import { session } from '../../store/session.js'
 import ApproveEventDialog from '../event-detail/ApproveEventDialog.vue'
 import AssignCoordinatorDialog from '../event-detail/AssignCoordinatorDialog.vue'
 
@@ -185,13 +216,20 @@ const rowErrors = reactive({})
 const selected = ref(null)
 const rejecting = ref(null)
 const rejectReason = ref('')
+const rejectExplanation = ref('')
 const assigning = ref(null)
 const approving = ref(null)
 const dialogOpen = computed(() => Boolean(assigning.value || rejecting.value || approving.value))
 
-// 'all' | 'unassigned' | 'mine'
+// 'all' | 'unassigned' (the Lead's filter)
 const filter = ref('all')
-// 'waiting' (default, server-side longest-wait-first) | 'proposedStartAt'
+// The Event Coordinator Lead sees every request and assigns them; a coordinator
+// sees only the requests assigned to them (the server applies the same rule).
+const isLead = computed(() => session.role === 'coordinatorlead')
+// userId -> name, so the Lead sees who each request is with. Display only.
+const coordinatorNames = ref({})
+const query = ref('')
+// 'waiting' keeps the server order (longest-waiting first).
 const sortMode = ref('waiting')
 const myUserId = ref(null)
 
@@ -211,6 +249,19 @@ function canApprove(event) {
     event.coordinatorId === myUserId.value &&
     IN_REVIEW_EVENT_STATUSES.includes(event.status)
   )
+}
+
+// SPM-70 AC1: only the assigned coordinator rejects, while the request is under review or has changes requested.
+function canReject(event) {
+  return !!event.coordinatorId && event.coordinatorId === myUserId.value && IN_REVIEW_EVENT_STATUSES.includes(event.status)
+}
+
+function coordinatorName(userId) {
+  return coordinatorNames.value[userId] || userId
+}
+
+function assigneeLabel(event) {
+  return event.coordinatorId ? `Assigned to ${coordinatorName(event.coordinatorId)}` : 'Unassigned'
 }
 
 // submittedAt is stamped with utcnow() on the server and serialised without a
@@ -246,16 +297,31 @@ function formatSubmitted(value) {
 }
 
 const filteredEvents = computed(() => {
-  if (filter.value === 'unassigned') return events.value.filter((event) => !event.coordinatorId)
-  if (filter.value === 'mine') {
-    return events.value.filter((event) => event.coordinatorId && event.coordinatorId === myUserId.value)
+  let list = events.value
+  if (filter.value === 'unassigned') list = list.filter((event) => !event.coordinatorId)
+  const term = query.value.trim().toLowerCase()
+  if (term) {
+    list = list.filter((event) => {
+      const name = (event.eventName || '').toLowerCase()
+      const organisation = (event.organisationName || '').toLowerCase()
+      return name.includes(term) || organisation.includes(term)
+    })
   }
-  return events.value
+  if (sortMode.value === 'name-asc' || sortMode.value === 'name-desc') {
+    const direction = sortMode.value === 'name-asc' ? 1 : -1
+    list = [...list].sort(
+      (a, b) =>
+        direction *
+        String(a.eventName || '').localeCompare(String(b.eventName || ''), undefined, { sensitivity: 'base' }),
+    )
+  }
+  return list
 })
 
 const emptyMessage = computed(() => {
+  if (query.value.trim()) return 'No requests match this search.'
   if (filter.value === 'unassigned') return 'No unassigned requests match this filter.'
-  if (filter.value === 'mine') return 'No requests are currently assigned to you.'
+  if (!isLead.value) return 'No requests are currently assigned to you.'
   return 'No requests are awaiting review.'
 })
 
@@ -263,17 +329,23 @@ function toggleFilter(mode) {
   filter.value = filter.value === mode ? 'all' : mode
 }
 
-async function toggleSort() {
-  sortMode.value = sortMode.value === 'proposedStartAt' ? 'waiting' : 'proposedStartAt'
-  await loadEvents()
+function setSort(mode) {
+  sortMode.value = sortMode.value === mode ? 'waiting' : mode
 }
 
 function detailRows(event) {
+  const wideLabels = new Set([
+    'Purpose',
+    'Description',
+    'Venue requirements',
+    'Equipment requirements',
+    'Accessibility needs',
+  ])
   const rows = [
     { label: 'Organisation', value: event.organisationName },
     { label: 'Submitted', value: formatSubmitted(event.submittedAt) },
     { label: 'Waiting', value: waitingFor(event.submittedAt) },
-    { label: 'Assigned coordinator', value: event.coordinatorId },
+    { label: 'Assigned coordinator', value: event.coordinatorId ? coordinatorName(event.coordinatorId) : '' },
     { label: 'Category', value: event.category },
     { label: 'Proposed start', value: formatLocal(event.proposedStartAt) },
     { label: 'Proposed end', value: formatLocal(event.proposedEndAt) },
@@ -285,7 +357,7 @@ function detailRows(event) {
     { label: 'Accessibility needs', value: event.accessibilityNeeds },
     { label: 'Layout preference', value: event.layoutPreference },
     { label: 'Registration', value: event.registrationEnabled ? 'Enabled' : 'Not enabled' },
-  ]
+  ].map((row) => ({ ...row, wide: wideLabels.has(row.label) }))
   if (event.registrationEnabled) {
     rows.push(
       { label: 'Registration opens', value: formatLocal(event.registrationOpensAt) },
@@ -313,17 +385,24 @@ async function loadEvents() {
   error.value = ''
   try {
     // Server filters to submitted/under review/changes requested and orders
-    // by submittedAt ascending (longest-waiting first) by default, or by
-    // proposedStartAt when sortMode is 'proposedStartAt'. "mine"/"unassigned"
-    // are applied client-side below (filteredEvents) against this list.
-    const { data } = await getSubmissionQueue({
-      sort: sortMode.value === 'proposedStartAt' ? 'proposedStartAt' : undefined,
-    })
+    // by submittedAt ascending (longest-waiting first). A coordinator gets
+    // only their own requests; the Lead's "unassigned" filter is applied
+    // client-side below (filteredEvents) against this list.
+    const { data } = await getSubmissionQueue()
     events.value = data
   } catch (err) {
     error.value = err.response?.data?.detail || 'Could not load the review queue. Please try again.'
   } finally {
     loading.value = false
+  }
+}
+
+async function loadCoordinatorNames() {
+  try {
+    const { data } = await getCoordinatorCandidates()
+    coordinatorNames.value = Object.fromEntries(data.map((row) => [row.userId, row.name]))
+  } catch {
+    // Non-fatal - the queue shows coordinator ids instead.
   }
 }
 
@@ -360,6 +439,7 @@ async function onAssigned(assignment) {
 function openReject(event) {
   rejecting.value = event
   rejectReason.value = ''
+  rejectExplanation.value = ''
 }
 
 async function confirmReject() {
@@ -367,7 +447,7 @@ async function confirmReject() {
   busyIds.add(event.eventId)
   delete rowErrors[event.eventId]
   try {
-    await rejectEvent(event.eventId, rejectReason.value)
+    await rejectEvent(event.eventId, rejectReason.value, rejectExplanation.value.trim())
     removeFromQueue(event.eventId)
     rejecting.value = null
   } catch (err) {
@@ -381,15 +461,43 @@ async function confirmReject() {
 onMounted(() => {
   loadEvents()
   loadMyUserId()
+  if (isLead.value) loadCoordinatorNames()
   ticker = setInterval(() => { now.value = Date.now() }, 60000)
 })
 onUnmounted(() => clearInterval(ticker))
 </script>
 
 <style scoped>
-.review-queue { display: flex; flex-direction: column; gap: 12px; max-width: 720px; }
+.review-queue { display: flex; flex-direction: column; gap: 16px; width: 100%; }
 
-.queue-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.queue-toolbar { display: flex; flex-direction: column; gap: 14px; }
+.search {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.search input {
+  width: 100%;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
+  padding: 9px 12px;
+  color-scheme: dark;
+}
+.search input:focus {
+  outline: none;
+  border-color: rgba(167, 139, 250, .5);
+}
+.queue-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .filter-btn {
   background: var(--glass);
   border: 1px solid var(--hairline);
@@ -406,11 +514,20 @@ onUnmounted(() => clearInterval(ticker))
   border-color: rgba(167, 139, 250, .6);
   background: rgba(124, 77, 255, .18);
 }
-.sort-btn { margin-left: auto; }
 
 .empty-note { font-size: 14px; color: var(--muted); }
 
+.event-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
 .event-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 176px;
   background: var(--glass);
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
@@ -422,13 +539,22 @@ onUnmounted(() => clearInterval(ticker))
 }
 .event-card:focus-visible { outline: none; border-color: rgba(167, 139, 250, .6); box-shadow: 0 0 0 3px rgba(124, 77, 255, .16); }
 .event-card:hover { border-color: rgba(167, 139, 250, .3); background: var(--glass-strong); }
-.event-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
-.event-main { min-width: 0; }
-.event-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.event-name { font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: var(--text); font-size: 15px; }
-.event-org { font-size: 12px; color: var(--muted); margin-top: 2px; }
-.event-meta { font-size: 12px; margin-top: 6px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.event-assignee { font-size: 11px; color: var(--muted); margin-top: 6px; text-transform: uppercase; letter-spacing: .06em; }
+.event-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.event-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.event-name { font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: var(--text); font-size: 16px; line-height: 1.35; }
+.event-org { font-size: 13px; color: var(--body); }
+.event-when,
+.event-wait { font-size: 13px; color: var(--muted); line-height: 1.45; }
+.event-facts { display: flex; flex-wrap: wrap; gap: 8px; }
+.event-facts span,
+.event-assignee {
+  font-size: 12px;
+  color: var(--body);
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
 
 .near-flag {
   font-size: 10px;
@@ -441,9 +567,10 @@ onUnmounted(() => clearInterval(ticker))
   padding: 2px 8px;
 }
 
-.actions { display: flex; gap: 10px; flex-shrink: 0; }
+.actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: auto; }
 
 .status-pill {
+  flex-shrink: 0;
   display: inline-block;
   font-size: 11px;
   letter-spacing: .06em;
@@ -485,6 +612,7 @@ onUnmounted(() => clearInterval(ticker))
   font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
   color: var(--muted); display: block; margin-bottom: 6px;
 }
+.modal select,
 .modal textarea {
   width: 100%;
   border: 1px solid var(--hairline);
@@ -497,6 +625,8 @@ onUnmounted(() => clearInterval(ticker))
   resize: vertical;
   line-height: 1.6;
 }
+.modal select { margin-bottom: 16px; }
+.modal select:focus,
 .modal textarea:focus {
   outline: none;
   border-color: rgba(167, 139, 250, .6);
@@ -508,8 +638,7 @@ onUnmounted(() => clearInterval(ticker))
 
 /* Details popup */
 .details-modal {
-  width: 580px;
-  max-width: calc(100vw - 32px);
+  width: min(880px, calc(100vw - 48px));
   max-height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
@@ -538,12 +667,20 @@ onUnmounted(() => clearInterval(ticker))
 }
 .detail-row dd { margin: 0; font-size: 14px; color: var(--text); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
 .detail-row dd.empty { color: var(--muted); font-style: italic; }
-.details-body dl { margin: 0; }
+.details-body dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 28px;
+}
+.detail-row.wide { grid-column: 1 / -1; }
 .details-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--hairline); }
 
+@media (max-width: 900px) {
+  .event-list { grid-template-columns: 1fr; }
+  .details-body dl { grid-template-columns: 1fr; }
+}
 @media (max-width: 560px) {
-  .event-head { flex-direction: column; align-items: flex-start; }
   .detail-row { grid-template-columns: 1fr; }
-  .sort-btn { margin-left: 0; }
 }
 </style>

@@ -10,7 +10,7 @@
 
     <template v-else>
       <div class="event-summary">
-        <h2>Choose a venue for {{ event.eventName }}</h2>
+        <h2>Choose venues for {{ event.eventName }}</h2>
         <p>
           {{ formatRange(event.proposedStartAt, event.proposedEndAt) }} ·
           {{ event.expectedAttendance }} expected
@@ -20,35 +20,111 @@
 
       <!-- SPM-46 AC2: everyone else may check venues but not act on this event. -->
       <p v-if="!isAssignedCoordinator" class="read-only-note" data-testid="venue-request-read-only">
-        Only the coordinator assigned to this event can request or withdraw a venue for it. You can still check
-        how each venue suits the event.
+        Only the coordinator assigned to this event can request, withdraw, or cancel a venue for it. You can still
+        check how each venue suits the event.
       </p>
 
-      <!-- SPM-63 AC7 and AC8: one pending request per event; the coordinator can withdraw it. -->
-      <div v-if="pendingRequest" class="pending-banner" data-testid="venue-request-pending">
+      <div class="arrangement" :class="{ complete: arrangementsComplete }" data-testid="venue-arrangement">
+        <p>{{ arrangementText }}</p>
+        <ul v-if="bookings.length" class="booking-list">
+          <li v-for="booking in bookings" :key="booking.bookingId" :data-testid="`venue-booking-${booking.status}`">
+            <span>
+              <strong>{{ venueNameFor(booking.venueId) }}</strong>
+              · {{ statusLabel(booking.status) }}
+              <template v-if="booking.createdAt"> · sent {{ formatUtc(booking.createdAt) }} UTC</template>
+              <!-- SPM-116: Venue Staff are holding this venue while the arrangements are finished. -->
+              <span
+                v-if="booking.hold && ['active', 'expired'].includes(booking.hold.state)"
+                class="hold-tag"
+                :class="booking.hold.state"
+                :data-testid="`venue-hold-${booking.bookingId}`"
+              >
+                {{ booking.hold.state === 'active' ? 'Held until' : 'Hold expired' }}
+                {{ formatUtc(booking.hold.expiresAt) }} UTC
+              </span>
+              <!-- SPM-10: why Venue Staff rejected it, and the venue they suggested instead, if any. -->
+              <span
+                v-if="booking.status === 'rejected' && booking.decisionReason"
+                class="rejection"
+                :data-testid="`venue-rejection-${booking.bookingId}`"
+              >
+                · Reason: {{ booking.decisionReason }}<template v-if="booking.suggestedVenueName">
+                  · Suggested instead: {{ booking.suggestedVenueName }}</template>
+              </span>
+            </span>
+            <button
+              v-if="isAssignedCoordinator && booking.affectedByUnavailability"
+              type="button"
+              class="btn btn-ghost small"
+              data-testid="venue-replacement-open"
+              @click="openReplacement(booking)"
+            >
+              Find a replacement
+            </button>
+            <button
+              v-if="isAssignedCoordinator && booking.status === 'pending'"
+              type="button"
+              class="btn btn-ghost small"
+              data-testid="venue-request-withdraw"
+              :disabled="busyId === booking.bookingId"
+              @click="withdraw(booking)"
+            >
+              {{ busyId === booking.bookingId ? 'Withdrawing…' : 'Withdraw request' }}
+            </button>
+            <button
+              v-else-if="isAssignedCoordinator && booking.status === 'approved'"
+              type="button"
+              class="btn btn-ghost small"
+              data-testid="venue-booking-cancel"
+              :disabled="busyId === booking.bookingId"
+              @click="cancel(booking)"
+            >
+              {{ busyId === booking.bookingId ? 'Cancelling…' : 'Cancel this booking' }}
+            </button>
+          </li>
+        </ul>
+      </div>
+      <div v-if="replacementFor" class="replacement" data-testid="venue-replacement">
         <p>
-          A request for <strong>{{ venueNameFor(pendingRequest.venueId) }}</strong> is waiting for Venue Staff
-          (sent {{ formatUtc(pendingRequest.createdAt) }} UTC).
-          <template v-if="isAssignedCoordinator">Withdraw it before requesting a different venue.</template>
+          Search for a replacement for {{ venueNameFor(replacementFor.venueId) }}.
+          This uses that booking's time and this event's current details. The event is not changed.
         </p>
         <button
-          v-if="isAssignedCoordinator"
           type="button"
-          class="btn btn-ghost small"
-          data-testid="venue-request-withdraw"
-          :disabled="withdrawing"
-          @click="withdraw"
+          class="btn btn-solid small"
+          data-testid="venue-replacement-search"
+          :disabled="replacementSearching"
+          @click="searchReplacement"
         >
-          {{ withdrawing ? 'Withdrawing…' : 'Withdraw request' }}
+          {{ replacementSearching ? 'Searching…' : 'Search for a replacement' }}
         </button>
+        <ul v-if="replacementResults" class="booking-list">
+          <li v-for="venue in replacementResults" :key="venue.venueId">
+            <span>{{ venue.name }}<template v-if="venue.verdict"> · {{ venue.verdict }}</template></span>
+            <button
+              type="button"
+              class="btn btn-ghost small"
+              :data-testid="`venue-replacement-${venue.venueId}`"
+              :disabled="busyId === replacementFor.bookingId"
+              @click="sendReplacement(venue)"
+            >
+              Request this venue
+            </button>
+          </li>
+          <li v-if="!replacementResults.length" class="empty-note">No other venue is free for this booking's time.</li>
+        </ul>
+        <p v-if="replacementError" class="form-error">{{ replacementError }}</p>
       </div>
-      <p v-if="withdrawError" class="form-error">{{ withdrawError }}</p>
+      <p v-if="actionError" class="form-error">{{ actionError }}</p>
       <p v-if="notice" class="success-note" data-testid="venue-request-result">{{ notice }}</p>
+
+      <!-- SPM-61: search narrows the list below; until then every venue is listed. -->
+      <VenueSearch :event="event" :venues="venues" @results="searchResults = $event" />
 
       <div class="layout">
         <div class="venue-list">
           <div
-            v-for="venue in venues"
+            v-for="venue in shownVenues"
             :key="venue.venueId"
             class="venue-row"
             :class="{ active: selectedId === venue.venueId }"
@@ -56,9 +132,27 @@
             @click="selectVenue(venue)"
           >
             <div class="venue-name">{{ venue.name }}</div>
-            <div class="venue-meta">{{ venue.location }} · Capacity {{ venue.capacity }}</div>
+            <div v-if="searchResults" class="venue-meta">
+              {{ venue.location }} · Capacity {{ venue.layoutCapacity }}
+              {{ venue.layout ? `in ${venue.layout}` : 'at most' }} · {{ venue.headroom }} spare
+            </div>
+            <div v-else class="venue-meta">{{ venue.location }} · Capacity {{ venue.capacity }}</div>
+            <span
+              v-if="venue.contested"
+              class="contested"
+              :data-testid="`venue-contested-${venue.venueId}`"
+            >Contested: another event's request for this time is waiting for Venue Staff</span>
+            <!-- SPM-62 AC9: the same verdict the check below gives when this venue is picked. -->
+            <span
+              v-if="venue.verdict"
+              class="row-verdict"
+              :class="VERDICT_CLASSES[venue.verdict]"
+              :data-testid="`venue-verdict-${venue.venueId}`"
+            >{{ VERDICT_LABELS[venue.verdict] }}</span>
           </div>
-          <p v-if="!venues.length" class="empty-note">No venues are currently available.</p>
+          <p v-if="!shownVenues.length" class="empty-note">
+            {{ searchResults ? 'No venue fits these requirements.' : 'No venues are currently available.' }}
+          </p>
         </div>
 
         <div class="verdict-panel">
@@ -117,12 +211,16 @@ import { useRoute, useRouter } from 'vue-router'
 import { getEvent } from '../../api/eventService.js'
 import {
   checkSuitability,
+  cancelVenueBooking,
   getVenueBookings,
   getVenues,
   requestVenueBooking,
+  requestVenueReplacement,
+  searchVenues,
   withdrawVenueBooking,
 } from '../../api/venueService.js'
 import { session } from '../../store/session.js'
+import VenueSearch from './VenueSearch.vue'
 
 const VERDICT_LABELS = {
   suitable: 'Suitable',
@@ -137,6 +235,9 @@ const eventId = route.params.id
 const canCheck = computed(() => session.role === 'coordinator')
 const event = ref(null)
 const venues = ref([])
+// SPM-61: the shortlist from the last search, or null to list every venue.
+const searchResults = ref(null)
+const shownVenues = computed(() => searchResults.value ?? venues.value)
 const loading = ref(true)
 const error = ref('')
 
@@ -153,9 +254,20 @@ const acknowledged = ref(false)
 const notes = ref('')
 const submitting = ref(false)
 const requestError = ref('')
-const withdrawing = ref(false)
-const withdrawError = ref('')
+const busyId = ref('')
+const actionError = ref('')
 const notice = ref('')
+const replacementFor = ref(null)
+const replacementResults = ref(null)
+const replacementSearching = ref(false)
+const replacementError = ref('')
+const STATUS_LABELS = {
+  pending: 'Pending',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  withdrawn: 'Withdrawn',
+  cancelled: 'Cancelled',
+}
 
 // SPM-46 AC1: only the event's assigned coordinator requests or withdraws a
 // venue. The server enforces the same; this only decides what to offer.
@@ -165,7 +277,20 @@ const isAssignedCoordinator = computed(
     !!event.value?.coordinatorId &&
     event.value.coordinatorId === session.userId,
 )
-const pendingRequest = computed(() => bookings.value.find((b) => b.status === 'pending') || null)
+const openBookings = computed(() =>
+  bookings.value.filter((booking) => booking.status === 'pending' || booking.status === 'approved'),
+)
+const arrangementsComplete = computed(
+  () => openBookings.value.length > 0 && openBookings.value.every((booking) => booking.status === 'approved'),
+)
+const selectedAlreadyBooked = computed(() =>
+  openBookings.value.some((booking) => booking.venueId === selectedId.value),
+)
+const arrangementText = computed(() => {
+  if (!openBookings.value.length) return 'No venues are requested for this event yet.'
+  if (arrangementsComplete.value) return 'Venue arrangements are complete. Every requested venue is approved.'
+  return 'Venue arrangements are not complete until every requested venue is approved.'
+})
 const hasDates = computed(() => Boolean(event.value?.proposedStartAt && event.value?.proposedEndAt))
 const inPlanning = computed(() => PLANNING_STATUSES.includes(event.value?.status))
 
@@ -173,7 +298,7 @@ const canSubmit = computed(() => Boolean(
   result.value
     && result.value.verdict !== 'not suitable'
     && (result.value.verdict !== 'suitable with warnings' || acknowledged.value)
-    && !pendingRequest.value
+    && !selectedAlreadyBooked.value
     && hasDates.value
     && inPlanning.value
     && !submitting.value,
@@ -185,22 +310,30 @@ const submitHint = computed(() => {
   if (result.value.verdict === 'not suitable') return 'This venue cannot be requested until every failure above is resolved.'
   if (!inPlanning.value) return 'A venue can be requested once the event has been approved for planning.'
   if (!hasDates.value) return "Add the event's date and time before requesting a venue."
-  if (pendingRequest.value) return 'This event already has a pending request. Withdraw it first to request this venue.'
+  if (selectedAlreadyBooked.value) {
+    return 'This event already has a booking for this venue. Withdraw, reject, or cancel it before requesting it again.'
+  }
   if (result.value.verdict === 'suitable with warnings' && !acknowledged.value) {
     return 'Tick the box above to confirm you have read the warnings.'
   }
   return ''
 })
 
+function statusLabel(status) {
+  return STATUS_LABELS[status] || status
+}
+
 // Only the latest click may show its verdict, so a slow check for an earlier
 // venue can never appear under the venue picked after it.
 let checkToken = 0
 
-const verdictClass = computed(() => ({
+const VERDICT_CLASSES = {
   suitable: 'ok',
   'suitable with warnings': 'warn',
   'not suitable': 'fail',
-})[result.value?.verdict])
+}
+
+const verdictClass = computed(() => VERDICT_CLASSES[result.value?.verdict])
 
 // The team shows every time in UTC until the customer specifies a timezone.
 function formatUtc(iso) {
@@ -241,7 +374,8 @@ function venueNameFor(venueId) {
 }
 
 // SPM-63 AC2: the request uses the event's own dates; the server adds the
-// rest of the event's facts and runs the suitability check again.
+// rest of the event's facts, the venue's setup and turnaround (SPM-64), and
+// runs the suitability check again.
 async function requestVenue() {
   submitting.value = true
   requestError.value = ''
@@ -252,8 +386,6 @@ async function requestVenue() {
       venueId: selectedId.value,
       startsAt: event.value.proposedStartAt,
       endsAt: event.value.proposedEndAt,
-      setupStartsAt: event.value.proposedStartAt,
-      teardownEndsAt: event.value.proposedEndAt,
       coordinatorNotes: notes.value.trim(),
       acknowledgeWarnings: acknowledged.value,
     })
@@ -268,18 +400,80 @@ async function requestVenue() {
   }
 }
 
-async function withdraw() {
-  withdrawing.value = true
-  withdrawError.value = ''
+function openReplacement(booking) {
+  replacementFor.value = booking
+  replacementResults.value = null
+  replacementError.value = ''
+}
+
+async function searchReplacement() {
+  const booking = replacementFor.value
+  if (!booking) return
+  replacementSearching.value = true
+  replacementError.value = ''
+  try {
+    const { data } = await searchVenues({
+      eventId,
+      startsAt: booking.startsAt,
+      endsAt: booking.endsAt,
+      minCapacity: event.value.expectedAttendance || 0,
+      layout: event.value.layoutPreference || undefined,
+    })
+    replacementResults.value = data.filter((venue) => venue.venueId !== booking.venueId)
+  } catch (err) {
+    replacementError.value = err.response?.data?.detail || 'Unable to search for a replacement right now.'
+  } finally {
+    replacementSearching.value = false
+  }
+}
+
+async function sendReplacement(venue) {
+  const booking = replacementFor.value
+  if (!booking) return
+  busyId.value = booking.bookingId
+  replacementError.value = ''
   notice.value = ''
   try {
-    const { data } = await withdrawVenueBooking(pendingRequest.value.bookingId)
-    bookings.value = bookings.value.map((b) => (b.bookingId === data.bookingId ? data : b))
-    notice.value = 'Request withdrawn. Venue Staff have been told, and you can now request a different venue.'
+    await requestVenueReplacement(booking.bookingId, { venueId: venue.venueId })
+    const { data } = await getVenueBookings({ eventId })
+    bookings.value = data
+    notice.value = `Replacement requested for ${venue.name}. The original booking stays on record and no longer holds the venue.`
+    replacementFor.value = null
+    replacementResults.value = null
   } catch (err) {
-    withdrawError.value = err.response?.data?.detail || 'Unable to withdraw this request right now. Please try again.'
+    replacementError.value = err.response?.data?.detail || 'Unable to request this replacement right now.'
   } finally {
-    withdrawing.value = false
+    busyId.value = ''
+  }
+}
+
+async function withdraw(booking) {
+  busyId.value = booking.bookingId
+  actionError.value = ''
+  notice.value = ''
+  try {
+    const { data } = await withdrawVenueBooking(booking.bookingId)
+    bookings.value = bookings.value.map((row) => (row.bookingId === data.bookingId ? data : row))
+    notice.value = `Request withdrawn for ${venueNameFor(booking.venueId)}. The event's other venue bookings are unchanged.`
+  } catch (err) {
+    actionError.value = err.response?.data?.detail || 'Unable to withdraw this request right now. Please try again.'
+  } finally {
+    busyId.value = ''
+  }
+}
+
+async function cancel(booking) {
+  busyId.value = booking.bookingId
+  actionError.value = ''
+  notice.value = ''
+  try {
+    const { data } = await cancelVenueBooking(booking.bookingId)
+    bookings.value = bookings.value.map((row) => (row.bookingId === data.bookingId ? data : row))
+    notice.value = `Booking cancelled for ${venueNameFor(booking.venueId)}. The event's other venue bookings are unchanged.`
+  } catch (err) {
+    actionError.value = err.response?.data?.detail || 'Unable to cancel this booking right now. Please try again.'
+  } finally {
+    busyId.value = ''
   }
 }
 
@@ -318,12 +512,29 @@ onMounted(async () => {
 .all-clear { margin-bottom: 18px; }
 .request-error { margin-top: 14px; }
 
-.pending-banner {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+.arrangement {
   margin: 0 0 18px; padding: 14px 16px; border-radius: 12px;
   background: rgba(255, 198, 109, .08); border: 1px solid rgba(255, 198, 109, .3);
 }
-.pending-banner p { margin: 0; font-size: 13px; color: var(--text); line-height: 1.6; }
+.arrangement.complete {
+  background: rgba(56, 224, 200, .08); border-color: rgba(56, 224, 200, .3);
+}
+.replacement {
+  margin: 0 0 18px; padding: 14px 16px; border-radius: 12px;
+  background: rgba(255, 138, 118, .06); border: 1px solid rgba(255, 138, 118, .25);
+}
+.replacement .booking-list { margin-top: 10px; }
+.arrangement p { margin: 0; font-size: 13px; color: var(--text); line-height: 1.6; }
+.booking-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.hold-tag {
+  display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: 11px;
+}
+.hold-tag.active { color: #FFC66D; background: rgba(255, 198, 109, .15); }
+.hold-tag.expired { color: var(--muted); background: rgba(255, 255, 255, .06); }
+.booking-list li {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  font-size: 13px; color: var(--text);
+}
 .read-only-note {
   margin: 0 0 18px; padding: 11px 14px; border-radius: 9px; font-size: 13px; line-height: 1.6;
   color: var(--body); background: var(--glass); border: 1px solid var(--hairline);
@@ -363,6 +574,17 @@ onMounted(async () => {
 }
 .venue-name { font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: var(--text); font-size: 14px; }
 .venue-meta { font-size: 12px; margin-top: 3px; color: var(--muted); }
+.contested {
+  display: inline-block; margin-top: 6px; padding: 2px 8px; border-radius: 999px; font-size: 11px;
+  color: var(--text); background: rgba(255, 198, 109, .12); border: 1px solid rgba(255, 198, 109, .35);
+}
+.row-verdict {
+  display: inline-block; margin: 6px 0 0 6px; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+}
+.row-verdict.ok { color: var(--signal); background: rgba(56, 224, 200, .15); }
+.row-verdict.warn { color: #FFC66D; background: rgba(255, 198, 109, .15); }
+.row-verdict.fail { color: #FF8A76; background: rgba(255, 138, 118, .15); }
 
 .verdict-panel {
   background: var(--glass); border: 1px solid var(--hairline);

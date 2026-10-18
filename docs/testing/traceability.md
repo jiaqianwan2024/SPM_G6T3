@@ -52,15 +52,17 @@
 | SPM-59 | Open events beneath own registrations | TC-SPM59-AC04 | `e2e/spm59.spec.js` | Automated |
 | SPM-59 | No coordinator, notes, or other attendees | TC-SPM59-AC05 | `e2e/spm59.spec.js` | Automated |
 | SPM-59 | No registrations points at browsing events | TC-SPM59-AC06 | `e2e/spm59.spec.js` | Automated |
-| SPM-8 | View submitted request and approve | TC-SPM08-AC01 | `e2e/spm08.spec.js` | Automated |
-| SPM-8 | Approved booking reserved by datetime | TC-SPM08-AC02 | `e2e/spm08.spec.js` | Automated |
-| SPM-8 | Approved booking locked until event completes | TC-SPM08-AC03 | `e2e/spm08.spec.js` | Automated |
-| SPM-8 | Approver and time persist | TC-SPM08-AC04 | `e2e/spm08.spec.js` | Automated |
-| SPM-8 | Unavailability blocks approval | TC-SPM08-AC05 | `e2e/spm08.spec.js` | Automated |
-| SPM-8 | Confirmed overlap blocks approval | TC-SPM08-AC06 | `e2e/spm08.spec.js` | Automated |
-| SPM-8 | Tentative hold blocks approval | TC-SPM08-AC07 | `e2e/spm08.spec.js` | Automated |
-| SPM-8 | Free slot becomes confirmed and locks venue | TC-SPM08-AC08 | `e2e/spm08.spec.js` | Automated |
-| SPM-8 | Competing requests oldest first | TC-SPM08-AC09 | `e2e/spm08.spec.js` | Automated |
+| SPM-8 | View a submitted request with event timing, venue requirements and submission time | TC-SPM08-AC01, AC01b | `e2e/spm08.spec.js`; `services/venue-service/tests/unit/test_venue_approval.py` | Automated (browser: Booking Requests; API: only Venue Staff and coordinators can read) |
+| SPM-8 | Venue Staff approve a pending request | TC-SPM08-AC02, AC02b | `e2e/spm08.spec.js`; `services/venue-service/tests/unit/test_venue_approval.py` | Automated (browser and API; other roles 403, unknown booking 404) |
+| SPM-8 | Approved booking can be viewed and reserves the occupied window | TC-SPM08-AC03 | `e2e/spm08.spec.js`; `services/venue-service/tests/unit/test_venue_approval.py` | Automated (browser and API) |
+| SPM-8 | Approved booking stays locked | TC-SPM08-AC04 | `e2e/spm08.spec.js`; `services/venue-service/tests/unit/test_venue_approval.py` | Automated: approve, reject, withdraw and hold are refused (409) and the window stays reserved |
+| SPM-8 | Approval records who and when, and the record stays | TC-SPM08-AC05 | `e2e/spm08.spec.js`; `services/venue-service/tests/unit/test_venue_approval.py`; `services/venue-service/tests/integration/test_workflow.py` | Automated (browser, API and SQL). Completing an event (SPM-73) never changes venue bookings and rows are never deleted; the record also stays when the event is later cancelled (unit) |
+| SPM-8 | Overlapping unavailability blocks approval, shows an error, request stays pending | TC-SPM08-AC06, AC06b, AC06c | `e2e/spm08.spec.js`; `services/venue-service/tests/unit/test_venue_approval.py`; `services/venue-service/tests/integration/test_workflow.py` | Automated, with blocks recorded through SPM-9; a block that only touches does not block |
+| SPM-8 | Overlapping confirmed booking blocks approval | TC-SPM08-AC07 | `e2e/spm08.spec.js`; `services/venue-service/tests/unit/test_venue_approval.py` | Automated |
+| SPM-8 | Overlapping active tentative hold blocks approval | TC-SPM08-AC08 | `e2e/spm08.spec.js`; `services/venue-service/tests/unit/test_venue_approval.py` | Automated, with a hold placed through SPM-116 |
+| SPM-8 | Expired hold does not block and is not a confirmed booking | TC-SPM08-AC09 | `e2e/spm08.spec.js`; `services/venue-service/tests/unit/test_venue_approval.py` | Automated (waits for a real hold to expire) |
+| SPM-8 | No overlap: approved, confirmed booking links venue and event, venue locked | TC-SPM08-AC10 | `e2e/spm08.spec.js`; `services/venue-service/tests/unit/test_venue_approval.py` | Automated, including a request whose window only touches |
+| SPM-8 | Competing requests shown oldest first | TC-SPM08-AC11 | `e2e/spm08.spec.js`; `services/venue-service/tests/unit/test_venue_approval.py` | Automated (browser and API); the screen marks each competing request's place |
 | SPM-9 | Record unavailability period | TC-SPM09-AC01 | `e2e/spm09.spec.js` | Automated |
 | SPM-9 | Mandatory reason from published list | TC-SPM09-AC02 | `e2e/spm09.spec.js` | Automated |
 | SPM-9 | Block excludes venue from search | TC-SPM09-AC03 | `e2e/spm09.spec.js` | Automated |
@@ -69,13 +71,14 @@
 | SPM-9 | Overlap warning, acknowledge, notify | TC-SPM09-AC06 | `e2e/spm09.spec.js` | Automated |
 | SPM-9 | Cancel block frees the slot | TC-SPM09-AC07 | `e2e/spm09.spec.js` | Automated |
 | SPM-9 | Unavailability changes in activity log | TC-SPM09-AC08 | `e2e/spm09.spec.js` | Automated |
-| SPM-10 | View pending request details | TC-SPM10-AC01 | `e2e/spm10.spec.js` | Automated |
-| SPM-10 | Reject requires a reason | TC-SPM10-AC02 | `e2e/spm10.spec.js` | Automated |
-| SPM-10 | Optional alternative venue | TC-SPM10-AC03 | `e2e/spm10.spec.js` | Automated |
-| SPM-10 | Rejected leaves queue and is read-only | TC-SPM10-AC04 | `e2e/spm10.spec.js` | Automated |
-| SPM-10 | Rejected request holds nothing | TC-SPM10-AC05 | `e2e/spm10.spec.js` | Automated |
-| SPM-10 | Rejecter, reason, and time recorded | TC-SPM10-AC06 | `e2e/spm10.spec.js` | Automated |
-| SPM-10 | Pending requests do not auto-expire | TC-SPM10-AC07 | `e2e/spm10.spec.js` | Automated |
+| SPM-10 | View the full details of a pending request | TC-SPM10-AC01 | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py` | Automated (browser: View full details on Booking Requests) |
+| SPM-10 | Rejecting requires a reason | TC-SPM10-AC02, AC02b | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py` | Automated (API and browser); blank or missing is 422, over 2000 characters is 422; only Venue Staff can reject |
+| SPM-10 | Optional suggested alternative venue | TC-SPM10-AC03 | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py` | Automated (browser and API); unknown, retired, or the same venue is refused; the coordinator sees the reason and suggestion on Choose venues |
+| SPM-10 | Rejected, out of the pending queue, no longer approvable or changeable | TC-SPM10-AC04 | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py` | Automated (browser and API) |
+| SPM-10 | A rejected request reserves nothing; its active hold is released | TC-SPM10-AC05 | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py`; `services/venue-service/tests/integration/test_workflow.py` | Automated |
+| SPM-10 | Who rejected it, the reason, and when are recorded | TC-SPM10-AC06 | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py`; `services/venue-service/tests/integration/test_workflow.py` | Automated (API, browser and SQL) |
+| SPM-10 | A tentative hold expires at its expiry time, frees the venue, is not a confirmed booking | TC-SPM10-AC07 | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py` | Automated (polls until a real hold has expired; the exact expiry boundary is unit-tested) |
+| SPM-10 | A pending request without a hold stays queued until approved or rejected | TC-SPM10-AC08 | `e2e/spm10.spec.js`; `services/venue-service/tests/unit/test_venue_rejection.py` | Automated |
 | SPM-17 | Staff list name, location, capacity | TC-SPM17-AC01 | `e2e/spm17.spec.js` | Automated |
 | SPM-17 | Venue detail fields | TC-SPM17-AC02 | `e2e/spm17.spec.js` | Automated |
 | SPM-17 | Retired hidden unless filtered | TC-SPM17-AC03 | `e2e/spm17.spec.js` | Automated |
@@ -91,39 +94,62 @@
 | SPM-60 | Only venue staff can write | TC-SPM60-AC07 | `e2e/spm60.spec.js` | Automated |
 | SPM-60 | Seeded published catalogue | TC-SPM60-AC08 | `e2e/spm60.spec.js` | Automated |
 | SPM-60 | Changes written to activity log | TC-SPM60-AC09 | `e2e/spm60.spec.js` | Automated |
-| SPM-61 | Search pre-filled from event | TC-SPM61-AC01 | `e2e/spm61.spec.js` | Automated |
+| SPM-61 | Search pre-filled from event | TC-SPM61-AC01 | `e2e/spm61.spec.js` | Automated (UI) |
 | SPM-61 | Published filters | TC-SPM61-AC02 | `e2e/spm61.spec.js` | Automated |
-| SPM-61 | Confirmed or unavailable excluded | TC-SPM61-AC03 | `e2e/spm61.spec.js` | Automated |
-| SPM-61 | Layout or capacity mismatch excluded | TC-SPM61-AC04 | `e2e/spm61.spec.js` | Automated |
-| SPM-61 | Missing facility or access excluded | TC-SPM61-AC05 | `e2e/spm61.spec.js` | Automated |
-| SPM-61 | Outside hours excluded | TC-SPM61-AC06 | `e2e/spm61.spec.js` | Automated |
-| SPM-61 | Layout capacity and headroom | TC-SPM61-AC07 | `e2e/spm61.spec.js` | Automated |
-| SPM-61 | Pending overlap marked contested | TC-SPM61-AC08 | `e2e/spm61.spec.js` | Automated |
+| SPM-61 | Confirmed booking, unavailability, or active hold excluded (with setup and turnaround) | TC-SPM61-AC03 | `e2e/spm61.spec.js` | Automated: confirmed booking, unavailability (recorded through SPM-9) and active hold, each with setup and turnaround |
+| SPM-61 | Expired hold does not exclude | TC-SPM61-AC04 | `e2e/spm61.spec.js` | Automated (polls until a real hold has expired) |
+| SPM-61 | Layout or capacity mismatch excluded | TC-SPM61-AC05 | `e2e/spm61.spec.js` | Automated |
+| SPM-61 | Missing facility or access excluded | TC-SPM61-AC06 | `e2e/spm61.spec.js` | Automated |
+| SPM-61 | Outside hours excluded | TC-SPM61-AC07 | `e2e/spm61.spec.js` | Automated |
+| SPM-61 | Layout capacity and headroom | TC-SPM61-AC08 | `e2e/spm61.spec.js` | Automated (API and UI) |
+| SPM-61 | Pending overlap marked contested | TC-SPM61-AC09 | `e2e/spm61.spec.js` | Automated (API and UI); an active hold, unlike a pending request, leaves the venue out (TC-SPM61-AC03b) |
 | SPM-62 | Verdict with reasons | TC-SPM62-AC01 | `e2e/spm62.spec.js` | Automated |
 | SPM-62 | Over-capacity names both numbers | TC-SPM62-AC02 | `e2e/spm62.spec.js` | Automated |
 | SPM-62 | Missing layout, facility, access | TC-SPM62-AC03 | `e2e/spm62.spec.js` | Automated |
-| SPM-62 | Clash named as failure | TC-SPM62-AC04 | `e2e/spm62.spec.js` | Automated |
+| SPM-62 | Clash named as failure | TC-SPM62-AC04 | `e2e/spm62.spec.js` | Automated: a confirmed booking, and an unavailability block recorded through SPM-9 |
 | SPM-62 | Outside hours is a failure | TC-SPM62-AC05 | `e2e/spm62.spec.js` | Automated |
 | SPM-62 | Tight fit is a warning | TC-SPM62-AC06 | `e2e/spm62.spec.js` | Automated |
 | SPM-62 | Pending overlap is a warning | TC-SPM62-AC07 | `e2e/spm62.spec.js` | Automated |
 | SPM-62 | Failures block submit; warnings do not | TC-SPM62-AC08 | `e2e/spm62.spec.js` | Automated |
-| SPM-62 | Shared suitability rule | TC-SPM62-AC09 | `e2e/spm62.spec.js` | Automated; fails until SPM-61 search exists |
+| SPM-62 | Shared suitability rule | TC-SPM62-AC09 | `e2e/spm62.spec.js`; `services/venue-service/tests/unit/test_venue_search.py` | Automated (API and UI): a search for an event gives each venue the same verdict as checking it directly, and booking requests run the same check. Re-verification (SPM-86) uses the same suitability check when Venue Staff re-confirm a flagged booking |
 | SPM-63 | Request venue for planning event | TC-SPM63-AC01 | `e2e/spm63.spec.js` | Automated |
 | SPM-63 | Request carries event facts | TC-SPM63-AC02 | `e2e/spm63.spec.js` | Automated |
 | SPM-63 | Failed suitability blocks submit | TC-SPM63-AC03 | `e2e/spm63.spec.js` | Automated |
-| SPM-63 | Warnings acknowledged and carried | TC-SPM63-AC04 | `e2e/spm63.spec.js` | Automated; the Venue Staff queue screen step fails until SPM-8/SPM-57 |
-| SPM-63 | Notify staff and pending queue | TC-SPM63-AC05 | `e2e/spm63.spec.js` | Automated; the notification list step fails until an in-app notification list exists |
-| SPM-63 | Pending on calendar, not locking | TC-SPM63-AC06 | `e2e/spm63.spec.js` | Automated; fails until the SPM-108 calendar and SPM-61 search exist |
-| SPM-63 | One pending request per event | TC-SPM63-AC07 | `e2e/spm63.spec.js` | Automated |
-| SPM-63 | Coordinator can withdraw | TC-SPM63-AC08 | `e2e/spm63.spec.js` | Automated; the calendar step fails until SPM-108 |
-| SPM-63 | Readiness in progress while pending | TC-SPM63-AC09 | `e2e/spm63.spec.js` | Automated; fails until the SPM-5 readiness view exists |
-| SPM-64 | Shared conflict rule | TC-SPM64-AC01 | `e2e/spm64.spec.js` | Automated |
-| SPM-64 | Confirmed bookings never overlap | TC-SPM64-AC02 | `e2e/spm64.spec.js` | Automated |
-| SPM-64 | Booking conflicts with unavailability | TC-SPM64-AC03 | `e2e/spm64.spec.js` | Automated |
-| SPM-64 | Touching ranges allowed | TC-SPM64-AC04 | `e2e/spm64.spec.js` | Automated |
-| SPM-64 | Simultaneous approve: one winner | TC-SPM64-AC05 | `e2e/spm64.spec.js` | Automated |
-| SPM-64 | Release hold on reject or withdraw | TC-SPM64-AC06 | `e2e/spm64.spec.js` | Automated |
-| SPM-64 | Overlap boundary cases | TC-SPM64-AC07 | `e2e/spm64.spec.js` | Automated |
+| SPM-63 | Warnings acknowledged and carried | TC-SPM63-AC04 | `e2e/spm63.spec.js` | Automated (browser). The coordinator acknowledges the warning on Choose venues, and Venue Staff see it with the request on Booking Requests (SPM-8). |
+| SPM-63 | Notify staff and pending queue | TC-SPM63-AC05 | `e2e/spm63.spec.js` | Automated. The booking is in the pending queue. Venue Staff are emailed, but that email is not stored in the in-app notification list. |
+| SPM-63 | Pending does not lock the venue | TC-SPM63-AC06 | `e2e/spm63.spec.js` | Automated. The venue still appears in search for that period, and the venue calendar shows a pending entry; a withdrawn request leaves the calendar (TC-SPM63-AC08b). |
+| SPM-63 | A second venue while the first is pending | TC-SPM63-AC07 | `e2e/spm63.spec.js` | Automated. SPM-114: a different venue is accepted (201). The same venue is refused (409) while that booking is pending or approved. |
+| SPM-63 | Coordinator can withdraw | TC-SPM63-AC08 | `e2e/spm63.spec.js` | Automated. Withdraw returns withdrawn and the booking leaves the pending queue. |
+| SPM-63 | Arrangement not complete while pending | TC-SPM63-AC09 | `e2e/spm63.spec.js`; `services/event-service/tests/unit/test_event_followup.py` | Automated (browser). The readiness view's venue line reads in progress while a request is pending (wired into SPM-5's readiness view), and Choose venues shows the arrangement as not complete. |
+| SPM-115 | Search for and request a replacement | TC-SPM115-AC01 | `e2e/spm115.spec.js` | Automated (API and browser). Search leaves out the blocked venue. Choose venues can request another venue for the affected booking. |
+| SPM-115 | Replacement checked on its own | TC-SPM115-AC02 | `e2e/spm115.spec.js` | Automated. An unsuitable venue, or one already booked for that time, is refused and the original booking stays approved. |
+| SPM-115 | Original booking remains readable | TC-SPM115-AC03 | `e2e/spm115.spec.js` | Automated. After a replacement is accepted, the original booking can still be opened and its status is cancelled. |
+| SPM-115 | Event details stay unchanged | TC-SPM115-AC04 | `e2e/spm115.spec.js` | Automated. The replacement uses the booking's existing time. The event's name, attendance, layout, times, and status are not written. |
+| SPM-115 | Recording a block leaves the event status unchanged | TC-SPM115-AC05 | `e2e/spm115.spec.js` | Automated. Venue Staff record the block. The event status stays the same, and the approved booking stays approved until a replacement is requested. |
+| SPM-64 | Shared conflict rule | TC-SPM64-AC01 | `e2e/spm64.spec.js` | Automated (search, suitability, approval); venue blocking (SPM-9) finds affected bookings with the same occupied window and active-hold rule; rescheduling (SPM-87) and re-verification (SPM-86) use the same occupied window |
+| SPM-64 | Occupied window adds setup and turnaround | TC-SPM64-AC02 | `e2e/spm64.spec.js` | Automated |
+| SPM-64 | Confirmed bookings never overlap, also in the database | TC-SPM64-AC03 | `e2e/spm64.spec.js`; `services/venue-service/tests/integration/test_double_booking_mysql.py` | Automated |
+| SPM-64 | Conflicts with unavailability and active holds | TC-SPM64-AC04 | `e2e/spm64.spec.js` | Automated: active hold, and an unavailability block recorded through SPM-9 |
+| SPM-64 | Expired hold does not conflict | TC-SPM64-AC05 | `e2e/spm64.spec.js` | Automated (polls until a real hold has expired) |
+| SPM-64 | Touching windows fine, touching event times can clash | TC-SPM64-AC06 | `e2e/spm64.spec.js` | Automated |
+| SPM-64 | Simultaneous approvals: one winner | TC-SPM64-AC07 | `e2e/spm64.spec.js`; `services/venue-service/tests/integration/test_double_booking_mysql.py` | Automated |
+| SPM-64 | Cancel, reject, complete, or withdraw releases the hold | TC-SPM64-AC08 | `e2e/spm64.spec.js` | Withdraw, single-booking cancel, and event release (SPM-114) automated; rejecting (SPM-70) and completing (SPM-72/73) are to call the same release |
+| SPM-112 | Occupied window is start minus setup through end plus turnaround, from the venue's current times | TC-SPM112-AC01 | `e2e/spm112.spec.js`; `services/venue-service/tests/unit/test_venue_occupied_window.py` | Automated |
+| SPM-112 | Search, suitability, approval and unavailability use the same window | TC-SPM112-AC02 | `e2e/spm112.spec.js`; `services/venue-service/tests/unit/test_venue_occupied_window.py` | Search, suitability, request and approval automated, with a confirmed booking (AC02) and with unavailability blocks recorded through SPM-9 (AC02c); rescheduling (SPM-87) and re-verification (SPM-86) call the same occupied window |
+| SPM-112 | The coordinator's venue screen applies the same window | TC-SPM112-AC02b | `e2e/spm112.spec.js` | Automated (browser) |
+| SPM-112 | Windows that only touch do not conflict | TC-SPM112-AC03 | `e2e/spm112.spec.js`; `services/venue-service/tests/integration/test_double_booking_mysql.py` | Automated |
+| SPM-122 | Every pair of confirmed bookings whose windows overlap under the venue's current times is listed | TC-SPM122-AC01 | `e2e/spm122.spec.js`; `services/venue-service/tests/unit/test_venue_booking_clashes.py` | Automated |
+| SPM-122 | Clashes shown in the venue catalogue once new times are saved | TC-SPM122-AC01b | `e2e/spm122.spec.js` | Automated (browser) |
+| SPM-122 | Each clash names the venue, both events and the overlapping times | TC-SPM122-AC02 | `e2e/spm122.spec.js`; `services/venue-service/tests/unit/test_venue_booking_clashes.py` | Automated |
+| SPM-122 | Listed bookings kept with their status and event details | TC-SPM122-AC03 | `e2e/spm122.spec.js`; `services/venue-service/tests/unit/test_venue_booking_clashes.py` | Automated |
+| SPM-116 | Venue Staff hold a pending request until a future time no later than the event's start | TC-SPM116-AC01 | `e2e/spm116.spec.js`; `services/venue-service/tests/unit/test_venue_holds.py` | Automated (API and browser) |
+| SPM-116 | An active hold reserves the venue until it expires or is released | TC-SPM116-AC02 | `e2e/spm116.spec.js`; `services/venue-service/tests/unit/test_venue_holds.py` | Automated |
+| SPM-116 | An expired hold reserves nothing and is not a confirmed booking | TC-SPM116-AC03 | `e2e/spm116.spec.js`; `services/venue-service/tests/unit/test_venue_holds.py` | Automated (waits for a real hold to expire) |
+| SPM-116 | Once expired the venue is available again | TC-SPM116-AC04 | `e2e/spm116.spec.js`; `services/venue-service/tests/integration/test_workflow.py` | Automated |
+| SPM-116 | The assigned coordinator is notified before the hold expires | TC-SPM116-AC05 | `e2e/spm116.spec.js`; `services/venue-service/tests/unit/test_venue_holds.py` | Automated (API and browser); told when the hold is placed, with its expiry |
+| SPM-116 | Rejecting a request releases its hold | TC-SPM116-AC06 | `e2e/spm116.spec.js`; `services/venue-service/tests/integration/test_workflow.py` | Automated |
+| SPM-122 | Event records unchanged | TC-SPM122-AC04 | `e2e/spm122.spec.js`; `services/venue-service/tests/unit/test_venue_booking_clashes.py` | Automated |
+| SPM-112 | Touching event times conflict when setup or turnaround overlap | TC-SPM112-AC04 | `e2e/spm112.spec.js`; `services/venue-service/tests/integration/test_double_booking_mysql.py` | Automated |
 | SPM-108 | Calendar shows all three kinds | TC-SPM108-AC01 | `e2e/spm108.spec.js` | Automated |
 | SPM-108 | Kinds are visually distinct | TC-SPM108-AC02 | `e2e/spm108.spec.js` | Automated |
 | SPM-108 | Entry shows name, org, time, and opens | TC-SPM108-AC03 | `e2e/spm108.spec.js` | Automated |
@@ -154,17 +180,32 @@
 | SPM-65 | Queue row fields | TC-SPM65-AC02 | `e2e/spm65.spec.js` | Automated |
 | SPM-65 | Unassigned distinguished and filterable | TC-SPM65-AC03 | `e2e/spm65.spec.js` | Automated |
 | SPM-65 | Sort by wait and proposed date | TC-SPM65-AC04 | `e2e/spm65.spec.js` | Automated |
-| SPM-65 | Filter to assigned-to-me | TC-SPM65-AC05 | `e2e/spm65.spec.js` | Automated |
+| SPM-65 | A coordinator sees only their assigned requests (SPM-117) | TC-SPM65-AC05 | `e2e/spm65.spec.js` | Automated |
 | SPM-65 | Near proposed date uses shared threshold | TC-SPM65-AC06 | `e2e/spm65.spec.js` | Automated |
 | SPM-65 | Empty filter explains the exclusion | TC-SPM65-AC07 | `e2e/spm65.spec.js` | Automated |
-| SPM-66 | Assign self or another coordinator | TC-SPM66-AC01 | `e2e/spm66.spec.js` | Automated |
+| SPM-66 | Superseded by SPM-117: the Lead assigns a coordinator | TC-SPM66-AC01 | `e2e/spm66.spec.js` | Automated |
 | SPM-66 | Candidate list shows active-event counts | TC-SPM66-AC02 | `e2e/spm66.spec.js` | Automated |
 | SPM-66 | No workload cap | TC-SPM66-AC03 | `e2e/spm66.spec.js` | Automated |
 | SPM-66 | Assignment recorded in the activity log | TC-SPM66-AC04 | `e2e/spm66.spec.js` | Automated |
 | SPM-66 | Notify and show coordinator contact | TC-SPM66-AC05 | `e2e/spm66.spec.js` | Automated |
 | SPM-66 | Submitted moves to Under Review | TC-SPM66-AC06 | `e2e/spm66.spec.js` | Automated |
-| SPM-66 | Non-coordinators get 403 | TC-SPM66-AC07 | `e2e/spm66.spec.js` | Automated |
+| SPM-66 | Everyone but the Lead, Event Coordinators included, gets 403 | TC-SPM66-AC07 | `e2e/spm66.spec.js` | Automated |
 | SPM-66 | Cannot assign a non-coordinator | TC-SPM66-AC08 | `e2e/spm66.spec.js` | Automated |
+| SPM-117 | An Event Coordinator Lead signs in with a pre-created account | TC-SPM117-AC01 | `e2e/spm117.spec.js`; `e2e/spm43.spec.js` (ECL-01) | Automated |
+| SPM-117 | A newly submitted request stays unassigned until the Lead assigns it | TC-SPM117-AC02 | `e2e/spm117.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
+| SPM-117 | The Lead sees unassigned requests in the review queue with name, organisation, date and time, attendance, and submission time | TC-SPM117-AC03 | `e2e/spm117.spec.js` | Automated (UI) |
+| SPM-117 | The Lead assigns a request to an Event Coordinator | TC-SPM117-AC04 | `e2e/spm117.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated (UI) |
+| SPM-117 | An Event Coordinator who tries to assign gets 403 | TC-SPM117-AC05 | `e2e/spm117.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
+| SPM-117 | The activity log records who assigned, who was assigned, and when | TC-SPM117-AC06 | `e2e/spm117.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
+| SPM-117 | The new coordinator and the organiser are notified | TC-SPM117-AC07 | `e2e/spm117.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
+| SPM-118 | The Lead reassigns an event to a different coordinator; the current one cannot be chosen again | TC-SPM118-AC01 | `e2e/spm118.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated (UI and API) |
+| SPM-118 | An Event Coordinator who tries to reassign gets 403 | TC-SPM118-AC02 | `e2e/spm118.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
+| SPM-118 | Edit permission moves at once from the previous to the new coordinator | TC-SPM118-AC03 | `e2e/spm118.spec.js`; `e2e/spm46-ui.contract.spec.js` (TC-SPM46-AC03) | Automated |
+| SPM-118 | The activity log records who reassigned, who was assigned, and when | TC-SPM118-AC04 | `e2e/spm118.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
+| SPM-118 | The new coordinator, the previous coordinator, and the organiser are notified | TC-SPM118-AC05 | `e2e/spm118.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
+| SPM-119 | The Lead sees each Event Coordinator and their active events | TC-SPM119-AC01 | `e2e/spm119.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated (API and UI) |
+| SPM-119 | The Lead can open any of those events | TC-SPM119-AC02 | `e2e/spm119.spec.js` | Automated (UI) |
+| SPM-119 | An Event Coordinator does not get the view and manages only their own events | TC-SPM119-AC03 | `e2e/spm119.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
 | SPM-68 | Raise a clarification with optional field | TC-SPM68-AC01 | `e2e/spm68.spec.js` | Automated |
 | SPM-68 | Event moves to Changes Requested | TC-SPM68-AC02 | `e2e/spm68.spec.js` | Automated |
 | SPM-68 | Thread shows author, role, and time | TC-SPM68-AC03 | `e2e/spm68.spec.js` | Automated |
@@ -193,12 +234,13 @@
 | SPM-71 | Edits written to the activity log | TC-SPM71-AC05 | `e2e/spm71.spec.js` | Automated |
 | SPM-71 | Confirmed event no longer reads fully confirmed | TC-SPM71-AC06 | `e2e/spm71.spec.js` | Automated |
 | SPM-71 | Terminal events cannot be edited | TC-SPM71-AC07 | `e2e/spm71.spec.js` | Automated |
-| SPM-72 | Confirm gated on venue and equipment | TC-SPM72-AC01 | `e2e/spm72.spec.js` | Automated |
-| SPM-72 | Outstanding arrangements named | TC-SPM72-AC02 | `e2e/spm72.spec.js` | Automated |
-| SPM-72 | Confirm records decider and time | TC-SPM72-AC03 | `e2e/spm72.spec.js` | Automated |
-| SPM-72 | Organiser sees confirmed arrangements | TC-SPM72-AC04 | `e2e/spm72.spec.js` | Automated |
-| SPM-72 | Assigned staff are notified | TC-SPM72-AC05 | `e2e/spm72.spec.js` | Automated |
-| SPM-72 | Confirmed open events visible to attendees | TC-SPM72-AC06 | `e2e/spm72.spec.js` | Automated |
+| SPM-72 | Confirm needs an approved venue booking for the event's date and time, and every equipment line reserved or recorded as not required | TC-SPM72-AC01 | `e2e/spm72.spec.js`; `services/event-service/tests/unit/test_event_confirmation.py` | Automated: a booking at another time, an equipment line, a blank and a real not-required reason, cancel and rebook, then ready |
+| SPM-72 | Confirm unavailable while anything is outstanding, and the view names it | TC-SPM72-AC02 | `e2e/spm72.spec.js`; `services/event-service/tests/unit/test_event_confirmation.py` | Automated (API and UI): venue, equipment, and safety gaps named; marking a line not required from the view |
+| SPM-72 | Confirming records Confirmed, the decider, and the time | TC-SPM72-AC03 | `e2e/spm72.spec.js`; `services/event-service/tests/unit/test_event_confirmation.py` | Automated (UI): an organiser gets 403, a second confirm is 409 |
+| SPM-72 | Organiser notified and sees confirmed venue, date, time, layout, and equipment | TC-SPM72-AC04 | `e2e/spm72.spec.js`; `services/event-service/tests/unit/test_event_confirmation.py` | Automated |
+| SPM-72 | Venue staff and technical support on the arrangements notified | TC-SPM72-AC05 | `e2e/spm72.spec.js`; `services/event-service/tests/unit/test_event_confirmation.py` | Automated |
+| SPM-72 | A registration-enabled event is visible to attendees once confirmed and its period opens | TC-SPM72-AC06 | `e2e/spm72.spec.js`; `services/event-service/tests/unit/test_event_confirmation.py` | Automated: an open period is listed, a future one is not |
+| SPM-72 / SPM-121 | A significant change after safety approval withdraws it before confirmation | — | `services/event-service/tests/unit/test_event_confirmation.py`; `services/event-service/tests/unit/test_event_safety_reviews.py` | Unit-tested |
 | SPM-73 | Complete only after end time | TC-SPM73-AC01 | `e2e/spm73.spec.js` | Automated |
 | SPM-73 | Completion records who and when | TC-SPM73-AC02 | `e2e/spm73.spec.js` | Automated |
 | SPM-73 | Completed holds leave future availability | TC-SPM73-AC03 | `e2e/spm73.spec.js` | Automated |
@@ -343,6 +385,20 @@
 | SPM-106 | Drafts have no change-request action | TC-SPM106-AC08 | `e2e/spm106.spec.js` | Automated |
 | SPM-106 | Terminal events cannot raise a CR | TC-SPM106-AC09 | `e2e/spm106.spec.js` | Automated |
 | SPM-106 | Confirmed details stay confirmed while pending | TC-SPM106-AC10 | `e2e/spm106.spec.js` | Automated |
+| SPM-120 | Review only after venue and technical are confirmed | TC-SPM120-AC01 | `e2e/spm120.spec.js` | Automated |
+| SPM-120 | Venue Staff and technical support send their confirmed arrangements; the review opens once both are in (Week 7 change 6) | TC-SPM120-AC01 | `e2e/spm120.spec.js`; `services/event-service/tests/unit/test_event_safety_handoff.py` | Automated (API and UI): each part only for its own staff, refused until its arrangements are confirmed, the venue part alone when there is no equipment |
+| SPM-120 | Officer sees attendance, venue, emergency access, accessibility, placement, crowd movement, restrictions | TC-SPM120-AC02 | `e2e/spm120.spec.js` | Automated |
+| SPM-120 | Approve records decision, officer, and time | TC-SPM120-AC03 AC04 | `e2e/spm120.spec.js` | Automated |
+| SPM-120 | Approve, reject, or request changes from the Safety Officer dashboard | TC-SPM120-AC03 | `e2e/spm120.spec.js` | Automated |
+| SPM-120 | Reject records reason, no preparation, not cancelled, both notified, resubmit | TC-SPM120-AC05 AC09 | `e2e/spm120.spec.js` | Automated |
+| SPM-120 | Request changes returns to planning and flags arrangements | TC-SPM120-AC06 | `e2e/spm120.spec.js` | Automated |
+| SPM-120 | Safety Officer signs in with a pre-created account | TC-SPM120-AC07; TC-SPM43-AC01 (SO-01) | `e2e/spm120.spec.js`; `e2e/spm43.spec.js` | Automated |
+| SPM-120 | Other roles get 403 on decisions | TC-SPM120-AC08 | `e2e/spm120.spec.js` | Automated |
+| SPM-121 | An approved venue booking and reserved equipment confirm the arrangements without moving the event to Confirmed or showing it to attendees | TC-SPM121-AC01 | `e2e/spm121.spec.js` | Automated: still `planning`, then `safety approved`, and absent from the attendee and confirmed lists |
+| SPM-121 | The safety review starts only once every requested venue is approved and every equipment line is reserved or recorded as not required | TC-SPM121-AC02 | `e2e/spm121.spec.js`; `services/event-service/tests/unit/test_event_safety_reviews.py` | Automated: a second venue still pending, then an equipment line, then marked not required |
+| SPM-121 | Confirmed, and preparation begins, only after the Safety Officer approves | TC-SPM121-AC03 | `e2e/spm121.spec.js`; `services/event-service/tests/unit/test_event_confirmation.py` | Automated |
+| SPM-121 | Confirm unavailable while the safety check is outstanding, rejected, or returned for changes | TC-SPM121-AC04 | `e2e/spm121.spec.js`; `services/event-service/tests/unit/test_event_confirmation.py` | Automated (API and UI) |
+| SPM-121 | The organiser sees the event waiting on the safety review or with safety changes requested | TC-SPM121-AC05 | `e2e/spm121.spec.js`; `services/event-service/tests/unit/test_event_safety_reviews.py` | Automated: the My Events list, then the event page |
 | SPM-11 | Registration succeeds only for confirmed, enabled, in-period events with a place | TC-SPM11-AC01 | `e2e/spm11.spec.js` | Automated |
 | SPM-11 | Mandatory fields block submit with inline validation | TC-SPM11-AC02 | `e2e/spm11.spec.js` | Automated |
 | SPM-11 | Success confirms event, date, time, venue, and notifies | TC-SPM11-AC03 | `e2e/spm11.spec.js` | Automated |
