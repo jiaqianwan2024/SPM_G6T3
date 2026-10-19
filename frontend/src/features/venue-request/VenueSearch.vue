@@ -1,15 +1,15 @@
 <template>
   <form class="venue-search" data-testid="venue-search" @submit.prevent="search">
     <h3>Search venues for this event</h3>
-    <p class="hint">Filled in from the event. Change anything, then search. Times are in UTC.</p>
+    <p class="hint">Filled in from the event. Change anything, then search. Times are in Singapore time (SGT).</p>
 
     <div class="fields">
       <label>
-        Starts (UTC)
+        Starts (SGT)
         <input v-model="startsAt" type="datetime-local" data-testid="venue-search-starts" />
       </label>
       <label>
-        Ends (UTC)
+        Ends (SGT)
         <input v-model="endsAt" type="datetime-local" data-testid="venue-search-ends" />
       </label>
       <label>
@@ -73,6 +73,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
+import { fromSgtInput, toSgtInput } from '../../utils/datetime.js'
 import { searchVenues } from '../../api/venueService.js'
 
 const props = defineProps({
@@ -81,13 +82,14 @@ const props = defineProps({
 })
 const emit = defineEmits(['results'])
 
-// datetime-local works without a timezone; the team reads every time as UTC.
+// datetime-local works without a timezone: it shows and takes Singapore time,
+// and the search is sent in UTC.
 function toInput(iso) {
-  return iso ? iso.replace(/Z|[+-]\d\d:\d\d$/, '').slice(0, 16) : ''
+  return toSgtInput(iso)
 }
 
 function toUtc(value) {
-  return value ? `${value}:00Z` : undefined
+  return fromSgtInput(value) || undefined
 }
 
 // The event's requirements are free text, so a venue's option counts as asked

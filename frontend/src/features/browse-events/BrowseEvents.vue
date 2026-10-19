@@ -47,7 +47,7 @@
           <dt>Time:</dt>
           <dd>
             <span data-testid="browse-start">{{ timePart(event.proposedStartAt) }}</span>
-            – <span data-testid="browse-end">{{ timePart(event.proposedEndAt) }}</span>
+            – <span data-testid="browse-end">{{ timePart(event.proposedEndAt) }}</span> SGT
           </dd>
         </div>
         <div>
@@ -78,6 +78,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getOpenEvents } from '../../api/eventService.js'
+import { formatSgtDate, formatSgtTime, sgtDay } from '../../utils/datetime.js'
 
 const router = useRouter()
 const events = ref([])
@@ -93,18 +94,18 @@ const categories = computed(() => [...new Set(events.value.map((event) => event.
 const visible = computed(() => events.value.filter((event) => {
   if (search.value && !event.eventName.toLowerCase().includes(search.value.toLowerCase())) return false
   if (category.value && event.category !== category.value) return false
-  const start = event.proposedStartAt ? event.proposedStartAt.slice(0, 10) : ''
+  const start = sgtDay(event.proposedStartAt)
   if (fromDate.value && start && start < fromDate.value) return false
   if (toDate.value && start && start > toDate.value) return false
   return true
 }))
 
 function datePart(value) {
-  return value ? new Date(value).toLocaleDateString() : ''
+  return formatSgtDate(value)
 }
 
 function timePart(value) {
-  return value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+  return formatSgtTime(value)
 }
 
 function open(eventId) {

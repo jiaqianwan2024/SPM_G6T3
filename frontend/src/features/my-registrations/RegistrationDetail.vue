@@ -63,6 +63,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getEvent } from '../../api/eventService.js'
 import { getRegistration, withdrawRegistration } from '../../api/registrationService.js'
+import { parseServerTime } from '../../utils/datetime.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -84,7 +85,7 @@ const canWithdraw = computed(() => {
   const status = String(current.status || '').toLowerCase()
   if (status === 'completed' || status === 'cancelled') return false
   if (!current.proposedStartAt) return false
-  return new Date(current.proposedStartAt).getTime() > Date.now()
+  return parseServerTime(current.proposedStartAt).getTime() > Date.now()
 })
 
 function detail(err, fallback) {

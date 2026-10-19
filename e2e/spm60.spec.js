@@ -3,6 +3,8 @@ import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { newVenuePayload } from './support/api-data.js'
 import { venueRequest } from './support/venue.js'
+import { THEATRE_EVENT, approvedEvent, requestVenue } from './support/venue-request.js'
+import { createSuiteVenue, period, retireSuiteVenue } from './support/venue-suite.js'
 
 test.describe('SPM-60 Maintain venue records and supported layouts', () => {
   test('TC-SPM60-AC01 a venue record holds the published fields', async () => {
@@ -63,17 +65,39 @@ test.describe('SPM-60 Maintain venue records and supported layouts', () => {
   test('TC-SPM60-AC05 retiring a venue with a confirmed future booking warns and lists events', async ({
     page,
   }) => {
-    const blocked = await venueRequest('POST', '/venues/v1/retire', 'VS-01')
-    expect(blocked.status).toBe(409)
-    expect(JSON.stringify(blocked.body)).toMatch(/confirmed upcoming|e1|e2/i)
+    // The test's own venue and its own confirmed booking a year ahead, so the result
+    // never depends on seeded bookings, which age into the past.
+    const hall = await createSuiteVenue('SPM60 Hall', { layouts: [{ name: 'Theatre', capacity: 300 }] })
+    try {
+      const event = await approvedEvent(THEATRE_EVENT)
+      const sent = await requestVenue(event, hall.venueId, period(1))
+      expect(sent.status, JSON.stringify(sent.body)).toBe(201)
+      const approved = await venueRequest('POST', `/venues/bookings/${sent.body.bookingId}/approve`, 'VS-01', {})
+      expect(approved.status, JSON.stringify(approved.body)).toBe(200)
+      const warning = new RegExp(
+        `^This venue has 1 confirmed upcoming booking that would be affected: event ${event.eventId}, starting `,
+      )
 
-    await login(page, account('VS-01'))
-    await page.locator('.nav-item').getByText('Venue Catalogue', { exact: true }).click()
-    await page.getByText('Marina Hall A', { exact: true }).click()
-    await page.getByRole('button', { name: 'Retire' }).click()
-    await page.getByRole('button', { name: 'Yes, retire' }).click()
-    await expect(page.locator('.retire-warning')).toBeVisible()
-    await expect(page.locator('.retire-warning')).toContainText(/confirmed upcoming/i)
+      const blocked = await venueRequest('POST', `/venues/${hall.venueId}/retire`, 'VS-01')
+      expect(blocked.status).toBe(409)
+      expect(blocked.body.detail).toMatch(warning)
+      expect((await venueRequest('GET', `/venues/${hall.venueId}`, 'VS-01')).body.isActive).toBe(true)
+
+      await login(page, account('VS-01'))
+      await page.getByRole('navigation').getByText('Venue Catalogue', { exact: true }).click()
+      // Let the catalogue finish opening (it shows its first venue on its own) before
+      // acting, so its own late load cannot redraw the panel and close the confirmation.
+      await expect(page.getByText('Loading venues…')).toHaveCount(0)
+      await expect(page.getByRole('button', { name: 'Retire' })).toBeVisible()
+      await page.getByRole('searchbox', { name: 'Search' }).fill(hall.name)
+      await page.getByText(hall.name, { exact: true }).click()
+      await expect(page.getByRole('heading', { name: hall.name })).toBeVisible()
+      await page.getByRole('button', { name: 'Retire' }).click()
+      await page.getByRole('button', { name: 'Yes, retire' }).click()
+      await expect(page.getByText(warning)).toBeVisible()
+    } finally {
+      await retireSuiteVenue(hall)
+    }
   })
 
   test('TC-SPM60-AC06 zero or negative layout capacity is rejected', async () => {
@@ -82,11 +106,16 @@ test.describe('SPM-60 Maintain venue records and supported layouts', () => {
     const zero = await venueRequest('PATCH', `/venues/${created.body.venueId}`, 'VS-01', {
       layouts: [{ name: 'Theatre', capacity: 0 }],
     })
-    expect([400, 422]).toContain(zero.status)
+    expect(zero.status).toBe(422)
     const negative = await venueRequest('PATCH', `/venues/${created.body.venueId}`, 'VS-01', {
       layouts: [{ name: 'Theatre', capacity: -4 }],
     })
-    expect([400, 422]).toContain(negative.status)
+    expect(negative.status).toBe(422)
+    // Boundary: a capacity of 1 is accepted, and the refused edits changed nothing before it.
+    const one = await venueRequest('PATCH', `/venues/${created.body.venueId}`, 'VS-01', {
+      layouts: [{ name: 'Theatre', capacity: 1 }],
+    })
+    expect([one.status, one.body.layouts]).toEqual([200, [{ name: 'Theatre', capacity: 1 }]])
   })
 
   test('TC-SPM60-AC07 only venue staff can change records; other roles are read-only', async () => {

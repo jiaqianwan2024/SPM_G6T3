@@ -94,6 +94,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getMyRegistrations } from '../../api/registrationService.js'
 import { getOpenEvents } from '../../api/eventService.js'
+import { formatSgtDate, formatSgtTime, parseServerTime } from '../../utils/datetime.js'
 
 const emit = defineEmits(['open-tab'])
 const router = useRouter()
@@ -109,11 +110,11 @@ const endOf = (row) => row.proposedEndAt || row.endsAt
 
 function isPast(row) {
   const end = endOf(row) || startOf(row)
-  return Boolean(end) && new Date(end).getTime() < Date.now()
+  return Boolean(end) && parseServerTime(end).getTime() < Date.now()
 }
 
 function byStart(a, b) {
-  return new Date(startOf(a) || 0).getTime() - new Date(startOf(b) || 0).getTime()
+  return (parseServerTime(startOf(a))?.getTime() || 0) - (parseServerTime(startOf(b))?.getTime() || 0)
 }
 
 // Withdrawn and finished registrations stay on My Registrations; the home shows what is still ahead.
@@ -146,18 +147,18 @@ function changeFlags(row) {
 }
 
 function datePart(value) {
-  return value ? new Date(value).toLocaleDateString() : 'To be confirmed'
+  return value ? formatSgtDate(value) : 'To be confirmed'
 }
 
 function timePart(value) {
-  return value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+  return formatSgtTime(value)
 }
 
 function timeRange(row) {
   const start = timePart(startOf(row))
   const end = timePart(endOf(row))
   if (!start) return 'To be confirmed'
-  return end ? `${start} – ${end}` : start
+  return end ? `${start} – ${end} SGT` : `${start} SGT`
 }
 
 function openRegistration(row) {

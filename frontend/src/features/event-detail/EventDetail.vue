@@ -123,7 +123,7 @@
         >
           <p>
             <strong>Approved</strong><template v-if="decidedByName"> by {{ decidedByName }}</template>
-            on {{ formatUtc(decision.decidedAt) }}. ConnectSphere has taken this event on and preparation has started.
+            on {{ formatSgt(decision.decidedAt) }}. ConnectSphere has taken this event on and preparation has started.
           </p>
           <p v-if="decision.decisionNote">
             {{ session.role === 'organiser' ? 'Note from your coordinator' : 'Note to the organiser' }}:
@@ -139,7 +139,7 @@
         >
           <p>
             <strong>Rejected</strong><template v-if="decidedByName"> by {{ decidedByName }}</template>
-            on {{ formatUtc(decision.decidedAt) }}. Any venue or equipment held for this event has been released.
+            on {{ formatSgt(decision.decidedAt) }}. Any venue or equipment held for this event has been released.
             You can submit a new request at any time.
           </p>
           <p>Reason: {{ decision.decisionReason }}</p>
@@ -431,7 +431,7 @@ import {
   eventStatusLabel,
 } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt, formatSgtDate, formatSgtRange, formatSgtTime, parseServerTime } from '../../utils/datetime.js'
 import ApproveEventDialog from './ApproveEventDialog.vue'
 import RejectEventDialog from './RejectEventDialog.vue'
 import AssignCoordinatorDialog from './AssignCoordinatorDialog.vue'
@@ -497,7 +497,7 @@ const canSetUpRegistration = computed(
 const registrationPeriod = computed(() => {
   const { registrationOpensAt: opens, registrationClosesAt: closes } = event.value || {}
   if (!opens && !closes) return 'period not set yet'
-  const when = (value) => (value ? new Date(value).toLocaleString() : 'not set')
+  const when = (value) => (value ? formatSgt(value) : 'not set')
   return `opens ${when(opens)}, closes ${when(closes)}`
 })
 const decidedByName = computed(() =>
@@ -521,12 +521,12 @@ const releasedOutcome = computed(() => outcomes.value.find((row) => row.status =
 
 const confirmedDate = computed(() => {
   if (!event.value?.proposedStartAt) return ''
-  return new Date(event.value.proposedStartAt).toLocaleDateString()
+  return formatSgtDate(event.value.proposedStartAt)
 })
 
 const confirmedTime = computed(() => {
   if (!event.value?.proposedStartAt) return ''
-  return new Date(event.value.proposedStartAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return `${formatSgtTime(event.value.proposedStartAt)} SGT`
 })
 
 const equipmentSummary = computed(() => {
@@ -570,7 +570,7 @@ const canComplete = computed(
     event.value.coordinatorId === session.userId &&
     event.value.status === 'confirmed' &&
     !!event.value.proposedEndAt &&
-    new Date(event.value.proposedEndAt).getTime() <= Date.now(),
+    parseServerTime(event.value.proposedEndAt).getTime() <= Date.now(),
 )
 
 const showEquipment = computed(
@@ -601,7 +601,7 @@ function goBack() {
 function formatRange(start, end) {
   if (!start && !end) return 'No date set yet'
   if (!start || !end) return 'Date incomplete'
-  return `${new Date(start).toLocaleString()} – ${new Date(end).toLocaleString()}`
+  return formatSgtRange(start, end)
 }
 
 async function load() {

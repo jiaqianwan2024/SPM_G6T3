@@ -100,7 +100,7 @@
 
     <div class="repeat-section">
       <div class="repeat-header">
-        <span class="eyebrow">Operating hours</span>
+        <span class="eyebrow">Operating hours (SGT)</span>
         <button type="button" class="btn btn-ghost small" @click="addHours">+ Add day</button>
       </div>
       <div

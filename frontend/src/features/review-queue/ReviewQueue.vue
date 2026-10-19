@@ -64,7 +64,7 @@
         </div>
         <div v-if="event.organisationName" class="event-org">{{ event.organisationName }}</div>
         <div class="event-when" data-testid="queue-datetime">
-          {{ formatLocal(event.proposedStartAt) }} – {{ formatLocal(event.proposedEndAt) }}
+          {{ formatSgtRange(event.proposedStartAt, event.proposedEndAt) }}
         </div>
         <div class="event-wait" data-testid="queue-submitted-at">
           Submitted {{ formatSubmitted(event.submittedAt) }} · waiting {{ waitingFor(event.submittedAt) }}
@@ -206,6 +206,7 @@ import { IN_REVIEW_EVENT_STATUSES, REJECTION_REASONS } from '../../config/eventS
 import { session } from '../../store/session.js'
 import ApproveEventDialog from '../event-detail/ApproveEventDialog.vue'
 import AssignCoordinatorDialog from '../event-detail/AssignCoordinatorDialog.vue'
+import { formatSgt, formatSgtRange } from '../../utils/datetime.js'
 
 const events = ref([])
 const loading = ref(true)
@@ -264,11 +265,9 @@ function assigneeLabel(event) {
   return event.coordinatorId ? `Assigned to ${coordinatorName(event.coordinatorId)}` : 'Unassigned'
 }
 
-// submittedAt is stamped with utcnow() on the server and serialised without a
-// timezone marker, and new Date() reads a marker-less string as *local* time -
-// which made every request look hours older than it was. Treat it as UTC.
-// (Proposed start/end are different: they come from local datetime-local
-// inputs, so they are intentionally left as local time.)
+// The server sends UTC without a zone marker, and new Date() reads a
+// marker-less string as *local* time, so read it as UTC. Every time is shown
+// in Singapore time.
 function parseUtc(value) {
   if (!value) return null
   const hasZone = /(Z|[+-]\d{2}:?\d{2})$/.test(value)
@@ -287,13 +286,8 @@ function waitingFor(submittedAt) {
   return `${days}d ${hours % 24}h`
 }
 
-function formatLocal(value) {
-  return value ? new Date(value).toLocaleString() : ''
-}
-
 function formatSubmitted(value) {
-  const date = parseUtc(value)
-  return date ? date.toLocaleString() : ''
+  return formatSgt(value)
 }
 
 const filteredEvents = computed(() => {
@@ -347,8 +341,8 @@ function detailRows(event) {
     { label: 'Waiting', value: waitingFor(event.submittedAt) },
     { label: 'Assigned coordinator', value: event.coordinatorId ? coordinatorName(event.coordinatorId) : '' },
     { label: 'Category', value: event.category },
-    { label: 'Proposed start', value: formatLocal(event.proposedStartAt) },
-    { label: 'Proposed end', value: formatLocal(event.proposedEndAt) },
+    { label: 'Proposed start', value: formatSgt(event.proposedStartAt) },
+    { label: 'Proposed end', value: formatSgt(event.proposedEndAt) },
     { label: 'Expected attendance', value: event.expectedAttendance != null ? String(event.expectedAttendance) : '' },
     { label: 'Purpose', value: event.purpose },
     { label: 'Description', value: event.description },
@@ -360,8 +354,8 @@ function detailRows(event) {
   ].map((row) => ({ ...row, wide: wideLabels.has(row.label) }))
   if (event.registrationEnabled) {
     rows.push(
-      { label: 'Registration opens', value: formatLocal(event.registrationOpensAt) },
-      { label: 'Registration closes', value: formatLocal(event.registrationClosesAt) },
+      { label: 'Registration opens', value: formatSgt(event.registrationOpensAt) },
+      { label: 'Registration closes', value: formatSgt(event.registrationClosesAt) },
       { label: 'Capacity', value: event.capacity != null ? String(event.capacity) : '' },
     )
   }

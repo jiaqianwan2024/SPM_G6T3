@@ -1,69 +1,71 @@
 import { test, expect } from '@playwright/test'
 import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
+import { THEATRE_EVENT, approvedEvent, requestVenue } from './support/venue-request.js'
+import { createSuiteVenue, openBookingRequests, period, retireSuiteVenue } from './support/venue-suite.js'
 
-test.describe('SPM-45 future UI acceptance contracts', () => {
-  test('TC-SPM45-AC01 Venue Staff manages booking requests', async ({ page }) => {
-    test.skip(
-      true,
-      'Booking Requests UI and booking-list endpoint are not implemented; remove when SPM-45 AC1 ships.',
-    )
+// SPM-45 in the browser: each role's screens offer only the actions its job needs.
+// The API refusals (403) are in spm45-api.spec.js. The suite makes its own venue and
+// events, each on its own fixed day, and retires the venue afterwards.
+
+let hall
+
+function tab(page, name) {
+  return page.getByRole('navigation').getByText(name, { exact: true })
+}
+
+test.describe('SPM-45 Role-Based Feature Access Control (UI)', () => {
+  test.beforeAll(async () => {
+    hall = await createSuiteVenue('SPM45 UI Hall', { layouts: [{ name: 'Theatre', capacity: 300 }] })
+  })
+
+  test.afterAll(async () => {
+    await retireSuiteVenue(hall)
+  })
+
+  test('TC-SPM45-AC01 Venue Staff can approve and reject booking requests on Booking Requests', async ({ page }) => {
+    const event = await approvedEvent(THEATRE_EVENT)
+    const sent = await requestVenue(event, hall.venueId, period(1))
+    expect(sent.status, JSON.stringify(sent.body)).toBe(201)
 
     await login(page, account('VS-01'))
-    await page.locator('.nav-item').getByText('Booking Requests', { exact: true }).click()
-    await expect(page.getByTestId('venue-booking-request')).toHaveCount(2)
-    await page.getByTestId('venue-booking-request').first().getByRole('button', {
-      name: 'Approve',
-    }).click()
-    await expect(page.getByText('Booking approved')).toBeVisible()
+    await openBookingRequests(page, hall)
+
+    const card = page.getByTestId(`booking-request-${sent.body.bookingId}`)
+    await expect(card.getByRole('button', { name: 'Approve' })).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Reject' })).toBeVisible()
   })
 
-  test('TC-SPM45-AC02 Technical Support reviews and reserves equipment', async ({ page }) => {
-    test.skip(
-      true,
-      'Reservations UI and equipment-request listing are not implemented; remove when SPM-45 AC2 ships.',
-    )
-
+  test('TC-SPM45-AC02 Technical Support work with equipment, not venue bookings', async ({ page }) => {
     await login(page, account('TS-01'))
-    await page.locator('.nav-item').getByText('Reservations', { exact: true }).click()
-    const request = page.getByTestId('equipment-request').first()
-    await expect(request.getByTestId('technical-requirements')).toBeVisible()
-    await request.getByRole('button', { name: 'Approve' }).click()
-    await request.getByRole('button', { name: 'Reserve' }).click()
-    await expect(request.getByText('Reserved')).toBeVisible()
+
+    await expect(tab(page, 'Equipment Catalogue')).toBeVisible()
+    await expect(tab(page, 'Reservations')).toBeVisible()
+    await expect(tab(page, 'Booking Requests')).toHaveCount(0)
   })
 
-  test('TC-SPM45-AC03 Coordinator submits requests and assigns a coordinator', async ({
+  test('TC-SPM45-AC03 Event Coordinators can request a venue but have no approve or assign controls', async ({
     page,
   }) => {
-    test.skip(
-      true,
-      'Coordinator assignment and venue/equipment request UI are not implemented; remove when SPM-45 AC3 ships.',
-    )
-
+    const event = await approvedEvent(THEATRE_EVENT)
     await login(page, account('EC-01'))
-    await page.locator('.nav-item').getByText('Assigned Events', { exact: true }).click()
-    await page.getByTestId('event-e1').getByRole('button', { name: 'Assign coordinator' }).click()
-    await page.getByLabel('Coordinator').selectOption('u2')
-    await page.getByRole('button', { name: 'Confirm assignment' }).click()
-    await expect(page.getByText('Coordinator assigned')).toBeVisible()
 
-    await page.locator('.nav-item').getByText('Venue Requests', { exact: true }).click()
-    await expect(page.getByRole('button', { name: 'New venue request' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'New equipment request' })).toBeVisible()
-    await expect(page.getByRole('button', { name: /approve|reject/i })).toHaveCount(0)
+    await expect(tab(page, 'Venue Requests')).toBeVisible()
+    await expect(tab(page, 'Booking Requests')).toHaveCount(0)
+    await expect(tab(page, 'Assignments')).toHaveCount(0) // the Lead's tab (SPM-117)
+
+    await page.goto(`/app/events/${event.eventId}/venues`)
+    await page.getByTestId(`venue-select-${hall.venueId}`).click()
+    await expect(page.getByRole('button', { name: 'Request this venue' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^(Approve|Reject)$/ })).toHaveCount(0)
   })
 
-  test('TC-SPM45-AC04 role-inappropriate administrative controls stay hidden', async ({ page }) => {
-    test.skip(
-      true,
-      'Role-specific administrative routes are not implemented; API-level 403 coverage is active.',
-    )
-
+  test('TC-SPM45-AC04 screens outside a role are not offered to it', async ({ page }) => {
     await login(page, account('VS-01'))
-    await expect(page.locator('.nav-item').getByText('Reservations', { exact: true })).toHaveCount(0)
-    await expect(
-      page.locator('.nav-item').getByText('Assigned Events', { exact: true }),
-    ).toHaveCount(0)
+
+    await expect(tab(page, 'Booking Requests')).toBeVisible()
+    for (const name of ['Reservations', 'Assigned Events', 'Assignments', 'Review Queue']) {
+      await expect(tab(page, name), name).toHaveCount(0)
+    }
   })
 })

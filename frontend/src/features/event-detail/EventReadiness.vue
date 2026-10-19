@@ -36,7 +36,7 @@
             </select>
           </label>
           <label>
-            Due
+            Due (SGT)
             <input v-model="draft.dueAt" type="datetime-local" data-testid="readiness-create-due" />
           </label>
           <label class="wide">
@@ -107,7 +107,7 @@
             </div>
             <div>
               <span class="label">Assigned</span>
-              <span data-testid="readiness-assigned-at">{{ formatUtc(row.assignedAt) }}</span>
+              <span data-testid="readiness-assigned-at">{{ formatSgt(row.assignedAt) }}</span>
             </div>
             <div data-testid="readiness-attachments">
               <span class="label">Attachments</span>
@@ -166,7 +166,7 @@
             <input v-model="edit.note" data-testid="readiness-edit-note" />
           </label>
           <label>
-            Due
+            Due (SGT)
             <input v-model="edit.dueAt" type="datetime-local" data-testid="readiness-edit-due" />
           </label>
           <label>
@@ -221,7 +221,7 @@ import { getEventReservations } from '../../api/equipmentService.js'
 import { getUsers } from '../../api/userService.js'
 import { getVenueBookings } from '../../api/venueService.js'
 import { session } from '../../store/session.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt, fromSgtInput, toSgtInput } from '../../utils/datetime.js'
 
 const STATUSES = ['outstanding', 'in_progress', 'confirmed']
 
@@ -289,19 +289,13 @@ function message(err, fallback) {
   return fallback
 }
 
+// Due dates are typed and shown in Singapore time, and sent as UTC.
 function toIso(value) {
-  if (!value) return null
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+  return fromSgtInput(value) || null
 }
 
 function toLocalInput(value) {
-  if (!value) return ''
-  const hasZone = /(Z|[+-]\d{2}:?\d{2})$/.test(value)
-  const date = new Date(hasZone ? value : `${value}Z`)
-  if (Number.isNaN(date.getTime())) return ''
-  const pad = (part) => String(part).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  return toSgtInput(value)
 }
 
 function attachmentsFrom(line, existing = []) {

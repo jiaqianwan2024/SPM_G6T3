@@ -67,7 +67,8 @@ class TestVenueRule(ServiceTestCase):
 
         [gap] = venue_gaps([earlier], START, END)
 
-        self.assertIn("(20 Nov 2026 09:00 to 20 Nov 2026 17:00) is not for the event's date and time", gap["message"])
+        # Stored 09:00 to 17:00 UTC, read in Singapore time.
+        self.assertIn("(20 Nov 2026 17:00 to 21 Nov 2026 01:00 SGT) is not for the event's date and time", gap["message"])
         self.assertFalse(covers(BOOKING, None, END))
         self.assertTrue(covers({**BOOKING, "startsAt": START, "endsAt": END}, START, END))
 
@@ -271,8 +272,9 @@ class TestConfirming(ConfirmationCase):
         emails = {call.args[0]: call.args[2] for call in self.mocks["email"].call_args_list}
         self.assertEqual(set(emails), {"amy@apex.com", "vinod@connectsphere.com", "tia@connectsphere.com"})
         organiser = emails["amy@apex.com"]
-        self.assertIn("Summit is confirmed for 01 Dec 2026, 09:00 at Marina Hall A. Layout: Theatre. Equipment: 2 × Projector.", organiser)
-        self.assertIn("Registration opens 01 Nov 2026, 09:00.", organiser)
+        # 09:00 UTC is 17:00 in Singapore.
+        self.assertIn("Summit is confirmed for 01 Dec 2026, 17:00 SGT at Marina Hall A. Layout: Theatre. Equipment: 2 × Projector.", organiser)
+        self.assertIn("Registration opens 01 Nov 2026, 17:00 SGT.", organiser)
         self.assertIn("which you arranged for, is confirmed", emails["vinod@connectsphere.com"])
         inboxes = {call.args[0]: call.args[2] for call in self.mocks["inbox"].call_args_list}
         self.assertEqual(inboxes, {"org-1": "event.confirmed", "venue-1": "event.confirmed", "tech-1": "event.confirmed"})

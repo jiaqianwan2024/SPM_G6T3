@@ -8,9 +8,9 @@ import { createSuiteVenue, period, retireSuiteVenue, slot } from './support/venu
 // The suite makes its own venues and retires them afterwards:
 // - a hall: Theatre for 300, open every day, Stage, PA system and Projector,
 //   wheelchair accessible;
-// - a boardroom: Boardroom for 20 only, open every day 08:00 to 18:00 UTC, no
+// - a boardroom: Boardroom for 20 only, open every day 08:00 to 18:00 SGT, no
 //   facilities or accessibility features.
-// Each test uses its own events on its own fixed day. All times are UTC.
+// Each test uses its own events on its own fixed day. All times are Singapore time (SGT); the server stores UTC.
 
 let hall
 let boardroom
@@ -149,7 +149,7 @@ test.describe('SPM-62 Venue suitability check for an event', () => {
 
     expect(result.verdict).toBe('not suitable')
     expect(messages(result, 'failure')).toEqual([
-      expect.stringMatching(/^On .+ the event runs 02:00 AM to 03:00 AM UTC, outside this venue's opening hours of 08:00 to 18:00 UTC\.$/),
+      expect.stringMatching(/^On .+ the event runs 02:00 AM to 03:00 AM SGT, outside this venue's opening hours of 08:00 to 18:00 SGT\.$/),
     ])
   })
 

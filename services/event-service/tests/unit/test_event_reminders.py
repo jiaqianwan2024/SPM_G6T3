@@ -147,6 +147,14 @@ class TestWhoIsTold(ReminderCase):
             },
         )
 
+    def test_the_event_date_is_the_singapore_date(self):
+        # 17:00 UTC on 18 Oct is 01:00 on 19 Oct in Singapore.
+        event_in(self.db, 3, proposedStartAt=datetime(2026, 10, 18, 17, 0), proposedEndAt=datetime(2026, 10, 18, 19, 0))
+
+        self.reminders.run(NOW)
+
+        self.assertEqual(self.publish.call_args_list[0].args[4]["eventDate"], "19 Oct 2026")
+
     def test_an_outstanding_venue_also_tells_venue_staff_and_outstanding_equipment_tells_technical_support(self):
         event_in(self.db, 3)
         self.reminders.run(NOW)

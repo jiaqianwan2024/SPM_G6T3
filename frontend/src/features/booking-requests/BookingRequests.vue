@@ -25,7 +25,7 @@
     </div>
 
     <p class="hint">
-      Oldest request first: requests are handled in the order they were submitted. All times are in UTC.
+      Oldest request first: requests are handled in the order they were submitted. All times are in Singapore time (SGT).
     </p>
 
     <p v-if="notice" class="notice" data-testid="booking-approved-notice">{{ notice }}</p>
@@ -252,9 +252,9 @@ const rejecting = reactive({})
 const reasons = reactive({})
 const suggestions = reactive({})
 
-// Booking times are UTC and come without a zone marker.
-const dayFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
-const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+// Booking times come in UTC without a zone marker; they are shown in Singapore time.
+const dayFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric' })
+const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
 function utc(value) {
   return new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`)
@@ -262,14 +262,14 @@ function utc(value) {
 
 function moment(value) {
   const when = utc(value)
-  return `${dayFormat.format(when)}, ${timeFormat.format(when)} UTC`
+  return `${dayFormat.format(when)}, ${timeFormat.format(when)} SGT`
 }
 
 function span(start, end) {
   const [from, to] = [utc(start), utc(end)]
   const sameDay = dayFormat.format(from) === dayFormat.format(to)
   return sameDay
-    ? `${dayFormat.format(from)}, ${timeFormat.format(from)} to ${timeFormat.format(to)} UTC`
+    ? `${dayFormat.format(from)}, ${timeFormat.format(from)} to ${timeFormat.format(to)} SGT`
     : `${moment(start)} to ${moment(end)}`
 }
 

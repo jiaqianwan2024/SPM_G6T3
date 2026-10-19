@@ -27,6 +27,7 @@ from app.models.event_safety_review import EventSafetyReview
 from app.models.event_status_history import EventStatusHistory
 from app.services.audiences import people
 from app.core.config import settings
+from app.core.sgt import to_sgt
 from app.orchestration.clients import (
     affected_arrangements,
     booked_venue_capacities,
@@ -350,7 +351,7 @@ def _setting_text(value) -> str:
     if value is None:
         return "not set"
     if isinstance(value, datetime):
-        return f"{value:%d %b %Y, %H:%M}"
+        return f"{to_sgt(value):%d %b %Y, %H:%M} SGT"
     return str(value)
 
 
@@ -1202,7 +1203,7 @@ class EventService(BaseService):
         if closes and event.proposedStartAt and closes > event.proposedStartAt:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Registration must close no later than the event starts ({_as_text(event.proposedStartAt)})",
+                detail=f"Registration must close no later than the event starts ({_setting_text(event.proposedStartAt)})",
             )
 
     @staticmethod

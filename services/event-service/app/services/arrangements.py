@@ -5,6 +5,8 @@ equipment-service."""
 
 from datetime import datetime, timezone
 
+from app.core.sgt import to_sgt
+
 # Requests equipment-service raised for itself when a coordinator reserved
 # straight from the catalogue quantity check. They are bookkeeping, not lines
 # anyone asked for, so only their reservations count.
@@ -89,7 +91,8 @@ def venue_gaps(bookings: list, starts_at: datetime | None, ends_at: datetime | N
         if row["status"] == "pending":
             gaps.append({"kind": "venue", "message": f"Venue staff have not approved the booking at {name} yet."})
         elif not covers(row, starts_at, ends_at):
-            when = f"{_when(row['startsAt']):%d %b %Y %H:%M} to {_when(row['endsAt']):%d %b %Y %H:%M}"
+            starts, ends = to_sgt(_when(row["startsAt"])), to_sgt(_when(row["endsAt"]))
+            when = f"{starts:%d %b %Y %H:%M} to {ends:%d %b %Y %H:%M} SGT"
             gaps.append(
                 {
                     "kind": "venue",

@@ -33,11 +33,11 @@
             </select>
           </label>
           <label>
-            From (UTC)
+            From (SGT)
             <input v-model="fromDate" type="date" data-testid="unavailability-from" />
           </label>
           <label>
-            To (UTC)
+            To (SGT)
             <input v-model="toDate" type="date" data-testid="unavailability-to" />
           </label>
         </div>
@@ -73,11 +73,11 @@
             </label>
             <div class="form-times">
               <label>
-                Start (UTC)
+                Start (SGT)
                 <input v-model="form.startsAt" type="datetime-local" required />
               </label>
               <label>
-                End (UTC)
+                End (SGT)
                 <input v-model="form.endsAt" type="datetime-local" required />
               </label>
             </div>
@@ -152,6 +152,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { createVenueUnavailability, getVenueBookings, getVenueUnavailability, getVenues } from '../../api/venueService.js'
+import { formatSgt, fromSgtInput, sgtDayEnd, sgtDayStart } from '../../utils/datetime.js'
 
 const router = useRouter()
 const reasons = ['maintenance', 'renovation', 'safety issue', 'internal activity', 'other']
@@ -193,8 +194,9 @@ const currentRows = computed(() => {
 
 const visible = computed(() => {
   const needle = query.value.trim().toLowerCase()
-  const from = fromDate.value ? new Date(`${fromDate.value}T00:00:00Z`).getTime() : null
-  const to = toDate.value ? new Date(`${toDate.value}T23:59:59Z`).getTime() : null
+  // The filter dates are Singapore dates.
+  const from = sgtDayStart(fromDate.value)
+  const to = sgtDayEnd(toDate.value)
   const now = Date.now()
   const matched = currentRows.value.filter((row) => {
     if (venueId.value && row.venueId !== venueId.value) return false
@@ -320,8 +322,9 @@ function message(detail) {
   return 'Could not save this block.'
 }
 
+// Typed in Singapore time, sent in UTC.
 function toUtc(value) {
-  return value.length === 16 ? `${value}:00Z` : value
+  return fromSgtInput(value)
 }
 
 function timing(row, now) {
@@ -339,12 +342,7 @@ function ensureZ(value) {
 }
 
 function formatWhen(value) {
-  const date = new Date(ensureZ(value))
-  if (Number.isNaN(date.getTime())) return String(value)
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  const hours = String(date.getUTCHours()).padStart(2, '0')
-  const minutes = String(date.getUTCMinutes()).padStart(2, '0')
-  return `${date.getUTCDate()} ${months[date.getUTCMonth()]} ${date.getUTCFullYear()}, ${hours}:${minutes} UTC`
+  return formatSgt(value) || String(value)
 }
 </script>
 

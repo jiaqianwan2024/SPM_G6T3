@@ -108,6 +108,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getCoordinatorAssignments, getSubmissionQueue } from '../../api/eventService.js'
 import AssignCoordinatorDialog from '../event-detail/AssignCoordinatorDialog.vue'
+import { formatSgt } from '../../utils/datetime.js'
 
 // Opening the Review Queue or Assignments tab is the dashboard's way out.
 const emit = defineEmits(['open-tab'])
@@ -157,7 +158,7 @@ function waitingFor(submittedAt) {
 }
 
 function formatDate(value) {
-  return value ? new Date(value).toLocaleString() : 'No date set'
+  return value ? formatSgt(value) : 'No date set'
 }
 
 async function load() {

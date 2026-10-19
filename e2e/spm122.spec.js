@@ -140,7 +140,12 @@ test.describe('SPM-122 Flag bookings that clash under the new window', () => {
     expect((await setTimes(0, 0)).status).toBe(200)
     await login(page, account('VS-01'))
     await page.getByRole('navigation').getByText('Venue Catalogue', { exact: true }).click()
+    // Let the catalogue finish opening (it shows its first venue on its own) before
+    // acting, so its own late load cannot redraw the panel.
+    await expect(page.getByText('Loading venues…')).toHaveCount(0)
+    await expect(page.getByRole('heading', { level: 3 }).first()).toBeVisible()
     await page.getByText(hall.name, { exact: true }).click()
+    await expect(page.getByRole('heading', { name: hall.name })).toBeVisible()
     await expect(page.getByTestId('venue-clashes-none')).toBeVisible()
     await expect(page.getByTestId(`venue-clash-link-${hall.venueId}`)).toHaveCount(0)
 
@@ -153,7 +158,7 @@ test.describe('SPM-122 Flag bookings that clash under the new window', () => {
     await expect(listed).toHaveCount(3)
     await expect(listed.first()).toContainText(`"${booked.A.event.eventName}"`)
     await expect(listed.first()).toContainText(`"${booked.B.event.eventName}"`)
-    await expect(listed.first().getByTestId('venue-clash-overlap')).toContainText(/11:30 to 12:45 UTC/)
+    await expect(listed.first().getByTestId('venue-clash-overlap')).toContainText(/11:30 to 12:45 SGT/)
     await expect(page.getByTestId('venue-clashes')).toContainText('Both bookings and their events are kept exactly as they are.')
     await expect(page.getByTestId(`venue-clash-link-${hall.venueId}`)).toHaveText(`${hall.name}: 3 clashes`)
   })

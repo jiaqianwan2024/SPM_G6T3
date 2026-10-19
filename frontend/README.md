@@ -34,7 +34,7 @@ src/
     venue-catalogue/
       VenueCatalogue.vue    "Venue Catalogue" tab (Event Coordinator, Venue Staff)
       VenueForm.vue          add / edit form (Venue Staff only)
-      VenueActivityLog.vue   who changed what, and when (UTC)
+      VenueActivityLog.vue   who changed what, and when (SGT)
       venues.data.js         old hardcoded data, no longer imported
     venue-request/
       EventVenueSelect.vue  /app/events/:id/venues, suitability verdict per venue
@@ -97,23 +97,32 @@ pattern — don't add it to `components/shared/`.
   confirmed upcoming booking shows those bookings and asks to confirm first.
   Coordinators can only view (Technical Support can read venues through the
   API but has no catalogue tab)
-- Every change is shown in the venue's activity log, with times in UTC
+- Every change is shown in the venue's activity log, with times in Singapore time (SGT)
 - Venue Staff see confirmed bookings that clash once setup and turnaround are
   included (SPM-122): a banner over the venue list names each venue with clashes,
   and the venue's details list each pair with both events, their times, and the
-  overlap in UTC. The list refreshes after a venue is saved. It only reads; the
+  overlap in Singapore time. The list refreshes after a venue is saved. It only reads; the
   bookings and their events are kept as they are
 - Venue Staff can place a tentative hold on a venue's pending request until a
-  date and time (UTC), or release it early (SPM-116), in the venue's "Tentative
+  date and time (SGT), or release it early (SPM-116), in the venue's "Tentative
   holds" section. The coordinator's Choose venues page shows "Held until ..."
   on that request, or "Hold expired" once the time has passed
+
+**Singapore time (SGT)**
+- ConnectSphere's venues are in Singapore, so every screen shows and takes times in
+  Singapore time (UTC+8), whatever the viewer's computer is set to. The server keeps
+  UTC. `src/utils/datetime.js` holds the shared helpers: `formatSgt`, `formatSgtDate`,
+  `formatSgtTime` and `formatSgtRange` for display, `toSgtInput` and `fromSgtInput`
+  for datetime-local inputs (sent as UTC without a zone marker), and `sgtDay`,
+  `sgtDayStart` and `sgtDayEnd` for date filters. The venue calendar runs in the
+  `Asia/Singapore` time zone
 
 **Booking Requests (SPM-8)**
 - `features/booking-requests/` is Venue Staff's "Booking Requests" tab. It lists
   pending requests, oldest first, filtered by venue if wanted. Each shows the event's
   times, the venue's occupied window (with setup and turnaround), the event's
   requirements, the coordinator's notes and accepted warnings, the submission time,
-  and any tentative hold, all in UTC
+  and any tentative hold, all in Singapore time (SGT)
 - Requests that compete for the same venue at overlapping times are marked with
   their place ("Competing request 1 of 3")
 - "Approve" takes an optional note. A refusal (an overlapping confirmed booking,

@@ -10,7 +10,7 @@ import { createSuiteVenue, openBookingRequests, period, retireSuiteVenue, utc } 
 // The suite makes its own venues and retires them afterwards: a Theatre hall for
 // 300, a second Theatre hall, and a room that only offers a Boardroom. Each test
 // makes its own event approved for planning and assigned to EC-01 (AC1), on its own
-// fixed day, so no test meets another's requests. All times are UTC.
+// fixed day, so no test meets another's requests. All times are Singapore time (SGT); the server stores UTC.
 
 let hall
 let secondHall

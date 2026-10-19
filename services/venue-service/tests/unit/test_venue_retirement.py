@@ -103,7 +103,8 @@ class TestVenueRetirement(VenueCase):
             self.service.retire_venue(created.venueId, CALLER)
 
         self.assertEqual(ctx.exception.status_code, 409)
-        self.assertIn("starting 01 Jan 2030, 09:00 AM UTC", ctx.exception.detail)
+        # 09:00 UTC is 05:00 PM in Singapore.
+        self.assertIn("starting 01 Jan 2030, 05:00 PM SGT", ctx.exception.detail)
 
     def test_retire_writes_a_retired_entry_to_the_activity_log(self):
         created = self.service.create_venue(venue_create(), CALLER)

@@ -31,7 +31,7 @@
             <span>
               <strong>{{ venueNameFor(booking.venueId) }}</strong>
               · {{ statusLabel(booking.status) }}
-              <template v-if="booking.createdAt"> · sent {{ formatUtc(booking.createdAt) }} UTC</template>
+              <template v-if="booking.createdAt"> · sent {{ formatSgt(booking.createdAt) }} SGT</template>
               <!-- SPM-116: Venue Staff are holding this venue while the arrangements are finished. -->
               <span
                 v-if="booking.hold && ['active', 'expired'].includes(booking.hold.state)"
@@ -40,7 +40,7 @@
                 :data-testid="`venue-hold-${booking.bookingId}`"
               >
                 {{ booking.hold.state === 'active' ? 'Held until' : 'Hold expired' }}
-                {{ formatUtc(booking.hold.expiresAt) }} UTC
+                {{ formatSgt(booking.hold.expiresAt) }} SGT
               </span>
               <!-- SPM-10: why Venue Staff rejected it, and the venue they suggested instead, if any. -->
               <span
@@ -335,17 +335,17 @@ const VERDICT_CLASSES = {
 
 const verdictClass = computed(() => VERDICT_CLASSES[result.value?.verdict])
 
-// The team shows every time in UTC until the customer specifies a timezone.
-function formatUtc(iso) {
+// Every time is shown in Singapore time (SGT), where ConnectSphere's venues are.
+function formatSgt(iso) {
   const withZone = /Z|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`
   return new Date(withZone).toLocaleString('en-SG', {
-    timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+    timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
   })
 }
 
 function formatRange(start, end) {
   if (!start || !end) return 'No date set yet'
-  return `${formatUtc(start)} to ${formatUtc(end)} UTC`
+  return `${formatSgt(start)} to ${formatSgt(end)} SGT`
 }
 
 async function selectVenue(venue) {

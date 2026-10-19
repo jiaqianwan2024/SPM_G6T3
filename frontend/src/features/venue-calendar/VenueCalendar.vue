@@ -70,14 +70,14 @@
 
       <form v-if="form.open" class="panel" @submit.prevent="save">
         <h2>{{ form.id ? 'Edit unavailability' : 'Mark unavailable' }}</h2>
-        <p v-if="form.id" class="hint">Update the time, reason, or note. The block stays where it is until you save. Times are UTC.</p>
-        <p v-else class="hint">Click a day, or drag across one or more days or times. The selected range stays on the calendar until you close this form or choose a different range. Times are UTC.</p>
+        <p v-if="form.id" class="hint">Update the time, reason, or note. The block stays where it is until you save. Times are Singapore time (SGT).</p>
+        <p v-else class="hint">Click a day, or drag across one or more days or times. The selected range stays on the calendar until you close this form or choose a different range. Times are Singapore time (SGT).</p>
         <label>
-          Start (UTC)
+          Start (SGT)
           <input v-model="form.startsAt" type="datetime-local" required />
         </label>
         <label>
-          End (UTC)
+          End (SGT)
           <input v-model="form.endsAt" type="datetime-local" required />
         </label>
         <label>
@@ -155,6 +155,7 @@ import {
   updateVenueUnavailability
 } from '../../api/venueService.js'
 import { session } from '../../store/session.js'
+import { SGT_ZONE, formatSgt, fromSgtInput, sgtDay, toSgtInput } from '../../utils/datetime.js'
 
 const props = defineProps({
   focusVenue: { type: String, default: '' },
@@ -200,7 +201,7 @@ const form = reactive({
 
 const calendarOptions = reactive({
   colorScheme: 'light',
-  timeZone: 'UTC',
+  timeZone: SGT_ZONE,
   plugins: [themePlugin, interactionPlugin, dayGridPlugin, timeGridPlugin, listPlugin],
   headerToolbar: {
     start: 'today prev,next title',
@@ -337,8 +338,9 @@ function currentDraft() {
   if (!form.open || form.id || !form.startsAt || !form.endsAt) return null
   const startsAt = toUtc(form.startsAt)
   const endsAt = toUtc(form.endsAt)
-  const start = new Date(startsAt).getTime()
-  const end = new Date(endsAt).getTime()
+  if (!startsAt || !endsAt) return null
+  const start = new Date(ensureZ(startsAt)).getTime()
+  const end = new Date(ensureZ(endsAt)).getTime()
   if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return null
   return { startsAt, endsAt }
 }
@@ -353,8 +355,8 @@ function paintEvents() {
 function toDraftEvent(range) {
   const start = new Date(ensureZ(range.startsAt))
   const end = new Date(ensureZ(range.endsAt))
-  const wholeDays = start.getUTCHours() === 0 && start.getUTCMinutes() === 0
-    && end.getUTCHours() === 23 && end.getUTCMinutes() === 59
+  // Whole Singapore days: from midnight to 23:59.
+  const wholeDays = toSgtInput(start).endsWith('T00:00') && toSgtInput(end).endsWith('T23:59')
   const event = {
     id: 'draft-selection',
     title: 'Selected',
@@ -368,8 +370,8 @@ function toDraftEvent(range) {
     const exclusiveEnd = new Date(end.getTime())
     exclusiveEnd.setUTCMinutes(exclusiveEnd.getUTCMinutes() + 1)
     event.allDay = true
-    event.start = start.toISOString().slice(0, 10)
-    event.end = exclusiveEnd.toISOString().slice(0, 10)
+    event.start = sgtDay(start)
+    event.end = sgtDay(exclusiveEnd)
     return event
   }
   event.start = ensureZ(range.startsAt)
@@ -517,12 +519,7 @@ function closeDetail() {
 
 function formatWhen(value) {
   if (!value) return ''
-  const date = new Date(ensureZ(value))
-  if (Number.isNaN(date.getTime())) return String(value)
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  const hours = String(date.getUTCHours()).padStart(2, '0')
-  const minutes = String(date.getUTCMinutes()).padStart(2, '0')
-  return `${date.getUTCDate()} ${months[date.getUTCMonth()]} ${date.getUTCFullYear()}, ${hours}:${minutes} UTC`
+  return formatSgt(value) || String(value)
 }
 
 function entryById(id) {
@@ -537,8 +534,8 @@ function applySelection(start, end, allDay) {
   if (allDay) finish.setUTCMinutes(finish.getUTCMinutes() - 1)
   if (finish.getTime() <= start.getTime()) return
   if (!form.open) startCreate()
-  form.startsAt = toInput(start.toISOString())
-  form.endsAt = toInput(finish.toISOString())
+  form.startsAt = toSgtInput(start)
+  form.endsAt = toSgtInput(finish)
 }
 
 function slotMinutes(calendar) {
@@ -595,8 +592,8 @@ function startEdit(id) {
   Object.assign(form, {
     open: true,
     id,
-    startsAt: toInput(entry.startsAt),
-    endsAt: toInput(entry.endsAt),
+    startsAt: toSgtInput(entry.startsAt),
+    endsAt: toSgtInput(entry.endsAt),
     reason: entry.reason,
     note: entry.note || '',
     acknowledge: false,
@@ -656,13 +653,9 @@ function ensureZ(value) {
   return `${text}Z`
 }
 
+// The form shows and takes Singapore time; the server stores UTC.
 function toUtc(value) {
-  return value.length === 16 ? `${value}:00Z` : value
-}
-
-function toInput(value) {
-  const match = String(value).match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/)
-  return match ? match[1] : ''
+  return fromSgtInput(value)
 }
 </script>
 

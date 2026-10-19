@@ -6,6 +6,7 @@ from uuid import uuid4
 import httpx
 
 from app.core.config import settings
+from app.core.sgt import to_sgt
 from app.dao.event_change_request_dao import EventChangeRequestDAO
 from app.dao.event_dao import EventDAO
 from app.dao.event_readiness_dao import EventReadinessDAO
@@ -74,9 +75,10 @@ def _clock(value) -> datetime | None:
 
 
 def _schedule_aspects(old, new) -> tuple[bool, bool]:
-    """A start or end change is a date change, a time change, or both."""
+    """A start or end change is a date change, a time change, or both, as read in Singapore time."""
     before, after = _clock(old), _clock(new)
     if before and after:
+        before, after = to_sgt(before), to_sgt(after)
         return before.date() != after.date(), (before.hour, before.minute) != (after.hour, after.minute)
     return True, True
 
@@ -417,7 +419,8 @@ class EventFollowUp(BaseService):
                 continue
             if category and (event.category or "").lower() != category.lower():
                 continue
-            start = event.proposedStartAt.date().isoformat() if event.proposedStartAt else ""
+            # The filter dates are Singapore dates.
+            start = to_sgt(event.proposedStartAt).date().isoformat() if event.proposedStartAt else ""
             if from_date and start and start < from_date:
                 continue
             if to_date and start and start > to_date:

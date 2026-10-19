@@ -2,7 +2,7 @@ const DAY = 24 * 60 * 60 * 1000
 
 function period(daysFromNow) {
   const start = new Date(Date.now() + daysFromNow * DAY)
-  start.setUTCHours(10, 0, 0, 0)
+  start.setUTCHours(2, 0, 0, 0) // 10:00 Singapore time
   const end = new Date(start.getTime() + 2 * 60 * 60 * 1000)
   return { start, end }
 }
@@ -21,7 +21,7 @@ export function equipmentRequestPayload(sequence = 45, eventId = 'e1') {
 
 export function venuePeriod(daysFromNow, hours = 2) {
   const start = new Date(Date.now() + daysFromNow * DAY)
-  start.setUTCHours(10, 0, 0, 0)
+  start.setUTCHours(2, 0, 0, 0) // 10:00 Singapore time
   const end = new Date(start.getTime() + hours * 60 * 60 * 1000)
   return {
     startsAt: start.toISOString(),
@@ -96,7 +96,7 @@ export function completeRequestPayload(name = `AUTO-REQUEST-${Date.now()}`, extr
 
 export function newEventPayload(name = `AUTO-EVENT-${Date.now()}`) {
   const start = new Date(Date.now() + 40 * DAY)
-  start.setUTCHours(10, 0, 0, 0)
+  start.setUTCHours(2, 0, 0, 0) // 10:00 Singapore time
   const end = new Date(start.getTime() + 2 * 60 * 60 * 1000)
   return {
     eventName: name,

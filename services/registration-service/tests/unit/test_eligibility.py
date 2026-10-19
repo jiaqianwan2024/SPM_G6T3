@@ -46,6 +46,13 @@ class TestEligibility(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("opens", reason.lower())
 
+    def test_the_opening_date_given_is_the_singapore_date(self):
+        # 17:00 UTC on 1 Jan is 01:00 on 2 Jan in Singapore.
+        ok, reason = eligibility(confirmed_event(registrationOpensAt="2099-01-01T17:00:00Z"), 0)
+
+        self.assertFalse(ok)
+        self.assertEqual(reason, "Registration opens 2099-01-02.")
+
     def test_not_eligible_after_registration_closes(self):
         closes = (datetime.utcnow() - timedelta(hours=1)).isoformat()
         ok, reason = eligibility(confirmed_event(registrationClosesAt=closes), 0)

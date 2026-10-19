@@ -179,7 +179,7 @@ class TestBookingRecheck(OpenVenue):
 
     def test_reconfirm_moves_a_free_booking_onto_the_event_and_clears_the_flag(self):
         booking_id = self.flagged()
-        later = (START + timedelta(days=2)).replace(hour=12, minute=0, second=0, microsecond=0)
+        later = (START + timedelta(days=2)).replace(hour=4, minute=0, second=0, microsecond=0)  # 12:00 SGT
         finish = later + timedelta(hours=4)
 
         saved = self.service.reconfirm_booking(booking_id, self.event(proposedStartAt=later, proposedEndAt=finish), None)
@@ -227,14 +227,14 @@ class TestBookingRecheck(OpenVenue):
 
     def test_releasing_tells_the_coordinator_and_a_free_booking_settles(self):
         kept = self.flagged()
-        later = (START + timedelta(days=2)).replace(hour=12, minute=0, second=0, microsecond=0)
+        later = (START + timedelta(days=2)).replace(hour=4, minute=0, second=0, microsecond=0)  # 12:00 SGT
         saved = self.service.reconfirm_booking(
             kept, self.event(proposedStartAt=later, proposedEndAt=later + timedelta(hours=4)), "Bearer token"
         )
         self.assertEqual(saved.status, "approved")
         self.assertFalse(saved.needsReverification)
 
-        blocked_at = (START + timedelta(days=5)).replace(hour=12, minute=0, second=0, microsecond=0)
+        blocked_at = (START + timedelta(days=5)).replace(hour=4, minute=0, second=0, microsecond=0)  # 12:00 SGT
         blocked_id = self.service.create_booking(
             booking_create(self.venue_id, startsAt=blocked_at, endsAt=blocked_at + timedelta(hours=4)), "u-coord"
         ).bookingId

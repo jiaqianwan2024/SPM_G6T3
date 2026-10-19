@@ -25,7 +25,7 @@
 
         <div class="grid">
           <div>
-            <label for="registration-opens">Registration opens</label>
+            <label for="registration-opens">Registration opens (SGT)</label>
             <input
               id="registration-opens"
               v-model="form.registrationOpensAt"
@@ -35,7 +35,7 @@
             />
           </div>
           <div>
-            <label for="registration-closes">Registration closes</label>
+            <label for="registration-closes">Registration closes (SGT)</label>
             <input
               id="registration-closes"
               v-model="form.registrationClosesAt"
@@ -105,6 +105,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { getEvent, updateRegistrationSettings } from '../../api/eventService.js'
 import { REGISTRATION_SETUP_STATUSES } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
+import { formatSgt, fromSgtInput, toSgtInput } from '../../utils/datetime.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -119,8 +120,8 @@ const saving = ref(false)
 const error = ref('')
 const savedNote = ref('')
 
-// datetime-local inputs need "YYYY-MM-DDTHH:mm"; the API returns full ISO strings.
-const toInputDatetime = (iso) => (iso ? iso.slice(0, 16) : '')
+// datetime-local inputs need "YYYY-MM-DDTHH:mm" in Singapore time; the API returns UTC ISO strings.
+const toInputDatetime = (iso) => toSgtInput(iso)
 const eventStartInput = computed(() => toInputDatetime(event.value?.proposedStartAt))
 
 // SPM-90 AC1: the assigned coordinator, from planning until confirmed. The server checks the same.
@@ -144,7 +145,7 @@ const confirmations = computed(() => ({
 }))
 
 function formatWhen(value) {
-  return value ? new Date(value).toLocaleString() : 'not set'
+  return value ? formatSgt(value) : 'not set'
 }
 
 function fill(data) {
@@ -164,7 +165,9 @@ function fill(data) {
 function payload() {
   const body = { capacity: form.capacity }
   for (const field of ['registrationEnabled', 'registrationOpensAt', 'registrationClosesAt']) {
-    if (form[field] !== original[field]) body[field] = form[field] === '' ? null : form[field]
+    if (form[field] === original[field]) continue
+    if (form[field] === '') body[field] = null
+    else body[field] = field === 'registrationEnabled' ? form[field] : fromSgtInput(form[field])
   }
   return body
 }

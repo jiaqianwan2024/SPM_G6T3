@@ -94,7 +94,7 @@
       <div class="request-head">
         <strong>Change requested</strong>
         <span class="state pending">Pending</span>
-        <span class="when">{{ formatUtc(pending.createdAt) }}</span>
+        <span class="when">{{ formatSgt(pending.createdAt) }}</span>
       </div>
       <table class="changes">
         <thead>
@@ -176,7 +176,7 @@
 
     <!-- AC7: the coordinator's decision and reason. -->
     <p v-if="outcome" class="outcome" :class="outcome.status" data-testid="change-request-outcome">
-      <strong>Change request {{ outcome.status }}</strong> {{ formatUtc(outcome.reviewedAt) }}
+      <strong>Change request {{ outcome.status }}</strong> {{ formatSgt(outcome.reviewedAt) }}
       ({{ Object.keys(outcome.proposedChanges).map(fieldLabel).join(', ').toLowerCase() }})<template
         v-if="outcome.decisionReason"
       >. Reason: {{ outcome.decisionReason }}</template>
@@ -198,7 +198,7 @@ import {
 import { CHANGEABLE_FIELDS, EVENT_CATEGORIES, LAYOUT_TYPES, fieldLabel } from '../../config/eventFields.js'
 import { CHANGE_REQUEST_STATUSES } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt, fromSgtInput, toSgtInput } from '../../utils/datetime.js'
 
 const props = defineProps({ event: { type: Object, required: true } })
 // Accepting changes the event, so the page re-reads it.
@@ -238,14 +238,13 @@ const showPanel = computed(
   () => loaded.value && !hidden.value && (requests.value.length > 0 || canRaise.value || !!loadError.value),
 )
 
-// datetime-local inputs need "YYYY-MM-DDTHH:mm"; the API returns full ISO strings.
-const toInputDatetime = (iso) => (iso ? iso.slice(0, 16) : '')
+// datetime-local inputs need "YYYY-MM-DDTHH:mm" in Singapore time; the API returns UTC ISO strings.
+const toInputDatetime = (iso) => toSgtInput(iso)
 
 function formatValue(field, value) {
   if (value === null || value === undefined || value === '') return 'Not set'
   if (DATETIMES.includes(field)) {
-    const parsed = new Date(value)
-    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString()
+    return formatSgt(value) || String(value)
   }
   return String(value)
 }
@@ -289,7 +288,8 @@ function toggleField(field) {
 function payload() {
   const changes = {}
   for (const [field, value] of Object.entries(proposed)) {
-    changes[field] = CLEARABLE.includes(field) && value === '' ? null : value
+    if (DATETIMES.includes(field)) changes[field] = fromSgtInput(value) || value
+    else changes[field] = CLEARABLE.includes(field) && value === '' ? null : value
   }
   return changes
 }

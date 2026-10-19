@@ -4,7 +4,7 @@
     <h4>Tentative holds</h4>
     <p class="hint">
       Hold a pending request while its coordinator finishes the arrangements. Nobody else can have the venue for
-      that time until the hold expires or is released. Times are in UTC.
+      that time until the hold expires or is released. Times are in Singapore time (SGT).
     </p>
     <p v-if="loadError" class="hold-error" data-testid="venue-holds-error">{{ loadError }}</p>
     <p v-else-if="!requests.length" class="hint" data-testid="venue-holds-none">
@@ -40,7 +40,7 @@
             Hold expired {{ moment(request.hold.expiresAt) }}
           </span>
           <label>
-            Hold until (UTC)
+            Hold until (SGT)
             <input
               v-model="expiry[request.bookingId]"
               type="datetime-local"
@@ -68,6 +68,7 @@
 <script setup>
 import { onMounted, reactive, ref, watch } from 'vue'
 import { getVenueBookings, placeVenueHold, releaseVenueHold } from '../../api/venueService.js'
+import { fromSgtInput } from '../../utils/datetime.js'
 
 const props = defineProps({ venueId: { type: String, required: true } })
 
@@ -77,9 +78,9 @@ const busyId = ref('')
 const expiry = reactive({})
 const errors = reactive({})
 
-// Booking times are UTC and come without a zone marker.
-const dayFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
-const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+// Booking times come in UTC without a zone marker; they are shown in Singapore time.
+const dayFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric' })
+const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
 function utc(value) {
   return new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`)
@@ -87,12 +88,12 @@ function utc(value) {
 
 function moment(value) {
   const when = utc(value)
-  return `${dayFormat.format(when)}, ${timeFormat.format(when)} UTC`
+  return `${dayFormat.format(when)}, ${timeFormat.format(when)} SGT`
 }
 
 function span(start, end) {
   const [from, to] = [utc(start), utc(end)]
-  return `${dayFormat.format(from)}, ${timeFormat.format(from)} to ${timeFormat.format(to)} UTC`
+  return `${dayFormat.format(from)}, ${timeFormat.format(from)} to ${timeFormat.format(to)} SGT`
 }
 
 function eventName(request) {
@@ -123,8 +124,8 @@ async function place(request) {
   busyId.value = request.bookingId
   errors[request.bookingId] = ''
   try {
-    // datetime-local has no timezone; the team reads every time as UTC.
-    const { data } = await placeVenueHold(request.bookingId, `${expiry[request.bookingId]}:00Z`)
+    // datetime-local has no timezone; it is read as Singapore time and sent as UTC.
+    const { data } = await placeVenueHold(request.bookingId, fromSgtInput(expiry[request.bookingId]))
     replace(data)
     expiry[request.bookingId] = ''
   } catch (err) {

@@ -52,7 +52,7 @@
           <div class="item-body">
             <div class="item-title">{{ item.title }}</div>
             <div class="item-text">{{ item.body }}</div>
-            <div class="item-time">{{ formatUtc(item.createdAt) }}</div>
+            <div class="item-time">{{ formatSgt(item.createdAt) }}</div>
           </div>
           <button
             v-if="!item.isRead"
@@ -87,7 +87,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from '../../api/notificationService.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt } from '../../utils/datetime.js'
 import { refreshUnreadCount, unreadCount } from './unreadCount.js'
 
 // SPM-94 AC8: the list is fetched a page at a time.

@@ -18,7 +18,8 @@ OTHER = {"userId": "u-other", "userName": "Cara", "role": "coordinator"}
 
 
 def at(hour, day=MONDAY):
-    return day + timedelta(hours=hour)
+    """`hour`:00 Singapore time, stored as naive UTC (eight hours earlier)."""
+    return day + timedelta(hours=hour - 8)
 
 
 class ReplacementCase(VenueCase):

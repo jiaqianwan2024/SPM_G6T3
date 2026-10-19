@@ -100,6 +100,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getMyEvents } from '../../api/eventService.js'
 import { SAFETY_SUBMITTABLE_STATUSES, eventStatusLabel } from '../../config/eventStatus.js'
+import { formatSgtDate, formatSgtTime, sgtDay } from '../../utils/datetime.js'
 
 const router = useRouter()
 const emit = defineEmits(['create'])
@@ -176,13 +177,9 @@ function statusRank(status) {
   return index === -1 ? STATUS_ORDER.length : index
 }
 
+// The Singapore date, which is what the date filters hold.
 function startDay(value) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
+  return sgtDay(value)
 }
 
 function toggleStatus(status) {
@@ -216,17 +213,15 @@ function safetyNote(event) {
 }
 
 function datePart(value) {
-  return value ? new Date(value).toLocaleDateString() : ''
+  return formatSgtDate(value)
 }
 
 function timePart(value) {
-  return value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+  return formatSgtTime(value)
 }
 
 function sameDay(start, end) {
-  const a = new Date(start)
-  const b = new Date(end)
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  return sgtDay(start) === sgtDay(end)
 }
 
 function dateLabel(event) {
@@ -242,7 +237,7 @@ function timeLabel(event) {
   const start = event.proposedStartAt
   const end = event.proposedEndAt
   if (!start || !end) return '—'
-  return `${timePart(start)} – ${timePart(end)}`
+  return `${timePart(start)} – ${timePart(end)} SGT`
 }
 
 function open(eventId) {
