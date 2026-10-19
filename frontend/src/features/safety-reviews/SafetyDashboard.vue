@@ -175,7 +175,7 @@
         <li v-for="review in recent" :key="review.reviewId" :data-testid="`safety-dashboard-decided-${review.eventId}`">
           <span class="state" :class="review.status">{{ OUTCOMES[review.status] }}</span>
           <router-link :to="`/app/events/${review.eventId}`">{{ review.package.eventName }}</router-link>
-          <span class="muted">{{ formatUtc(review.decidedAt) }}</span>
+          <span class="muted">{{ formatSgt(review.decidedAt) }}</span>
           <span v-if="review.decisionNote" class="muted note">· {{ review.decisionNote }}</span>
         </li>
       </ul>
@@ -194,7 +194,7 @@ import {
 } from '../../api/eventService.js'
 import { getUsers } from '../../api/userService.js'
 import { session } from '../../store/session.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt, formatSgtRange } from '../../utils/datetime.js'
 
 const COUNTS = [
   { status: 'pending', label: 'Waiting for review' },
@@ -224,7 +224,7 @@ const recent = computed(() =>
 
 function formatRange(start, end) {
   if (!start || !end) return 'Date not set'
-  return `${new Date(start).toLocaleString()} – ${new Date(end).toLocaleString()}`
+  return formatSgtRange(start, end)
 }
 
 function venueSummary(review) {

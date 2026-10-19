@@ -4,7 +4,8 @@ The venue-only rules (location, layout and capacity, facilities,
 accessibility, opening hours) live here. Availability is the shared SPM-64
 rule, `VenueService.commitments`, which `VenueService.search_venues` applies.
 
-All times are UTC, and a venue's opening hours are read as UTC hours.
+Times are stored and sent in UTC; a venue's opening hours are Singapore time
+(SGT), so they are compared after converting (see suitability).
 """
 
 from dataclasses import dataclass, field

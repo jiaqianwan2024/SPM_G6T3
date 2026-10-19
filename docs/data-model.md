@@ -281,7 +281,7 @@ Venue Staff create, edit, and retire venues (SPM-60); coordinators, venue staff,
 | facilities | JSON | Array of strings |
 | accessibility | JSON | Array of strings |
 | layouts | JSON | Array of `{name, capacity}`; capacity must be at least 1 |
-| operating_hours | JSON | Array of `{day, opens, closes}`: day `Mon` to `Sun`, times `HH:MM` read as UTC |
+| operating_hours | JSON | Array of `{day, opens, closes}`: day `Mon` to `Sun`, times `HH:MM` in Singapore time (SGT, UTC+8) |
 | setup_minutes | INT | Whole minutes of preparation before a booking. Required, zero or greater (SPM-110) |
 | turnaround_minutes | INT | Whole minutes of reset after a booking. Required, zero or greater (SPM-110) |
 | emergency_access | TEXT nullable | SPM-120: exits, assembly point, emergency vehicle access (null reads as empty) |
@@ -291,7 +291,7 @@ Venue Staff create, edit, and retire venues (SPM-60); coordinators, venue staff,
 
 ### venue_activity_log
 
-One row per create, update, or retire (SPM-60 AC9), shown in the catalogue's activity log with times in UTC.
+One row per create, update, or retire (SPM-60 AC9), shown in the catalogue's activity log with times in Singapore time (SGT).
 
 | Column | Type | Notes |
 |---|---|---|
@@ -358,7 +358,7 @@ Index: `(venue_id, starts_at, ends_at)`.
 
 **Tentative holds (SPM-116, migration `f2a9c4d7e1b6`):** Venue Staff may hold a `pending` request while its coordinator finishes the arrangements (Week 7 change 4). The hold's expiry must be in the future and no later than the event's start, and the venue must be free for the request's occupied window. While active it reserves the venue like a confirmed booking in search, suitability, approval, and other holds. It is active until `hold_expires_at` passes, or until it ends early: released by Venue Staff, or its request is approved, rejected, withdrawn, or cancelled (`hold_ended_at`, `hold_end_reason`). Nothing has to run at the expiry time: a hold whose expiry has passed simply stops counting, its request stays `pending`, and it is never a confirmed booking. Placing a hold puts a notice in the event coordinator's in-app inbox saying until when the venue is held. The safety review (SPM-120) still needs the venue booking `approved`, so a held request is settled before it.
 
-**Suitability rule (SPM-62, `POST /venues/suitability`, `app/services/suitability.py`):** failures are attendance above the capacity of the required layout (or the venue's capacity if no layout is given), an unsupported layout, a missing required facility or accessibility feature, a time outside operating hours (hours are read as UTC), and an approved booking of another event or an unavailability period overlapping the occupied window (SPM-64 rule above). Warnings are attendance above 90% of that capacity and an overlapping pending booking of another event. Any failure gives `not suitable`; only warnings give `suitable with warnings`. Values not in the request come from the event record. Booking requests run this check, and a search made for an event (`GET /venues/search?eventId=`) gives each venue its verdict, so the three always agree (SPM-62 AC9).
+**Suitability rule (SPM-62, `POST /venues/suitability`, `app/services/suitability.py`):** failures are attendance above the capacity of the required layout (or the venue's capacity if no layout is given), an unsupported layout, a missing required facility or accessibility feature, a time outside operating hours (the event's stored UTC times are converted to Singapore time, the day included, before comparing with the hours, and messages give times in SGT), and an approved booking of another event or an unavailability period overlapping the occupied window (SPM-64 rule above). Warnings are attendance above 90% of that capacity and an overlapping pending booking of another event. Any failure gives `not suitable`; only warnings give `suitable with warnings`. Values not in the request come from the event record. Booking requests run this check, and a search made for an event (`GET /venues/search?eventId=`) gives each venue its verdict, so the three always agree (SPM-62 AC9).
 
 **Booking request rules (SPM-63, `POST /venues/bookings`):** only the coordinator assigned to the event may request a venue, and only while the event is `approved`, `planning`, or `reconsidering` (SPM-86: after a booking is released, the coordinator can request a venue again). The suitability rule runs first: any failure refuses the request (409, with the failures), and warnings refuse it unless `acknowledgeWarnings` is true, in which case they are stored in `warnings`. An event may have several live bookings, one pending or approved booking per venue. A second request for a venue that already has a pending or approved booking is refused (409). A withdrawn, rejected, or cancelled row can be requested again. The coordinator who sent a pending request can withdraw it (`withdrawn`), after which it no longer counts in suitability checks. Venue Staff are notified of each request and withdrawal (best effort through notification-service). Requests are listed oldest first.
 

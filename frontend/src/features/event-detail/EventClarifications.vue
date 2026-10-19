@@ -85,13 +85,13 @@
           <div class="byline">
             <span class="author">{{ entry.authorName || roleLabel(entry.authorRole) }}</span>
             <span class="role">{{ roleLabel(entry.authorRole) }}</span>
-            <time :datetime="entry.createdAt">{{ formatUtc(entry.createdAt) }}</time>
+            <time :datetime="entry.createdAt">{{ formatSgt(entry.createdAt) }}</time>
           </div>
           <p class="message">{{ entry.message }}</p>
         </li>
       </ol>
 
-      <p v-if="item.status === 'resolved'" class="resolved-note">Resolved {{ formatUtc(item.resolvedAt) }}</p>
+      <p v-if="item.status === 'resolved'" class="resolved-note">Resolved {{ formatSgt(item.resolvedAt) }}</p>
       <form v-else-if="canReply" class="reply-form" @submit.prevent="submitReply(item)">
         <label :for="`reply-${item.clarificationId}`" class="visually-hidden">Reply</label>
         <textarea
@@ -129,7 +129,7 @@ import {
 import { FIELD_LABELS, fieldLabel } from '../../config/eventFields.js'
 import { IN_REVIEW_EVENT_STATUSES } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt } from '../../utils/datetime.js'
 
 const props = defineProps({ event: { type: Object, required: true } })
 // Raising or resolving can change the event's status, so the page re-reads it.

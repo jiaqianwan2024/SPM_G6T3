@@ -58,7 +58,7 @@
     </form>
 
     <p v-if="latest?.status === 'pending' && !isOfficer" class="notice" data-testid="safety-pending">
-      Submitted {{ formatUtc(latest.submittedAt) }}.
+      Submitted {{ formatSgt(latest.submittedAt) }}.
       <template v-if="latest.safetyOfficerId">{{ nameOf(latest.safetyOfficerId) }} is reviewing it.</template>
       <template v-else>Waiting for a Safety Officer to claim it.</template>
     </p>
@@ -67,7 +67,7 @@
     <div v-if="latest && latest.status !== 'pending'" class="outcome" :class="latest.status" data-testid="safety-outcome">
       <p>
         <strong>{{ OUTCOME_TITLES[latest.status] }}</strong>
-        by {{ nameOf(latest.decidedBy) }} on {{ formatUtc(latest.decidedAt) }}.
+        by {{ nameOf(latest.decidedBy) }} on {{ formatSgt(latest.decidedAt) }}.
       </p>
       <p v-if="latest.decisionNote">
         {{ NOTE_LABELS[latest.status] }}: {{ latest.decisionNote }}
@@ -210,7 +210,7 @@
       <summary>Earlier reviews ({{ reviews.length - 1 }})</summary>
       <ul>
         <li v-for="review in reviews.slice(1)" :key="review.reviewId">
-          {{ STATE_LABELS[review.status] }} · submitted {{ formatUtc(review.submittedAt) }}
+          {{ STATE_LABELS[review.status] }} · submitted {{ formatSgt(review.submittedAt) }}
           <template v-if="review.decisionNote"> · {{ review.decisionNote }}</template>
         </li>
       </ul>
@@ -236,7 +236,7 @@ import {
 import { getUsers } from '../../api/userService.js'
 import { SAFETY_SUBMITTABLE_STATUSES } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt, formatSgtRange } from '../../utils/datetime.js'
 
 const props = defineProps({ event: { type: Object, required: true } })
 // Submitting or deciding changes the event's status, so the page re-reads it.
@@ -300,7 +300,7 @@ function nameOf(userId) {
 
 function formatRange(start, end) {
   if (!start || !end) return 'Date not set'
-  return `${new Date(start).toLocaleString()} – ${new Date(end).toLocaleString()}`
+  return formatSgtRange(start, end)
 }
 
 function errorText(err, fallback) {

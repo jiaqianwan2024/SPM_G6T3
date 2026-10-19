@@ -21,8 +21,9 @@ EVENT = EventFacts(
     organisationName="Apex Partners",
     expectedAttendance=10,
     layoutPreference="Theatre",
-    proposedStartAt=datetime(2030, 1, 7, 10),
-    proposedEndAt=datetime(2030, 1, 7, 12),
+    # 10:00 to 12:00 Singapore time, stored as UTC.
+    proposedStartAt=datetime(2030, 1, 7, 2),
+    proposedEndAt=datetime(2030, 1, 7, 4),
 )
 
 
@@ -59,10 +60,10 @@ class TestBookingRequestRoutes(VenueCase):
         payload = {
             "venueId": self.venue_id,
             "eventId": "e1",
-            "startsAt": "2030-01-07T10:00:00Z",
-            "endsAt": "2030-01-07T12:00:00Z",
-            "setupStartsAt": "2030-01-07T10:00:00Z",
-            "teardownEndsAt": "2030-01-07T12:00:00Z",
+            "startsAt": "2030-01-07T02:00:00Z",
+            "endsAt": "2030-01-07T04:00:00Z",
+            "setupStartsAt": "2030-01-07T02:00:00Z",
+            "teardownEndsAt": "2030-01-07T04:00:00Z",
             "coordinatorNotes": "Side door please.",
             **body,
         }

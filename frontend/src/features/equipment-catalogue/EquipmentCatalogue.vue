@@ -76,8 +76,8 @@
           <dt>Serviceable</dt><dd>{{ selected.serviceableQuantity }}</dd>
         </dl>
         <form class="availability" @submit.prevent="checkWindow">
-          <label>From<input v-model="windowStart" type="datetime-local" required /></label>
-          <label>Until<input v-model="windowEnd" type="datetime-local" required /></label>
+          <label>From (SGT)<input v-model="windowStart" type="datetime-local" required /></label>
+          <label>Until (SGT)<input v-model="windowEnd" type="datetime-local" required /></label>
           <button type="submit" class="btn btn-ghost small">Check available</button>
           <p v-if="availableForWindow !== null" class="available-result">{{ availableForWindow }} available in this period</p>
         </form>
@@ -98,6 +98,7 @@ import {
   updateEquipment,
 } from '../../api/equipmentService.js'
 import { session } from '../../store/session.js'
+import { fromSgtInput } from '../../utils/datetime.js'
 import EquipmentForm from './EquipmentForm.vue'
 import EquipmentActivityLog from './EquipmentActivityLog.vue'
 import RequestAvailability from './RequestAvailability.vue'
@@ -214,8 +215,8 @@ async function checkWindow() {
   try {
     const { data } = await checkEquipmentAvailability({
       equipmentId: selected.value.equipmentId,
-      startsAt: new Date(windowStart.value).toISOString(),
-      endsAt: new Date(windowEnd.value).toISOString(),
+      startsAt: fromSgtInput(windowStart.value),
+      endsAt: fromSgtInput(windowEnd.value),
     })
     availableForWindow.value = data.availableQuantity
   } catch {

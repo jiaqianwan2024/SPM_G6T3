@@ -77,6 +77,7 @@ import {
   reserveEquipmentRequest,
   reviewEquipmentRequest,
 } from '../../api/equipmentService.js'
+import { formatSgt, parseServerTime } from '../../utils/datetime.js'
 
 const requests = ref([])
 const names = ref({})
@@ -114,9 +115,7 @@ function statusLabel(status) {
 }
 
 function formatWhen(value) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString()
+  return parseServerTime(value) ? formatSgt(value) : value
 }
 
 function heldBy(line) {

@@ -41,7 +41,8 @@ class TestArrangementClients(unittest.TestCase):
 
         self.assertEqual([row["id"] for row in affected], ["vb-1", "vb-2", "er-1", "er-2"])
         self.assertEqual(
-            affected[0]["summary"], "Venue booking at Marina Hall A, 01 Dec 2026 09:00 to 01 Dec 2026 17:00 UTC"
+            # Stored 09:00 to 17:00 UTC, read in Singapore time.
+            affected[0]["summary"], "Venue booking at Marina Hall A, 01 Dec 2026 17:00 to 02 Dec 2026 01:00 SGT"
         )
         self.assertIn("at v1,", affected[1]["summary"])
         self.assertEqual(affected[2], {"kind": "equipment", "id": "er-1", "summary": "Equipment reservation: 2 x Projector"})

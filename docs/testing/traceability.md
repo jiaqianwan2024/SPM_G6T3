@@ -9,11 +9,11 @@
 | SPM-43 | Protected page / API requires session | TC-SPM43-AC05 | `e2e/spm43.spec.js` | Automated |
 | SPM-43 | Logout prevents Back access | TC-SPM43-AC06 | `e2e/spm43.spec.js` | Automated |
 | SPM-43 | Password is masked | TC-SPM43-AC07 | `e2e/spm43.spec.js` | Automated |
-| SPM-45 | Venue Staff permissions | TC-SPM45-AC01 | `e2e/spm45-api.spec.js`; `e2e/spm45-ui.contract.spec.js` | API automated; UI skipped |
-| SPM-45 | Technical Support permissions | TC-SPM45-AC02 | `e2e/spm45-api.spec.js`; `e2e/spm45-ui.contract.spec.js` | API automated; UI skipped |
-| SPM-45 | Event Coordinator permissions | TC-SPM45-AC03 | `e2e/spm45-api.spec.js`; `e2e/spm45-ui.contract.spec.js` | API automated; UI skipped |
-| SPM-45 | Wrong-role action returns 403 | TC-SPM45-AC04 | `e2e/spm45-api.spec.js`; `e2e/spm45-ui.contract.spec.js` | API automated; UI skipped |
-| SPM-46 | Assigned coordinator can act | TC-SPM46-AC01 | `e2e/spm46-api.spec.js`; `e2e/spm46-ui.contract.spec.js` | Automated (API and UI): edit, venue request, equipment request; confirm arrangements skipped until SPM-72 |
+| SPM-45 | Venue Staff permissions | TC-SPM45-AC01 | `e2e/spm45-api.spec.js`; `e2e/spm45-ui.contract.spec.js` | Automated (API and browser: Approve and Reject on Booking Requests) |
+| SPM-45 | Technical Support permissions | TC-SPM45-AC02 | `e2e/spm45-api.spec.js`; `e2e/spm45-ui.contract.spec.js` | Automated (API and browser: equipment tabs, no Booking Requests) |
+| SPM-45 | Event Coordinator permissions | TC-SPM45-AC03 | `e2e/spm45-api.spec.js`; `e2e/spm45-ui.contract.spec.js` | Automated (API and browser). Since SPM-117 only the Event Coordinator Lead assigns, so a coordinator who tries gets 403 |
+| SPM-45 | Wrong-role action returns 403 | TC-SPM45-AC04 | `e2e/spm45-api.spec.js`; `e2e/spm45-ui.contract.spec.js` | Automated (API and browser: other roles' tabs are not offered) |
+| SPM-46 | Assigned coordinator can act | TC-SPM46-AC01 | `e2e/spm46-api.spec.js`; `e2e/spm46-ui.contract.spec.js` | Automated (API and UI): edit, venue request, equipment request, and confirming (SPM-72), which only the assigned coordinator is offered and allowed |
 | SPM-46 | Unassigned staff read-only | TC-SPM46-AC02 | `e2e/spm46-api.spec.js`; `e2e/spm46-ui.contract.spec.js` | Automated (API and UI) |
 | SPM-46 | Reassignment swaps permissions | TC-SPM46-AC03 | `e2e/spm46-api.spec.js`; `e2e/spm46-ui.contract.spec.js` | Automated (API and UI) |
 | SPM-47 | Organiser list is org-scoped | TC-SPM47-AC01 | `e2e/spm47-api.spec.js`; `e2e/spm47-ui.contract.spec.js` | Automated |
@@ -490,6 +490,11 @@
 | SPM-51 | Every service verifies the Firebase token | TC-SPM51-AC02 | `e2e/spm51.spec.js` | Automated |
 | SPM-51 | One Firebase identity maps to one user row | TC-SPM51-AC03 | `e2e/spm51.spec.js` | Automated |
 | SPM-51 | Invalid, expired, and tampered tokens reject the same way | TC-SPM51-AC04 | `e2e/spm51.spec.js` | Automated |
+| SGT | Screens show times in Singapore time, whatever the computer's time zone | TC-SGT-AC01, TC-SGT-AC01b | `e2e/sgt.spec.js` | Automated |
+| SGT | A time typed into a form is read as Singapore time and saved as UTC | TC-SGT-AC02 | `e2e/sgt.spec.js` | Automated |
+| SGT | Opening hours and their days are Singapore time in suitability and search | TC-SGT-AC03, TC-SGT-AC03b | `e2e/sgt.spec.js` | Automated |
+| SGT | Times inside messages are written in Singapore time | TC-SGT-AC04 | `e2e/sgt.spec.js` | Automated |
+| SGT | The database and API keep UTC | TC-SGT-AC05 | `e2e/sgt.spec.js` | Automated |
 
 A case is Pass only when every active test for that ID passes. A skipped
 UI contract or assignment-gate check keeps the case Blocked even if the

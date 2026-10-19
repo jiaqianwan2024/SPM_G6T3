@@ -25,10 +25,10 @@ export const EVERY_DAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((
   closes: '24:00',
 }))
 
-// 10:00 UTC, `day` days from today, for `hours` hours. Days start at 400 so every
+// 10:00 Singapore time (02:00 UTC), `day` days from today, for `hours` hours. Days start at 400 so every
 // period is well in the future, and an expiry a day before it is still ahead.
 export function period(day, hours = 2) {
-  const start = START_OF_TODAY + (400 + day) * DAY + 10 * 60 * MINUTE
+  const start = START_OF_TODAY + (400 + day) * DAY + 2 * 60 * MINUTE
   return { startsAt: new Date(start).toISOString(), endsAt: new Date(start + hours * 60 * MINUTE).toISOString() }
 }
 
@@ -44,6 +44,11 @@ export function slot(base, fromMinutes, toMinutes) {
 // The server returns UTC times without a zone marker.
 export function utc(value) {
   return new Date(/Z|[+-]\d\d:\d\d$/.test(value) ? value : `${value}Z`).toISOString()
+}
+
+// A time as a datetime-local value in Singapore time (UTC + 8 hours), as the screens show it.
+export function sgtInput(value) {
+  return shift(utc(value), 8 * 60).slice(0, 16)
 }
 
 // A venue for one suite only. The values a test depends on are passed in, so they

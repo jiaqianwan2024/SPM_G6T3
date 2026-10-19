@@ -38,7 +38,7 @@
               <span class="fact-label">Time:</span>
               <span class="fact-value">
                 <span data-testid="reg-start">{{ timePart(row.proposedStartAt || row.startsAt) }}</span>
-                – <span data-testid="reg-end">{{ timePart(row.proposedEndAt || row.endsAt) }}</span>
+                – <span data-testid="reg-end">{{ timePart(row.proposedEndAt || row.endsAt) }}</span> SGT
                 <span v-if="row.timeChanged" class="change-flag">Time changed</span>
               </span>
             </span>
@@ -64,6 +64,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getMyRegistrations } from '../../api/registrationService.js'
+import { formatSgtDate, formatSgtTime, parseServerTime } from '../../utils/datetime.js'
 
 const router = useRouter()
 const rows = ref([])
@@ -80,15 +81,15 @@ const groups = computed(() => [
 function isPast(row) {
   const end = row.proposedEndAt || row.endsAt || row.proposedStartAt || row.startsAt
   if (!end) return false
-  return new Date(end).getTime() < Date.now()
+  return parseServerTime(end).getTime() < Date.now()
 }
 
 function datePart(value) {
-  return value ? new Date(value).toLocaleDateString() : ''
+  return formatSgtDate(value)
 }
 
 function timePart(value) {
-  return value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+  return formatSgtTime(value)
 }
 
 function open(registrationId) {

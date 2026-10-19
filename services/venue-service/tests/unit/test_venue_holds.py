@@ -22,7 +22,8 @@ ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 def at(hour, minute=0, day=MONDAY):
-    return day + timedelta(hours=hour, minutes=minute)
+    """`hour`:`minute` Singapore time, stored as naive UTC (eight hours earlier)."""
+    return day + timedelta(hours=hour - 8, minutes=minute)
 
 
 class HoldCase(VenueCase):
@@ -103,7 +104,7 @@ class TestPlacingAHold(HoldCase):
 
     def test_the_expiry_may_be_the_events_start_but_not_later(self):
         detail = self.refused(lambda: self.hold(self.a, at(10, 1)), 422)
-        self.assertEqual(detail, "The hold must expire no later than the event's start (07 Jan 2030, 10:00 AM UTC).")
+        self.assertEqual(detail, "The hold must expire no later than the event's start (07 Jan 2030, 10:00 AM SGT).")
 
         self.assertEqual(self.hold(self.a, at(10)).hold.expiresAt, at(10))
 
@@ -128,7 +129,7 @@ class TestPlacingAHold(HoldCase):
 
         self.assertEqual(
             detail,
-            "This request is already held until 04 Jan 2030, 08:00 AM UTC. Release that hold first to set a new expiry.",
+            "This request is already held until 04 Jan 2030, 08:00 AM SGT. Release that hold first to set a new expiry.",
         )
 
     def test_a_released_or_expired_hold_can_be_placed_again(self):
@@ -154,7 +155,7 @@ class TestPlacingAHold(HoldCase):
         self.assertEqual(
             detail,
             'Harbour Hall is already confirmed for "Event e-b" at an overlapping time '
-            "(07 Jan 2030, 11:30 AM to 01:45 PM UTC, including setup and turnaround), so this request cannot be held.",
+            "(07 Jan 2030, 11:30 AM to 01:45 PM SGT, including setup and turnaround), so this request cannot be held.",
         )
 
     def test_two_holds_never_overlap(self):
@@ -163,7 +164,7 @@ class TestPlacingAHold(HoldCase):
 
         detail = self.refused(lambda: self.hold(b), 409)
 
-        self.assertIn('Harbour Hall is on a tentative hold until 04 Jan 2030, 08:00 AM UTC for "Event e-a"', detail)
+        self.assertIn('Harbour Hall is on a tentative hold until 04 Jan 2030, 08:00 AM SGT for "Event e-a"', detail)
         self.assertTrue(detail.endswith("so this request cannot be held."))
 
     def test_unavailability_overlapping_the_window_blocks_a_hold(self):
@@ -183,7 +184,7 @@ class TestPlacingAHold(HoldCase):
 
         self.assertEqual(
             detail,
-            "Harbour Hall is unavailable from 07 Jan 2030, 12:30 PM to 02:00 PM UTC (Maintenance), "
+            "Harbour Hall is unavailable from 07 Jan 2030, 12:30 PM to 02:00 PM SGT (Maintenance), "
             "so this request cannot be held.",
         )
 
@@ -222,8 +223,8 @@ class TestAnActiveHoldReservesTheVenue(HoldCase):
             [
                 (
                     "hold",
-                    'This venue is on a tentative hold for "Event e-a" until 04 Jan 2030, 08:00 AM UTC, at an '
-                    "overlapping time (07 Jan 2030, 09:30 AM to 12:45 PM UTC, including setup and turnaround).",
+                    'This venue is on a tentative hold for "Event e-a" until 04 Jan 2030, 08:00 AM SGT, at an '
+                    "overlapping time (07 Jan 2030, 09:30 AM to 12:45 PM SGT, including setup and turnaround).",
                 )
             ],
         )
@@ -233,7 +234,7 @@ class TestAnActiveHoldReservesTheVenue(HoldCase):
 
         detail = self.refused(lambda: self.service.approve_booking(b, "u-venue", None), 409)
 
-        self.assertIn("is on a tentative hold until 04 Jan 2030, 08:00 AM UTC", detail)
+        self.assertIn("is on a tentative hold until 04 Jan 2030, 08:00 AM SGT", detail)
         self.assertEqual(self.service.get_booking(b).status, "pending")
 
     def test_the_held_request_itself_can_be_approved_and_its_hold_becomes_the_booking(self):
@@ -369,7 +370,7 @@ class TestHoldRoutes(HoldCase):
             "u-coord",
             "e-a",
             "Venue on hold for your event",
-            'Harbour Hall is on a tentative hold for "AI Summit" until 04 Jan 2030, 08:00 AM UTC. If the request '
+            'Harbour Hall is on a tentative hold for "AI Summit" until 04 Jan 2030, 04:00 PM SGT. If the request '
             "is not approved by then, the hold expires and the venue becomes available to other requests.",
             HEADERS["Authorization"],
         )

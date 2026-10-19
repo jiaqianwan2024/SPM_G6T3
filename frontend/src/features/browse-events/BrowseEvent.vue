@@ -43,6 +43,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getOpenEvent } from '../../api/eventService.js'
+import { formatSgt, formatSgtDate, formatSgtTime, parseServerTime } from '../../utils/datetime.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -57,7 +58,7 @@ const schedule = computed(() => {
   const day = datePart(start)
   const from = timePart(start)
   const to = end ? timePart(end) : ''
-  return to ? `${day} · ${from} – ${to}` : `${day} · ${from}`
+  return to ? `${day} · ${from} – ${to} SGT` : `${day} · ${from} SGT`
 })
 
 const venue = computed(() => {
@@ -70,9 +71,8 @@ const venue = computed(() => {
 const closes = computed(() => {
   const value = event.value?.registrationClosesAt
   if (!value) return 'Not set'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
-  return `${datePart(value)}, ${timePart(value)}`
+  if (!parseServerTime(value)) return String(value)
+  return formatSgt(value)
 })
 
 const places = computed(() => {
@@ -82,11 +82,11 @@ const places = computed(() => {
 })
 
 function datePart(value) {
-  return new Date(value).toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' })
+  return formatSgtDate(value)
 }
 
 function timePart(value) {
-  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return formatSgtTime(value)
 }
 
 function back() {

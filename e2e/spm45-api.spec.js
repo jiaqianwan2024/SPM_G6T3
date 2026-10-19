@@ -1,245 +1,135 @@
 import { test, expect } from '@playwright/test'
-import { account } from './support/test-data.js'
-import { bearer, firebaseIdToken } from './support/auth.js'
-import {
-  equipmentRequestPayload,
-  serviceUrls,
-  venueBookingPayload,
-} from './support/api-data.js'
+import { serviceUrls } from './support/api-data.js'
+import { authedApi } from './support/auth.js'
+import { assignCoordinator, eventApi } from './support/event.js'
+import { createEquipment, equipmentApi } from './support/equipment.js'
+import { venueRequest } from './support/venue.js'
+import { THEATRE_EVENT, approvedEvent, requestVenue } from './support/venue-request.js'
+import { createSuiteVenue, period, retireSuiteVenue } from './support/venue-suite.js'
 
-test.describe('SPM-45 Role-Based Feature Access Control — API', () => {
-  const tokens = {}
+// SPM-45: each role may only do what its job needs. The suite makes its own venue
+// and equipment item (retired or left unused afterwards) and its own events, each
+// on its own fixed day, so it never depends on seeded bookings or stock that an
+// earlier run used up. Since SPM-117 (Week 7 change 5) only the Event Coordinator
+// Lead assigns coordinators, so AC3's "coordinators can assign" now reads: the Lead
+// assigns, and a coordinator who tries is refused.
 
-  test.beforeAll(async ({ request }) => {
-    for (const id of ['EO-01', 'EC-01', 'VS-01', 'TS-01', 'ATT-01']) {
-      tokens[id] = await firebaseIdToken(request, account(id))
-    }
+let hall
+let projector
+
+async function pendingBooking(day) {
+  const event = await approvedEvent(THEATRE_EVENT)
+  const sent = await requestVenue(event, hall.venueId, period(day))
+  expect(sent.status, JSON.stringify(sent.body)).toBe(201)
+  return { event, booking: sent.body }
+}
+
+function equipmentRequest(event, accountId, day) {
+  const when = period(day)
+  return equipmentApi('POST', '/equipment/requests', accountId, {
+    eventId: event.eventId,
+    equipmentId: projector.equipmentId,
+    quantity: 1,
+    technicalRequirements: 'AUTO-SPM45 HDMI to the stage',
+    startsAt: when.startsAt,
+    endsAt: when.endsAt,
+  })
+}
+
+function decide(booking, decision, accountId, reason = 'AUTO-SPM45') {
+  return venueRequest('POST', `/venues/bookings/${booking.bookingId}/${decision}`, accountId, { reason })
+}
+
+function assign(event, accountId) {
+  return eventApi('POST', `/${event.eventId}/assign-coordinator`, accountId, { coordinatorId: 'u2' })
+}
+
+test.describe('SPM-45 Role-Based Feature Access Control (API)', () => {
+  test.beforeAll(async () => {
+    hall = await createSuiteVenue('SPM45 Hall', { layouts: [{ name: 'Theatre', capacity: 300 }] })
+    projector = await createEquipment(`AUTO-SPM45 Projector ${Date.now()}`)
   })
 
-  test('TC-SPM45-AC01 Venue Staff decisions and forbidden actions', async ({ request }) => {
-    const approveCandidate = await request.post(`${serviceUrls.venue}/venues/bookings`, {
-      headers: bearer(tokens['EC-01']),
-      data: venueBookingPayload(31),
-    })
-    expect(approveCandidate.status()).toBe(201)
-    const approveBooking = await approveCandidate.json()
-    expect(approveBooking.status).toBe('pending')
-
-    const rejectCandidate = await request.post(`${serviceUrls.venue}/venues/bookings`, {
-      headers: bearer(tokens['EC-01']),
-      data: venueBookingPayload(32),
-    })
-    expect(rejectCandidate.status()).toBe(201)
-    const rejectBooking = await rejectCandidate.json()
-
-    const approved = await request.post(
-      `${serviceUrls.venue}/venues/bookings/${approveBooking.bookingId}/approve`,
-      {
-        headers: bearer(tokens['VS-01']),
-        data: { reason: 'AUTO-SPM45 venue available' },
-      },
-    )
-    expect(approved.status()).toBe(200)
-    expect((await approved.json()).status).toBe('approved')
-
-    const rejected = await request.post(
-      `${serviceUrls.venue}/venues/bookings/${rejectBooking.bookingId}/reject`,
-      {
-        headers: bearer(tokens['VS-01']),
-        data: { reason: 'AUTO-SPM45 turnaround conflict' },
-      },
-    )
-    expect(rejected.status()).toBe(200)
-    const rejectedBody = await rejected.json()
-    expect(rejectedBody.status).toBe('rejected')
-    expect(rejectedBody.decisionReason).toBe('AUTO-SPM45 turnaround conflict')
-
-    const equipmentDenied = await request.post(`${serviceUrls.equipment}/equipment/requests`, {
-      headers: bearer(tokens['VS-01']),
-      data: equipmentRequestPayload(51),
-    })
-    expect(equipmentDenied.status()).toBe(403)
-
-    const assignmentDenied = await request.post(
-      `${serviceUrls.event}/events/e1/assign-coordinator`,
-      {
-        headers: bearer(tokens['VS-01']),
-        data: { coordinatorId: 'u2' },
-      },
-    )
-    expect(assignmentDenied.status()).toBe(403)
+  test.afterAll(async () => {
+    await retireSuiteVenue(hall)
   })
 
-  test('TC-SPM45-AC02 Technical Support reviews and reserves equipment only', async ({
-    request,
-  }) => {
-    const created = await request.post(`${serviceUrls.equipment}/equipment/requests`, {
-      headers: bearer(tokens['EC-01']),
-      data: equipmentRequestPayload(52),
+  test('TC-SPM45-AC01 Venue Staff approve and reject bookings, but cannot request equipment or assign coordinators', async () => {
+    const toApprove = await pendingBooking(1)
+    const toReject = await pendingBooking(2)
+
+    const approved = await decide(toApprove.booking, 'approve', 'VS-01')
+    const rejected = await decide(toReject.booking, 'reject', 'VS-01', 'AUTO-SPM45 turnaround conflict')
+    const equipment = await equipmentRequest(toApprove.event, 'VS-01', 1)
+    const assignment = await assign(toApprove.event, 'VS-01')
+
+    expect([approved.status, approved.body.status]).toEqual([200, 'approved'])
+    expect([rejected.status, rejected.body.status, rejected.body.decisionReason]).toEqual([
+      200,
+      'rejected',
+      'AUTO-SPM45 turnaround conflict',
+    ])
+    expect(equipment.status).toBe(403)
+    expect(assignment.status).toBe(403)
+  })
+
+  test('TC-SPM45-AC02 Technical Support review and reserve equipment, but cannot decide venue bookings', async () => {
+    const { event, booking } = await pendingBooking(3)
+    const created = await equipmentRequest(event, 'EC-01', 3)
+    expect([created.status, created.body.status]).toEqual([201, 'pending'])
+
+    const reviewed = await equipmentApi('POST', `/equipment/requests/${created.body.requestId}/review`, 'TS-01', {
+      approve: true,
+      reviewNote: 'AUTO-SPM45 stock confirmed',
     })
-    expect(created.status()).toBe(201)
-    const equipmentRequest = await created.json()
-    expect(equipmentRequest.status).toBe('pending')
-    expect(equipmentRequest.technicalRequirements).toContain('AUTO-SPM45')
-
-    const reviewed = await request.post(
-      `${serviceUrls.equipment}/equipment/requests/${equipmentRequest.requestId}/review`,
-      {
-        headers: bearer(tokens['TS-01']),
-        data: { approve: true, reviewNote: 'AUTO-SPM45 stock confirmed' },
-      },
-    )
-    expect(reviewed.status()).toBe(200)
-    expect((await reviewed.json()).status).toBe('approved')
-
-    const reserved = await request.post(
-      `${serviceUrls.equipment}/equipment/requests/${equipmentRequest.requestId}/reserve`,
-      { headers: bearer(tokens['TS-01']) },
-    )
-    expect(reserved.status()).toBe(201)
-    expect((await reserved.json()).status).toBe('active')
-
-    const bookingResponse = await request.post(`${serviceUrls.venue}/venues/bookings`, {
-      headers: bearer(tokens['EC-01']),
-      data: venueBookingPayload(33),
-    })
-    expect(bookingResponse.status()).toBe(201)
-    const booking = await bookingResponse.json()
+    const reserved = await equipmentApi('POST', `/equipment/requests/${created.body.requestId}/reserve`, 'TS-01')
+    expect([reviewed.status, reviewed.body.status]).toEqual([200, 'approved'])
+    expect([reserved.status, reserved.body.status]).toEqual([201, 'active'])
 
     for (const decision of ['approve', 'reject']) {
-      const denied = await request.post(
-        `${serviceUrls.venue}/venues/bookings/${booking.bookingId}/${decision}`,
-        {
-          headers: bearer(tokens['TS-01']),
-          data: { reason: 'AUTO-SPM45 forbidden technical decision' },
-        },
-      )
-      expect(denied.status()).toBe(403)
+      expect((await decide(booking, decision, 'TS-01')).status, decision).toBe(403)
     }
-
-    // A later valid Venue Staff decision proves the forbidden calls left it pending.
-    const validDecision = await request.post(
-      `${serviceUrls.venue}/venues/bookings/${booking.bookingId}/approve`,
-      {
-        headers: bearer(tokens['VS-01']),
-        data: { reason: 'AUTO-SPM45 unchanged after forbidden calls' },
-      },
-    )
-    expect(validDecision.status()).toBe(200)
-    expect((await validDecision.json()).status).toBe('approved')
+    const stillPending = await venueRequest('GET', `/venues/bookings/${booking.bookingId}`, 'VS-01')
+    expect(stillPending.body.status).toBe('pending')
   })
 
-  test('TC-SPM45-AC03 Coordinator assigns and requests but cannot decide booking', async ({
-    request,
-  }) => {
-    const assignment = await request.post(`${serviceUrls.event}/events/e1/assign-coordinator`, {
-      headers: bearer(tokens['EC-01']),
-      data: { coordinatorId: 'u2' },
-    })
-    expect(assignment.status()).toBe(201)
-    expect((await assignment.json()).coordinatorId).toBe('u2')
-
-    const bookingResponse = await request.post(`${serviceUrls.venue}/venues/bookings`, {
-      headers: bearer(tokens['EC-01']),
-      data: venueBookingPayload(34),
-    })
-    expect(bookingResponse.status()).toBe(201)
-    const booking = await bookingResponse.json()
-
-    const equipment = await request.post(`${serviceUrls.equipment}/equipment/requests`, {
-      headers: bearer(tokens['EC-01']),
-      data: equipmentRequestPayload(53),
-    })
-    expect(equipment.status()).toBe(201)
-    expect((await equipment.json()).status).toBe('pending')
+  test('TC-SPM45-AC03 Event Coordinators submit venue and equipment requests but cannot approve their own bookings or assign', async () => {
+    const { event, booking } = await pendingBooking(4)
+    expect(booking.status).toBe('pending')
+    const equipment = await equipmentRequest(event, 'EC-01', 4)
+    expect([equipment.status, equipment.body.status]).toEqual([201, 'pending'])
 
     for (const decision of ['approve', 'reject']) {
-      const denied = await request.post(
-        `${serviceUrls.venue}/venues/bookings/${booking.bookingId}/${decision}`,
-        {
-          headers: bearer(tokens['EC-01']),
-          data: { reason: 'AUTO-SPM45 coordinator cannot self-approve' },
-        },
-      )
-      expect(denied.status()).toBe(403)
+      expect((await decide(booking, decision, 'EC-01')).status, decision).toBe(403)
     }
+    expect((await assign(event, 'EC-01')).status).toBe(403)
+    // The Lead assigns instead (SPM-117): here, moving the event to EC-02 (u6).
+    expect((await assignCoordinator(event.eventId, 'u6')).coordinatorId).toBe('u6')
 
-    const validDecision = await request.post(
-      `${serviceUrls.venue}/venues/bookings/${booking.bookingId}/approve`,
-      {
-        headers: bearer(tokens['VS-01']),
-        data: { reason: 'AUTO-SPM45 approved by Venue Staff' },
-      },
-    )
-    expect(validDecision.status()).toBe(200)
-    expect((await validDecision.json()).reviewedBy).toBe('u3')
+    const byVenueStaff = await decide(booking, 'approve', 'VS-01')
+    expect([byVenueStaff.status, byVenueStaff.body.reviewedBy]).toEqual([200, 'u3'])
   })
 
-  test('TC-SPM45-AC04 wrong-role API matrix returns 403', async ({ request }) => {
-    const pendingResponse = await request.post(`${serviceUrls.venue}/venues/bookings`, {
-      headers: bearer(tokens['EC-01']),
-      data: venueBookingPayload(35),
-    })
-    expect(pendingResponse.status()).toBe(201)
-    const pending = await pendingResponse.json()
-
-    const attempts = [
-      {
-        name: 'Venue Staff cannot assign coordinators',
-        call: () =>
-          request.post(`${serviceUrls.event}/events/e1/assign-coordinator`, {
-            headers: bearer(tokens['VS-01']),
-            data: { coordinatorId: 'u2' },
-          }),
-      },
-      {
-        name: 'Technical Support cannot create venue bookings',
-        call: () =>
-          request.post(`${serviceUrls.venue}/venues/bookings`, {
-            headers: bearer(tokens['TS-01']),
-            data: venueBookingPayload(36),
-          }),
-      },
-      {
-        name: 'Coordinator cannot approve venue bookings',
-        call: () =>
-          request.post(`${serviceUrls.venue}/venues/bookings/${pending.bookingId}/approve`, {
-            headers: bearer(tokens['EC-01']),
-            data: { reason: 'AUTO-SPM45 forbidden' },
-          }),
-      },
-      {
-        name: 'Organiser cannot create equipment requests',
-        call: () =>
-          request.post(`${serviceUrls.equipment}/equipment/requests`, {
-            headers: bearer(tokens['EO-01']),
-            data: equipmentRequestPayload(54),
-          }),
-      },
-      {
-        name: 'Attendee cannot reject venue bookings',
-        call: () =>
-          request.post(`${serviceUrls.venue}/venues/bookings/${pending.bookingId}/reject`, {
-            headers: bearer(tokens['ATT-01']),
-            data: { reason: 'AUTO-SPM45 forbidden' },
-          }),
-      },
-    ]
-
-    for (const attempt of attempts) {
-      const response = await attempt.call()
-      expect(response.status(), attempt.name).toBe(403)
-      expect((await response.json()).detail, attempt.name).toMatch(/permission|role/i)
+  test('TC-SPM45-AC04 an action outside the caller\'s role is refused with 403', async () => {
+    const { event, booking } = await pendingBooking(5)
+    const when = period(5)
+    const attempts = {
+      'Venue Staff cannot assign coordinators': () => assign(event, 'VS-01'),
+      'Technical Support cannot send venue booking requests': () =>
+        venueRequest('POST', '/venues/bookings', 'TS-01', { eventId: event.eventId, venueId: hall.venueId, ...when }),
+      'An Event Coordinator cannot approve venue bookings': () => decide(booking, 'approve', 'EC-01'),
+      'An Event Organiser cannot request equipment': () => equipmentRequest(event, 'EO-01', 5),
+      'An Attendee cannot reject venue bookings': () => decide(booking, 'reject', 'ATT-01'),
+      'An Attendee cannot open the coordinator review queue': () =>
+        authedApi('GET', `${serviceUrls.event}/events/queue`, 'ATT-01'),
     }
 
-    const unchanged = await request.post(
-      `${serviceUrls.venue}/venues/bookings/${pending.bookingId}/approve`,
-      {
-        headers: bearer(tokens['VS-01']),
-        data: { reason: 'AUTO-SPM45 still pending after forbidden matrix' },
-      },
-    )
-    expect(unchanged.status()).toBe(200)
-    expect((await unchanged.json()).status).toBe('approved')
+    for (const [name, attempt] of Object.entries(attempts)) {
+      const response = await attempt()
+      expect(response.status, name).toBe(403)
+      expect(response.body.detail, name).toMatch(/permission|only|not allowed/i)
+    }
+    const unchanged = await venueRequest('GET', `/venues/bookings/${booking.bookingId}`, 'VS-01')
+    expect(unchanged.body.status).toBe('pending')
   })
 })

@@ -13,7 +13,7 @@ from tests.unit.support import EventCase, insert_event
 
 START = datetime(2026, 12, 1, 9)
 END = datetime(2026, 12, 1, 17)
-VENUE = {"kind": "venue", "id": "vb-1", "summary": "Venue booking at Marina Hall A, 01 Dec 2026 09:00 to 01 Dec 2026 17:00 UTC"}
+VENUE = {"kind": "venue", "id": "vb-1", "summary": "Venue booking at Marina Hall A, 01 Dec 2026 17:00 to 02 Dec 2026 01:00 SGT"}
 EQUIPMENT = {"kind": "equipment", "id": "er-1", "summary": "Equipment reservation: 2 x Projector"}
 
 

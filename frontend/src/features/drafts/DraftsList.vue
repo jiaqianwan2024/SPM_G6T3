@@ -41,6 +41,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { getMyDrafts } from '../../api/eventService.js'
 import { editDraft } from '../../store/draftEditor.js'
+import { formatSgtRange } from '../../utils/datetime.js'
 
 const emit = defineEmits(['edit-draft'])
 
@@ -58,7 +59,7 @@ const visible = computed(() => {
 function formatRange(start, end) {
   if (!start && !end) return 'No date set yet'
   if (!start || !end) return 'Date incomplete'
-  return `${new Date(start).toLocaleString()} – ${new Date(end).toLocaleString()}`
+  return formatSgtRange(start, end)
 }
 
 async function load() {

@@ -60,11 +60,11 @@
 
         <div class="row">
           <div class="col">
-            <label for="edit-start">Starts</label>
+            <label for="edit-start">Starts (SGT)</label>
             <input id="edit-start" v-model="form.proposedStartAt" type="datetime-local" />
           </div>
           <div class="col">
-            <label for="edit-end">Ends</label>
+            <label for="edit-end">Ends (SGT)</label>
             <input id="edit-end" v-model="form.proposedEndAt" type="datetime-local" />
           </div>
         </div>
@@ -106,6 +106,7 @@ import { computed, reactive, ref } from 'vue'
 import { updateEvent } from '../../api/eventService.js'
 import { EVENT_CATEGORIES, LAYOUT_TYPES } from '../../config/eventFields.js'
 import { eventStatusLabel } from '../../config/eventStatus.js'
+import { fromSgtInput, toSgtInput } from '../../utils/datetime.js'
 
 const props = defineProps({
   event: { type: Object, required: true },
@@ -117,8 +118,9 @@ const CATEGORIES = EVENT_CATEGORIES
 // Cleared, these go to the API as null rather than "".
 const CLEARABLE = ['category', 'layoutPreference']
 
-// datetime-local inputs need "YYYY-MM-DDTHH:mm"; the API returns full ISO strings.
-const toInputDatetime = (iso) => (iso ? iso.slice(0, 16) : '')
+// datetime-local inputs need "YYYY-MM-DDTHH:mm" in Singapore time; the API returns UTC ISO strings.
+const toInputDatetime = (iso) => toSgtInput(iso)
+const DATETIMES = ['proposedStartAt', 'proposedEndAt']
 
 const knownCategory = (value) =>
   CATEGORIES.find((option) => option.toLowerCase() === String(value || '').toLowerCase()) || value || ''
@@ -153,7 +155,8 @@ const changes = computed(() => {
   for (const [field, before] of Object.entries(original)) {
     const value = form[field]
     if (value === before) continue
-    changed[field] = CLEARABLE.includes(field) && value === '' ? null : value
+    if (DATETIMES.includes(field)) changed[field] = fromSgtInput(value)
+    else changed[field] = CLEARABLE.includes(field) && value === '' ? null : value
   }
   return changed
 })

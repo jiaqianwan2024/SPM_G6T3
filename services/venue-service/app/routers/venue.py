@@ -427,7 +427,7 @@ def get_venue_activity_log(
     description=(
         "Coordinators and venue staff. Returns `suitable`, `suitable with warnings`, or `not suitable`, "
         "with a reason for every failure or warning. Anything not sent is taken from the event record. "
-        "All times are UTC."
+        "Times are sent in UTC; opening hours, and the times in each reason, are Singapore time (SGT)."
     ),
     responses=error_responses(403, 404, 503),
 )

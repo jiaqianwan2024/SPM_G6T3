@@ -31,12 +31,12 @@
 
           <div class="row">
             <div class="col">
-              <label for="proposedStartAt">Starts <span class="req">*</span></label>
+              <label for="proposedStartAt">Starts (SGT) <span class="req">*</span></label>
               <input id="proposedStartAt" v-model="form.proposedStartAt" type="datetime-local" />
               <p v-if="submitted && !form.proposedStartAt" class="field-error">Start date is required.</p>
             </div>
             <div class="col">
-              <label for="proposedEndAt">Ends <span class="req">*</span></label>
+              <label for="proposedEndAt">Ends (SGT) <span class="req">*</span></label>
               <input id="proposedEndAt" v-model="form.proposedEndAt" type="datetime-local" />
               <p v-if="submitted && !form.proposedEndAt" class="field-error">End date is required.</p>
               <p v-else-if="submitted && endBeforeStart" class="field-error">
@@ -146,6 +146,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { createEvent, getEvent, getRequirementOptions, saveDraft, submitDraft, updateDraft } from '../../api/eventService.js'
 import { EVENT_CATEGORIES } from '../../config/eventFields.js'
 import { consumeEditingId, setDirty } from '../../store/draftEditor.js'
+import { fromSgtInput, toSgtInput } from '../../utils/datetime.js'
 
 const categories = EVENT_CATEGORIES
 const layouts = ref(['No preference', 'Theatre', 'Boardroom', 'Classroom', 'Banquet'])
@@ -171,16 +172,16 @@ function blankForm() {
   }
 }
 
-// datetime-local inputs need "YYYY-MM-DDTHH:mm"; the API returns full ISO
-// strings (or null, for a draft that never got that far).
+// datetime-local inputs need "YYYY-MM-DDTHH:mm" in Singapore time; the API returns
+// UTC ISO strings (or null, for a draft that never got that far).
 function toInputDatetime(iso) {
-  return iso ? iso.slice(0, 16) : ''
+  return toSgtInput(iso)
 }
 
-// The reverse: an empty input must become null, not "", to satisfy the
+// The reverse, as UTC: an empty input must become null, not "", to satisfy the
 // backend's Optional[datetime] draft schema.
 function toPayloadDatetime(value) {
-  return value || null
+  return fromSgtInput(value) || null
 }
 
 const fieldLabels = {

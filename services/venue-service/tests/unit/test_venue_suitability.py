@@ -13,12 +13,13 @@ WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
 
 def at(hour, minute=0, day=MONDAY):
-    return day + timedelta(hours=hour, minutes=minute)
+    """`hour`:`minute` Singapore time on `day`, stored as naive UTC (eight hours earlier)."""
+    return day + timedelta(hours=hour - 8, minutes=minute)
 
 
 class SuitabilityCase(VenueCase):
-    """A weekday venue open 08:00 to 18:00 UTC with 30 minutes setup and 60
-    minutes turnaround, and an event on a Monday 10:00 to 12:00 UTC for 10
+    """A weekday venue open 08:00 to 18:00 SGT with 30 minutes setup and 60
+    minutes turnaround, and an event on a Monday 10:00 to 12:00 SGT for 10
     people, which on its own suits it. The event occupies the venue from 09:30
     to 13:00 (SPM-64)."""
 
@@ -210,7 +211,7 @@ class TestClashes(SuitabilityCase):
             self.messages(result, "failure"),
             [
                 "This venue already has a confirmed booking for event e-other at an overlapping time "
-                "(07 Jan 2030, 10:30 AM to 03:00 PM UTC, including setup and turnaround)."
+                "(07 Jan 2030, 10:30 AM to 03:00 PM SGT, including setup and turnaround)."
             ],
         )
 
@@ -245,7 +246,7 @@ class TestClashes(SuitabilityCase):
     def test_a_clash_spanning_two_days_names_both_dates(self):
         self.booking("e-other", at(-2), at(11))
 
-        self.assertIn("06 Jan 2030, 09:30 PM to 07 Jan 2030, 12:00 PM UTC", self.messages(self.check(), "failure")[0])
+        self.assertIn("06 Jan 2030, 09:30 PM to 07 Jan 2030, 12:00 PM SGT", self.messages(self.check(), "failure")[0])
 
     def test_an_overlapping_unavailability_period_fails_naming_it(self):
         self.unavailable(at(11), at(15), "Maintenance")
@@ -254,7 +255,7 @@ class TestClashes(SuitabilityCase):
 
         self.assertEqual(
             self.messages(result, "failure"),
-            ["This venue is unavailable from 07 Jan 2030, 11:00 AM to 03:00 PM UTC (Maintenance)."],
+            ["This venue is unavailable from 07 Jan 2030, 11:00 AM to 03:00 PM SGT (Maintenance)."],
         )
 
     def test_unavailability_without_a_reason_and_outside_the_event_is_handled(self):
@@ -266,7 +267,7 @@ class TestClashes(SuitabilityCase):
         self.unavailable(at(9), at(11), "")
         self.assertEqual(
             self.messages(self.check(), "failure"),
-            ["This venue is unavailable from 07 Jan 2030, 09:00 AM to 11:00 AM UTC."],
+            ["This venue is unavailable from 07 Jan 2030, 09:00 AM to 11:00 AM SGT."],
         )
 
     def test_an_overlapping_pending_request_is_a_warning(self):
@@ -280,7 +281,8 @@ class TestClashes(SuitabilityCase):
 
 
 class TestOpeningHours(SuitabilityCase):
-    """AC5: a requested time outside the venue's opening hours fails. Hours are UTC."""
+    """AC5: a requested time outside the venue's opening hours fails. Opening hours
+    are Singapore hours, where ConnectSphere's venues are."""
 
     def test_starting_at_opening_and_ending_at_closing_is_inside_the_hours(self):
         self.assertEqual(self.check(startsAt=at(8), endsAt=at(18)).verdict, "suitable")
@@ -291,8 +293,8 @@ class TestOpeningHours(SuitabilityCase):
         self.assertEqual(
             self.messages(result, "failure"),
             [
-                "On Monday 07 Jan 2030 the event runs 07:59 AM to 12:00 PM UTC, outside this venue's opening "
-                "hours of 08:00 to 18:00 UTC."
+                "On Monday 07 Jan 2030 the event runs 07:59 AM to 12:00 PM SGT, outside this venue's opening "
+                "hours of 08:00 to 18:00 SGT."
             ],
         )
 
@@ -325,19 +327,56 @@ class TestOpeningHours(SuitabilityCase):
         result = self.check(startsAt=at(17), endsAt=at(24))
 
         self.assertEqual(len(result.reasons), 1)
-        self.assertIn("05:00 PM to 12:00 AM UTC", result.reasons[0].message)
+        self.assertIn("05:00 PM to 12:00 AM SGT", result.reasons[0].message)
 
-    def test_times_sent_with_a_timezone_are_converted_to_utc(self):
+    def test_times_sent_with_an_offset_are_read_in_singapore_time(self):
         singapore = timezone(timedelta(hours=8))
         in_hours = self.check(
-            startsAt=datetime(2030, 1, 7, 18, 0, tzinfo=singapore), endsAt=datetime(2030, 1, 7, 20, 0, tzinfo=singapore)
-        )
-        before_opening = self.check(
             startsAt=datetime(2030, 1, 7, 9, 0, tzinfo=singapore), endsAt=datetime(2030, 1, 7, 11, 0, tzinfo=singapore)
+        )
+        after_closing = self.check(
+            startsAt=datetime(2030, 1, 7, 10, 0, tzinfo=timezone.utc), endsAt=datetime(2030, 1, 7, 12, 0, tzinfo=timezone.utc)
         )
 
         self.assertEqual(in_hours.verdict, "suitable")
-        self.assertIn("01:00 AM to 03:00 AM UTC", before_opening.reasons[0].message)
+        self.assertIn("06:00 PM to 08:00 PM SGT", after_closing.reasons[0].message)
+
+
+class TestOpeningHoursSingaporeTime(SuitabilityCase):
+    """Singapore time story AC3: the day and hours are read in Singapore time, not UTC."""
+
+    def test_utc_hours_that_fall_inside_singapore_opening_hours_pass(self):
+        # 00:00 to 10:00 UTC is exactly 08:00 to 18:00 in Singapore.
+        self.assertEqual(self.check(startsAt=MONDAY, endsAt=MONDAY + timedelta(hours=10)).verdict, "suitable")
+
+    def test_a_utc_time_inside_utc_hours_but_outside_singapore_hours_fails(self):
+        # 10:00 to 12:00 UTC is 06:00 PM to 08:00 PM in Singapore, after closing.
+        result = self.check(startsAt=MONDAY + timedelta(hours=10), endsAt=MONDAY + timedelta(hours=12))
+
+        self.assertEqual(
+            self.messages(result, "failure"),
+            [
+                "On Monday 07 Jan 2030 the event runs 06:00 PM to 08:00 PM SGT, outside this venue's opening "
+                "hours of 08:00 to 18:00 SGT."
+            ],
+        )
+
+    def test_the_day_is_the_singapore_day(self):
+        # Friday 20:00 UTC is Saturday 04:00 in Singapore, a day this venue is closed.
+        friday = datetime(2030, 1, 11)
+        result = self.check(startsAt=friday + timedelta(hours=20), endsAt=friday + timedelta(hours=22))
+
+        self.assertEqual(
+            self.messages(result, "failure"),
+            ["This venue is closed on Saturday 12 Jan 2030, so the event is outside its opening hours."],
+        )
+
+    def test_a_minute_before_singapore_opening_is_the_previous_utc_evening(self):
+        # Sunday 23:59 UTC is Monday 07:59 in Singapore.
+        sunday = datetime(2030, 1, 6)
+        result = self.check(startsAt=sunday + timedelta(hours=23, minutes=59), endsAt=at(12))
+
+        self.assertIn("On Monday 07 Jan 2030 the event runs 07:59 AM to 12:00 PM SGT", result.reasons[0].message)
 
 
 class TestSchedule(SuitabilityCase):

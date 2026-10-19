@@ -5,6 +5,7 @@ from datetime import datetime
 import httpx
 
 from app.core.config import settings
+from app.core.sgt import to_sgt
 from shared.auth.service_key import service_key_headers
 from shared.exceptions.http import forbidden, service_unavailable, unauthorized
 
@@ -136,13 +137,13 @@ def _arrangement_rows(
 
 
 def _venue_arrangement(row: dict) -> dict:
-    starts = datetime.fromisoformat(row["startsAt"])
-    ends = datetime.fromisoformat(row["endsAt"])
+    starts = to_sgt(datetime.fromisoformat(row["startsAt"]))
+    ends = to_sgt(datetime.fromisoformat(row["endsAt"]))
     venue = row.get("venueName") or row["venueId"]
     return {
         "kind": "venue",
         "id": row["bookingId"],
-        "summary": f"Venue booking at {venue}, {starts:%d %b %Y %H:%M} to {ends:%d %b %Y %H:%M} UTC",
+        "summary": f"Venue booking at {venue}, {starts:%d %b %Y %H:%M} to {ends:%d %b %Y %H:%M} SGT",
     }
 
 

@@ -58,7 +58,7 @@
           <div class="item-body">
             <div class="item-title">{{ item.title }}</div>
             <div class="item-text">{{ item.body }}</div>
-            <div class="item-time">{{ formatUtc(item.createdAt) }}</div>
+            <div class="item-time">{{ formatSgt(item.createdAt) }}</div>
           </div>
         </li>
       </ul>
@@ -70,7 +70,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getNotifications, markAllNotificationsRead } from '../../api/notificationService.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt } from '../../utils/datetime.js'
 import { refreshUnreadCount, unreadCount } from '../../features/notifications/unreadCount.js'
 
 const router = useRouter()

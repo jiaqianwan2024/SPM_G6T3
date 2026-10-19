@@ -58,19 +58,19 @@ const entries = ref([])
 const loading = ref(true)
 const error = ref('')
 
-// The team shows every time in UTC until the customer specifies a timezone.
+// Every time is shown in Singapore time (SGT), where ConnectSphere's venues are.
 // createdAt arrives without a "Z", so add it or Date would read it as local time.
 function formatWhen(iso) {
   const withZone = /Z|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`
   return new Date(withZone).toLocaleString('en-SG', {
-    timeZone: 'UTC',
+    timeZone: 'Asia/Singapore',
     day: 'numeric',
     month: 'short',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-  }) + ' UTC'
+  }) + ' SGT'
 }
 
 function describeActor(entry) {

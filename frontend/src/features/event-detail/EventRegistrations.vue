@@ -89,6 +89,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getEvent } from '../../api/eventService.js'
 import { getRegistrationRoster } from '../../api/registrationService.js'
+import { formatSgt } from '../../utils/datetime.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -106,10 +107,7 @@ const visibleAttendees = computed(() => {
 })
 
 function formatWhen(value) {
-  if (!value) return 'Not set'
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return 'Not set'
-  return parsed.toLocaleString()
+  return formatSgt(value) || 'Not set'
 }
 
 function goBack() {

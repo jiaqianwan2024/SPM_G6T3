@@ -79,6 +79,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getEvents } from '../../api/eventService.js'
 import { session } from '../../store/session.js'
+import { formatSgtRange, sgtDay } from '../../utils/datetime.js'
 
 const STATUS_ORDER = [
   'submitted',
@@ -151,19 +152,15 @@ function statusLabel(status) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
+// The Singapore date, which is what the date filters hold.
 function startDay(value) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
+  return sgtDay(value)
 }
 
 function formatRange(start, end) {
   if (!start && !end) return 'No date set yet'
   if (!start || !end) return 'Date incomplete'
-  return `${new Date(start).toLocaleString()} – ${new Date(end).toLocaleString()}`
+  return formatSgtRange(start, end)
 }
 
 function toggleStatus(status) {

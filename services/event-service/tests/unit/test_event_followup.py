@@ -269,6 +269,21 @@ class TestFollowUp(EventCase):
         with self.assertRaises(HTTPException):
             self.follow.attendee_card("missing", None)
 
+    def test_the_date_filters_use_the_singapore_date(self):
+        # 17:00 UTC on 1 Dec is 01:00 on 2 Dec in Singapore, so it is a 2 Dec event.
+        start = datetime(NOW.year + 1, 12, 1, 17, 0)
+        _open_event(self.db, eventId="e-late", proposedStartAt=start, proposedEndAt=start + timedelta(hours=2))
+        year = NOW.year + 1
+
+        with patch("app.services.event_followup._soft_get", return_value={}):
+            on_the_second = self.follow.list_open("Bearer token", from_date=f"{year}-12-02", to_date=f"{year}-12-02")
+            up_to_the_first = self.follow.list_open("Bearer token", to_date=f"{year}-12-01")
+            from_the_third = self.follow.list_open("Bearer token", from_date=f"{year}-12-03")
+
+        self.assertEqual([row.eventId for row in on_the_second], ["e-late"])
+        self.assertNotIn("e-late", [row.eventId for row in up_to_the_first])
+        self.assertEqual(from_the_third, [])
+
     def test_a_schedule_change_is_a_date_change_a_time_change_or_both(self):
         aware = datetime(2026, 12, 1, 9, 0, tzinfo=timezone.utc)
         self.assertEqual(_clock(aware), datetime(2026, 12, 1, 9, 0))
@@ -288,6 +303,11 @@ class TestFollowUp(EventCase):
         )
         self.assertEqual(_schedule_aspects(aware, "2026-12-02T11:30:00Z"), (True, True))
         self.assertEqual(_schedule_aspects("2026-12-01T09:00:00", "soon"), (True, True))
+        # The date is the Singapore date: 15:00 and 16:30 UTC on 1 Dec are 23:00 on 1 Dec
+        # and 00:30 on 2 Dec in Singapore; 16:00 UTC on 1 Dec and 15:00 UTC on 2 Dec are
+        # both on 2 Dec in Singapore.
+        self.assertEqual(_schedule_aspects("2026-12-01T15:00:00", "2026-12-01T16:30:00"), (True, True))
+        self.assertEqual(_schedule_aspects("2026-12-01T16:00:00", "2026-12-02T15:00:00"), (False, True))
 
         _open_event(self.db, eventId="e-marks", eventName="Marks")
         self.db.add(

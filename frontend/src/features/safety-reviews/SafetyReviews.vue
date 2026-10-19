@@ -20,7 +20,7 @@
         <span>{{ formatRange(review.package.proposedStartAt, review.package.proposedEndAt) }}</span>
         <span>{{ review.package.expectedAttendance }} attendees</span>
         <span>{{ review.package.venues.map((venue) => venue.venueName).join(', ') }}</span>
-        <span>Submitted {{ formatUtc(review.submittedAt) }}</span>
+        <span>Submitted {{ formatSgt(review.submittedAt) }}</span>
       </span>
       <span v-if="hasFlag(review)" class="flag">An arrangement is marked for re-checking</span>
     </button>
@@ -31,7 +31,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getSafetyReviewQueue } from '../../api/eventService.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt, formatSgtRange } from '../../utils/datetime.js'
 
 const router = useRouter()
 const reviews = ref([])
@@ -40,7 +40,7 @@ const error = ref('')
 
 function formatRange(start, end) {
   if (!start || !end) return 'Date not set'
-  return `${new Date(start).toLocaleString()} – ${new Date(end).toLocaleString()}`
+  return formatSgtRange(start, end)
 }
 
 function hasFlag(review) {

@@ -18,13 +18,14 @@ ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 def at(hour, minute=0, day=MONDAY):
-    return day + timedelta(hours=hour, minutes=minute)
+    """`hour`:`minute` Singapore time, stored as naive UTC (eight hours earlier)."""
+    return day + timedelta(hours=hour - 8, minutes=minute)
 
 
 class SearchCase(VenueCase):
-    """Marina Hall A: HarbourFront, open every day 08:00 to 20:00 UTC, Theatre
+    """Marina Hall A: HarbourFront, open every day 08:00 to 20:00 SGT, Theatre
     for 100 and Classroom for 40, 30 minutes setup and 60 minutes turnaround.
-    The period searched is Monday 10:00 to 12:00 UTC, so the hall is occupied
+    The period searched is Monday 10:00 to 12:00 SGT, so the hall is occupied
     09:30 to 13:00."""
 
     def setUp(self):

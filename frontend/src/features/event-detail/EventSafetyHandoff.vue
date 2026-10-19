@@ -12,14 +12,14 @@
     <ul v-if="handoff" class="parts">
       <li data-testid="safety-handoff-venue-status">
         <span class="kind">Venue arrangements</span>
-        <span v-if="handoff.venue">Sent by {{ nameOf(handoff.venue.sentBy, 'Venue Staff') }} on {{ formatUtc(handoff.venue.sentAt) }}</span>
+        <span v-if="handoff.venue">Sent by {{ nameOf(handoff.venue.sentBy, 'Venue Staff') }} on {{ formatSgt(handoff.venue.sentAt) }}</span>
         <span v-else class="waiting">Waiting for Venue Staff</span>
       </li>
       <li data-testid="safety-handoff-technical-status">
         <span class="kind">Technical arrangements</span>
         <span v-if="!handoff.technicalNeeded" class="muted">Not needed: the event has no equipment</span>
         <span v-else-if="handoff.technical">
-          Sent by {{ nameOf(handoff.technical.sentBy, 'technical support') }} on {{ formatUtc(handoff.technical.sentAt) }}
+          Sent by {{ nameOf(handoff.technical.sentBy, 'technical support') }} on {{ formatSgt(handoff.technical.sentAt) }}
         </span>
         <span v-else class="waiting">Waiting for technical support</span>
       </li>
@@ -59,7 +59,7 @@ import { getSafetyHandoff, sendTechnicalArrangements, sendVenueArrangements } fr
 import { getUsers } from '../../api/userService.js'
 import { SAFETY_SUBMITTABLE_STATUSES } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt } from '../../utils/datetime.js'
 
 const props = defineProps({ event: { type: Object, required: true } })
 // The last part opens the review, which changes the event's status.

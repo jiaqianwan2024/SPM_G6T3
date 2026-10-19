@@ -119,13 +119,18 @@ npm run test:spm95
 npm run test:spm51
 ```
 
-`test:acceptance` omits SPM-45 (its API specs collide with the seeded e1/v1 bookings), SPM-47, SPM-55 through SPM-59, the venue epic
-above, the planning-review epic (SPM-5, SPM-15, SPM-65 through SPM-73),
-the equipment epic (SPM-2, SPM-3, SPM-4, SPM-75 through SPM-78), the
-request-and-change epic (SPM-14, SPM-79 through SPM-83, SPM-85 through
-SPM-88, and SPM-106), and the registration-and-notification epic
-(SPM-11, SPM-12, SPM-89 through SPM-95, SPM-105, and SPM-6), and
-SPM-51. Use the story commands as their contracts.
+`test:acceptance` (what CI's e2e job runs) omits SPM-47, SPM-55 through SPM-59,
+SPM-9, SPM-17, SPM-108, SPM-110, SPM-115, SPM-117 through SPM-119, the
+planning-review epic (SPM-5, SPM-15, SPM-65 through SPM-73), the equipment epic
+(SPM-2, SPM-3, SPM-4, SPM-75 through SPM-78), the request-and-change epic (SPM-14,
+SPM-79 through SPM-83, SPM-85 through SPM-88, and SPM-106), the
+registration-and-notification epic (SPM-11, SPM-12, SPM-89 through SPM-95, SPM-105,
+and SPM-6), SPM-120, SPM-121, SPM-123 and SPM-124. Use the story commands as their
+contracts. Each id in the omit list ends with `\b`, so it matches only that story:
+`SPM-11\b` omits SPM-11 but not SPM-112. CI runs every other spec, including SPM-8,
+SPM-10, SPM-43, SPM-45, SPM-46, SPM-51, SPM-60 through SPM-64, SPM-112, SPM-116 and
+SPM-122. Before removing a story from the list, run its spec twice in a row on a
+database with old test data, so it passes the same way every time.
 
 Failures: `test-results/`. HTML report: `playwright-report/`.
 

@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 
 from app.core.config import settings
+from app.core.sgt import to_sgt
 from app.dao.event_dao import EventDAO
 from app.models.event import Event
 from app.orchestration.clients import arrangement_inputs, publish_notification, users_with_roles
@@ -49,7 +50,7 @@ class EventReminders(BaseService):
     def _remind(self, event: Event, pending: list[dict], directory: dict[str, dict]) -> ReminderEventOut:
         context = {
             "eventName": event.eventName,
-            "eventDate": f"{event.proposedStartAt:%d %b %Y}",
+            "eventDate": f"{to_sgt(event.proposedStartAt):%d %b %Y}",
             "outstanding": _describe(pending),
         }
         categories = {row["category"].lower() for row in pending}

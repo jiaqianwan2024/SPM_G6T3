@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.core.sgt import to_sgt
 from app.dao.venue_activity_log_dao import VenueActivityLogDAO
 from app.dao.venue_booking_dao import VenueBookingDAO
 from app.dao.venue_dao import VenueDAO
@@ -389,7 +390,7 @@ class VenueService(BaseService):
             # offers the "Retire anyway" action, so this should describe the
             # situation, not instruct the caller how to resend a request.
             listing = "; ".join(
-                f"event {b.eventId}, starting {b.startsAt.strftime('%d %b %Y, %I:%M %p')} UTC" for b in affected
+                f"event {b.eventId}, starting {suitability._moment(b.startsAt)}" for b in affected
             )
             plural = "booking" if len(affected) == 1 else "bookings"
             raise conflict(
@@ -1070,7 +1071,8 @@ class VenueService(BaseService):
         facts = booking.eventSnapshot or {}
         event = facts.get("eventName") or f"event {booking.eventId}"
         venue = self._venue_name(booking.venueId)
-        when = f"{booking.startsAt:%d %b %Y, %I:%M %p} to {booking.endsAt:%d %b %Y, %I:%M %p} UTC"
+        starts, ends = to_sgt(booking.startsAt), to_sgt(booking.endsAt)
+        when = f"{starts:%d %b %Y, %I:%M %p} to {ends:%d %b %Y, %I:%M %p} SGT"
         if action == "requested":
             return (
                 f"New venue request: {event} at {venue}",

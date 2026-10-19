@@ -9,7 +9,7 @@ import { period as onDay, soonExpiry, waitForHoldToExpire } from './support/venu
 // The suite makes its own hall (30 minutes setup, 45 minutes turnaround, open every
 // day) and retires it afterwards, so seeded venues are never approved. Each test sends
 // its own requests on its own fixed day (no random dates, so every run sends the same
-// inputs): a 10:00 to 12:00 event occupies the hall from 09:30 to 12:45. All times are UTC.
+// inputs): a 10:00 to 12:00 event occupies the hall from 09:30 to 12:45. All times are Singapore time (SGT); the server stores UTC.
 
 const MINUTE = 60 * 1000
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -30,9 +30,9 @@ function slot(base, fromMinutes, toMinutes) {
   return { startsAt: shift(base.startsAt, fromMinutes), endsAt: shift(base.startsAt, toMinutes) }
 }
 
-// The same wording the Booking Requests screen uses.
+// The same wording the Booking Requests screen uses, in Singapore time.
 const day = (value) =>
-  new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' }).format(utc(value))
+  new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric' }).format(utc(value))
 
 async function pending(period) {
   const event = await approvedEvent(HALL_EVENT)
@@ -113,17 +113,17 @@ test.describe('SPM-8 Approve a venue booking request', () => {
     await expect(card).toContainText(`"${event.eventName}"`)
     await expect(card).toContainText(hall.name)
     await expect(card.getByTestId('booking-status')).toHaveText('pending')
-    await expect(card.getByTestId('booking-starts-at')).toHaveText(`${day(base.startsAt)}, 10:00 to 12:00 UTC`)
-    await expect(card.getByTestId('booking-occupied')).toContainText(`${day(base.startsAt)}, 09:30 to 12:45 UTC`)
+    await expect(card.getByTestId('booking-starts-at')).toHaveText(`${day(base.startsAt)}, 10:00 to 12:00 SGT`)
+    await expect(card.getByTestId('booking-occupied')).toContainText(`${day(base.startsAt)}, 09:30 to 12:45 SGT`)
     const requirements = card.getByTestId('booking-requirements')
     await expect(requirements).toContainText('50 attendees')
     await expect(requirements).toContainText('Theatre layout')
     await expect(requirements).toContainText('Facilities: Projector.')
     await expect(requirements).toContainText('Accessibility: Wheelchair access.')
     const created = utc(booking.createdAt)
-    const submitted = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    const submitted = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
     await expect(card.getByTestId('booking-submitted-at')).toHaveText(
-      `${day(booking.createdAt)}, ${submitted.format(created)} UTC`,
+      `${day(booking.createdAt)}, ${submitted.format(created)} SGT`,
     )
   })
 
@@ -145,7 +145,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
     await page.getByTestId(`booking-request-${booking.bookingId}`).getByRole('button', { name: 'Approve' }).click()
 
     await expect(page.getByTestId('booking-approved-notice')).toHaveText(
-      `Approved. ${hall.name} is reserved for "${event.eventName}" from ${day(base.startsAt)}, 09:30 to 12:45 UTC.`,
+      `Approved. ${hall.name} is reserved for "${event.eventName}" from ${day(base.startsAt)}, 09:30 to 12:45 SGT.`,
     )
     await expect(page.getByTestId(`booking-request-${booking.bookingId}`)).toHaveCount(0)
     const after = await read(booking)
@@ -182,7 +182,7 @@ test.describe('SPM-8 Approve a venue booking request', () => {
     await page.getByRole('button', { name: 'Approved', exact: true }).click()
     const card = page.getByTestId(`booking-request-${booking.bookingId}`)
     await expect(card.getByTestId('booking-status')).toHaveText('approved')
-    await expect(card.getByTestId('booking-occupied')).toContainText(`${day(base.startsAt)}, 09:30 to 12:45 UTC`)
+    await expect(card.getByTestId('booking-occupied')).toContainText(`${day(base.startsAt)}, 09:30 to 12:45 SGT`)
     await expect(card).toContainText('Confirmed. The venue is reserved for the occupied window above.')
   })
 
@@ -230,11 +230,11 @@ test.describe('SPM-8 Approve a venue booking request', () => {
     await page.getByRole('button', { name: 'Approved', exact: true }).click()
     await expect(page.getByTestId(`booking-approved-by-${booking.bookingId}`)).toHaveText(
       `Approved by Vinod Kumar on ${day(kept.reviewedAt)}, ${new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'UTC',
+        timeZone: 'Asia/Singapore',
         hour: '2-digit',
         minute: '2-digit',
         hourCycle: 'h23',
-      }).format(utc(kept.reviewedAt))} UTC`,
+      }).format(utc(kept.reviewedAt))} SGT`,
     )
   })
 

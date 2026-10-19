@@ -44,6 +44,7 @@
         :key="venue.venueId"
         class="venue-row"
         :class="{ active: selected?.venueId === venue.venueId, retired: !venue.isActive }"
+        :data-testid="`venue-row-${venue.venueId}`"
         @click="selectVenue(venue.venueId)"
       >
         <div class="venue-name">
@@ -92,7 +93,7 @@
           <dt>Accessibility</dt><dd>{{ selected.accessibility.join(', ') }}</dd>
           <dt>Supported layouts</dt>
           <dd>{{ selected.layouts.map(l => `${l.name} (${l.capacity})`).join(', ') }}</dd>
-          <dt>Operating hours</dt>
+          <dt>Operating hours (SGT)</dt>
           <dd>{{ selected.operatingHours.map(h => `${h.day} ${h.opens}–${h.closes}`).join(', ') }}</dd>
           <dt>Setup needed</dt><dd>{{ selected.setupMinutes }} minutes before the event</dd>
           <dt>Turnaround needed</dt><dd>{{ selected.turnaroundMinutes }} minutes between bookings</dd>
@@ -231,9 +232,9 @@ async function loadClashes() {
   }
 }
 
-// Booking times are UTC and come without a zone marker.
-const dayFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
-const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+// Booking times come in UTC without a zone marker; they are shown in Singapore time.
+const dayFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric' })
+const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
 function utc(value) {
   return new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`)
@@ -243,8 +244,8 @@ function span(start, end) {
   const [from, to] = [utc(start), utc(end)]
   const [fromDay, toDay] = [dayFormat.format(from), dayFormat.format(to)]
   return fromDay === toDay
-    ? `${fromDay}, ${timeFormat.format(from)} to ${timeFormat.format(to)} UTC`
-    : `${fromDay}, ${timeFormat.format(from)} to ${toDay}, ${timeFormat.format(to)} UTC`
+    ? `${fromDay}, ${timeFormat.format(from)} to ${timeFormat.format(to)} SGT`
+    : `${fromDay}, ${timeFormat.format(from)} to ${toDay}, ${timeFormat.format(to)} SGT`
 }
 
 function eventLabel(booking) {

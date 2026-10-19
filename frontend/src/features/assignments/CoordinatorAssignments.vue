@@ -48,6 +48,7 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCoordinatorAssignments } from '../../api/eventService.js'
 import { eventStatusLabel } from '../../config/eventStatus.js'
+import { formatSgt } from '../../utils/datetime.js'
 
 const router = useRouter()
 const groups = ref([])
@@ -55,7 +56,7 @@ const loading = ref(true)
 const error = ref('')
 
 function formatDate(value) {
-  return value ? new Date(value).toLocaleString() : 'No date set'
+  return value ? formatSgt(value) : 'No date set'
 }
 
 function open(eventId) {

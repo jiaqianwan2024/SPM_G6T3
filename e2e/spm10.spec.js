@@ -18,7 +18,7 @@ import {
 // The suite makes its own hall (Theatre 300, open every day, 30 minutes setup and 45
 // turnaround, so a 10:00 to 12:00 event occupies it 09:30 to 12:45) and a second room
 // to suggest instead, and retires both afterwards. Each test makes its own events on
-// its own fixed day. All times are UTC.
+// its own fixed day. All times are Singapore time (SGT); the server stores UTC.
 
 let hall
 let room
@@ -87,12 +87,12 @@ test.describe('SPM-10 Reject a Venue Booking Request', () => {
     ]) {
       await expect(row(label), label).toHaveText(`${label}${value}`)
     }
-    await expect(row('Event times')).toHaveText(/^Event times\d{1,2} \w{3} \d{4}, 10:00 to 12:00 UTC$/)
+    await expect(row('Event times')).toHaveText(/^Event times\d{1,2} \w{3} \d{4}, 10:00 to 12:00 SGT$/)
     await expect(row('Venue occupied')).toHaveText(
-      /^Venue occupied\d{1,2} \w{3} \d{4}, 09:30 to 12:45 UTC, including setup and turnaround$/,
+      /^Venue occupied\d{1,2} \w{3} \d{4}, 09:30 to 12:45 SGT, including setup and turnaround$/,
     )
     await expect(row('Client organisation')).not.toHaveText('Client organisationNot given')
-    await expect(row('Submitted')).toHaveText(/^Submitted\d{1,2} \w{3} \d{4}, \d{2}:\d{2} UTC$/)
+    await expect(row('Submitted')).toHaveText(/^Submitted\d{1,2} \w{3} \d{4}, \d{2}:\d{2} SGT$/)
     await expect(card.getByRole('button', { name: 'Hide full details' })).toHaveAttribute('aria-expanded', 'true')
   })
 
