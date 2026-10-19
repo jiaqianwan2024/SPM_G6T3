@@ -144,7 +144,7 @@ test.describe('SPM-122 Flag bookings that clash under the new window', () => {
     // acting, so its own late load cannot redraw the panel.
     await expect(page.getByText('Loading venues…')).toHaveCount(0)
     await expect(page.getByRole('heading', { level: 3 }).first()).toBeVisible()
-    await page.getByText(hall.name, { exact: true }).click()
+    await page.getByTestId(`venue-row-${hall.venueId}`).click()
     await expect(page.getByRole('heading', { name: hall.name })).toBeVisible()
     await expect(page.getByTestId('venue-clashes-none')).toBeVisible()
     await expect(page.getByTestId(`venue-clash-link-${hall.venueId}`)).toHaveCount(0)

@@ -90,7 +90,7 @@ test.describe('SPM-60 Maintain venue records and supported layouts', () => {
       await expect(page.getByText('Loading venues…')).toHaveCount(0)
       await expect(page.getByRole('button', { name: 'Retire' })).toBeVisible()
       await page.getByRole('searchbox', { name: 'Search' }).fill(hall.name)
-      await page.getByText(hall.name, { exact: true }).click()
+      await page.getByTestId(`venue-row-${hall.venueId}`).click()
       await expect(page.getByRole('heading', { name: hall.name })).toBeVisible()
       await page.getByRole('button', { name: 'Retire' }).click()
       await page.getByRole('button', { name: 'Yes, retire' }).click()

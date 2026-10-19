@@ -44,6 +44,7 @@
         :key="venue.venueId"
         class="venue-row"
         :class="{ active: selected?.venueId === venue.venueId, retired: !venue.isActive }"
+        :data-testid="`venue-row-${venue.venueId}`"
         @click="selectVenue(venue.venueId)"
       >
         <div class="venue-name">
