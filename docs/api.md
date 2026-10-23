@@ -26,6 +26,10 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | Action | Role |
 |---|---|
 | `POST /events` | `organiser` |
+| `GET /events`, `/events/all`, `/events/confirmed`, `/events/{id}`, `/events/{id}/activity-log` | Any role except `attendee` (SPM-127: 403 "Attendees can open only confirmed event pages and their own registrations.") |
+| `GET /events/{id}/attendee-card` | Staff and organisers for any event; an `attendee` only for a `confirmed` event or one they hold a registration for (SPM-127), else 403. Public fields only, including `registrationEnabled` and the registration period |
+| `GET /registrations/mine/event-ids` | The signed-in user: ids of the events they hold a registration for (SPM-127). It never calls event-service, so the two services cannot loop |
+| `GET /users`; `GET /equipment`, `/equipment/{id}`, `/equipment/{id}/activity-log`, `/equipment/reservations/summary` | Any role except `attendee` (SPM-127, 403) |
 | `GET /events/upcoming/technical` | `techsupport` |
 | `POST /events/{id}/assign-coordinator` | `coordinatorlead` only (SPM-117, SPM-118); an Event Coordinator gets 403. The assignee must be a `coordinator` (422 otherwise) |
 | `GET /events/coordinators` | `coordinatorlead` |

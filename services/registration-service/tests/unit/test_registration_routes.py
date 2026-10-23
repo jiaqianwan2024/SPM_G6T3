@@ -296,6 +296,29 @@ class TestRegistrationRoutes(ServiceTestCase):
         self.assertEqual(denied.status_code, 404)
         self.assertNotIn("guest@example.com", denied.text)
 
+    def test_mine_event_ids_lists_only_the_events_the_caller_registered_for(self):
+        # SPM-127: event-service asks this to decide which event pages an attendee may open.
+        self.resolve_caller.return_value = {"userId": "u-att", "role": "attendee", "email": "att@example.com"}
+        rows = [("r1", "e1", "u-att", "registered"), ("r2", "e8", "u-att", "withdrawn"),
+                ("r3", "e1", "u-att", "withdrawn"), ("r4", "e9", "u-other", "registered")]
+        for row_id, event_id, user_id, status in rows:
+            self.db.add(AttendeeRegistration(
+                attendeeRegistrationId=row_id, eventId=event_id, userId=user_id, attendeeName="A",
+                attendeeEmail=f"{user_id}@example.com", status=status, createdAt=datetime.utcnow(),
+            ))
+        self.db.commit()
+
+        ids = self.client.get("/registrations/mine/event-ids", headers={"Authorization": "Bearer token"})
+
+        self.assertEqual((ids.status_code, ids.json()), (200, ["e1", "e8"]))
+
+    def test_mine_event_ids_is_empty_without_an_identity(self):
+        self.resolve_caller.return_value = {"userId": "", "role": "attendee", "email": ""}
+
+        ids = self.client.get("/registrations/mine/event-ids", headers={"Authorization": "Bearer token"})
+
+        self.assertEqual((ids.status_code, ids.json()), (200, []))
+
     def test_mine_is_empty_when_the_caller_has_no_identity(self):
         self.resolve_caller.return_value = {"userId": "", "role": "attendee", "email": ""}
 

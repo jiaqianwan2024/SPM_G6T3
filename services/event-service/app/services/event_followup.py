@@ -382,6 +382,8 @@ class EventFollowUp(BaseService):
             endsAt=event.proposedEndAt,
             accessibilityNeeds=event.accessibilityNeeds or "",
             layoutPreference=event.layoutPreference,
+            registrationEnabled=bool(event.registrationEnabled),
+            registrationOpensAt=event.registrationOpensAt,
             registrationClosesAt=event.registrationClosesAt,
             capacity=event.capacity or 0,
             registeredCount=count,

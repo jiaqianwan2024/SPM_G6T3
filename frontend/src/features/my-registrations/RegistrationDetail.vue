@@ -61,7 +61,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getEvent } from '../../api/eventService.js'
+import { getAttendeeCard } from '../../api/eventService.js'
 import { getRegistration, withdrawRegistration } from '../../api/registrationService.js'
 import { parseServerTime } from '../../utils/datetime.js'
 
@@ -105,7 +105,7 @@ async function load() {
     return
   }
   try {
-    const response = await getEvent(registration.value.eventId)
+    const response = await getAttendeeCard(registration.value.eventId)
     event.value = response.data
   } catch {
     event.value = null

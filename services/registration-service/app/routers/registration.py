@@ -166,6 +166,22 @@ def my_registrations(
 
 
 @router.get(
+    "/mine/event-ids",
+    response_model=list[str],
+    summary="Events the caller registered for",
+    description="SPM-127. The ids of the events the signed-in user holds a registration for (registered or "
+    "withdrawn), sorted. Event-service uses it to let an attendee open those events' public pages.",
+)
+def my_registered_event_ids(
+    authorization: str | None = Depends(forwarded_bearer),
+    service: RegistrationService = Depends(get_registration_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url)
+    rows = service.list_owned(caller.get("userId"), caller.get("email"))
+    return sorted({row.eventId for row in rows})
+
+
+@router.get(
     "/me",
     response_model=list[AttendeeOut],
     summary="List the caller's registrations",

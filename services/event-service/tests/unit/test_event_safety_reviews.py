@@ -744,4 +744,5 @@ class TestSafetyRoutes(ServiceTestCase):
                 self.assertEqual(self.claim(review_id).status_code, 403)
             with self.subTest(role=caller["role"], action="queue"):
                 self.assertEqual(self.client.get("/events/safety-reviews", headers=HEADERS).status_code, 403)
+        self.as_caller(COORDINATOR)  # attendees cannot read the full event (SPM-127)
         self.assertEqual(self.client.get("/events/e1", headers=HEADERS).json()["status"], "safety review")

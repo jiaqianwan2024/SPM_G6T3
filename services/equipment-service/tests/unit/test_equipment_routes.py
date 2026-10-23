@@ -173,3 +173,21 @@ class TestEquipmentRoutes(ServiceTestCase):
             json={"status": "reserved"},
         )
         self.assertEqual(denied.status_code, 403)
+
+    def test_an_attendee_gets_403_on_the_staff_equipment_pages(self):
+        # SPM-127 AC3: the catalogue, its log and an event's equipment are staff pages.
+        created = self.client.post(
+            "/equipment",
+            headers=self.headers,
+            json={"code": "PX-201", "name": "Projector", "category": "display", "totalQuantity": 1},
+        ).json()
+        self.caller.stop()
+        self.caller = patch("app.routers.equipment.resolve_caller", return_value={"userId": "att-1", "role": "attendee"})
+        self.caller.start()
+
+        for path in ["/equipment", f"/equipment/{created['equipmentId']}", f"/equipment/{created['equipmentId']}/activity-log",
+                     "/equipment/reservations/summary?eventId=e1"]:
+            with self.subTest(path=path):
+                response = self.client.get(path, headers=self.headers)
+                self.assertEqual(response.status_code, 403)
+                self.assertEqual(response.json()["detail"], "Attendees can open only confirmed event pages and their own registrations.")

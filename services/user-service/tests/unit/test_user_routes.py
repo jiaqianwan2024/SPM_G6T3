@@ -42,3 +42,15 @@ class TestUserRoutes(ServiceTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 2)
+
+    def test_an_attendee_cannot_read_the_directory_of_staff_and_other_attendees(self):
+        # SPM-127 AC2 and AC3: other people's details are a staff page, 403 for an attendee.
+        seed_user(self.db, role="attendee")
+        seed_user(self.db, userId="u-2", email="gwen@connectsphere.com", userName="Gwen", role="attendee")
+
+        response = self.client.get("/users")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Attendees can open only confirmed event pages and their own registrations.")
+        self.assertNotIn("gwen@connectsphere.com", response.text)
+        self.assertEqual(self.client.get("/users/me").json()["role"], "attendee")

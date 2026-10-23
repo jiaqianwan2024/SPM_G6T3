@@ -19,14 +19,19 @@ _CLOSED_EVENT_STATUSES = {"completed", "cancelled"}
 
 
 def _event(event_id: str, authorization: str | None) -> dict:
+    """The event's public page (SPM-127): registering, withdrawing and places left need
+    only public facts, and an attendee may not read the full internal event record."""
     try:
         with httpx.Client(timeout=5.0) as client:
             response = client.get(
-                f"{settings.event_service_url}/events/{event_id}",
+                f"{settings.event_service_url}/events/{event_id}/attendee-card",
                 headers={"Authorization": authorization} if authorization else {},
             )
     except httpx.HTTPError as exc:
         raise not_found("Event not found") from exc
+    if response.status_code == 403:
+        # An attendee may open only confirmed events (or ones they registered for).
+        raise conflict("This event has not been confirmed yet.")
     if response.status_code != 200:
         raise not_found("Event not found")
     return response.json()

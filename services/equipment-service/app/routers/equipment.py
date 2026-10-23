@@ -60,7 +60,11 @@ def get_equipment_service(db: Session = Depends(get_db)) -> EquipmentService:
     summary="List equipment",
     description="Catalogue of equipment types. `status` is derived from unit rows.",
 )
-def list_equipment(service: EquipmentService = Depends(get_equipment_service)):
+def list_equipment(
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EquipmentService = Depends(get_equipment_service),
+):
+    _refuse_attendees(authorization)
     return service.list_equipment()
 
 
@@ -78,6 +82,12 @@ def reverification_queue(
 ):
     _technical_support(authorization)
     return service.reverification_queue()
+
+
+def _refuse_attendees(authorization: str | None) -> None:
+    """SPM-127: equipment and an event's arrangements are staff pages, 403 for an attendee."""
+    if resolve_caller(authorization, settings.user_service_url).get("role") == "attendee":
+        raise forbidden("Attendees can open only confirmed event pages and their own registrations.")
 
 
 def _technical_support(authorization: str | None) -> dict:
@@ -171,7 +181,7 @@ def reservation_summary(
     authorization: str | None = Depends(forwarded_bearer),
     service: EquipmentService = Depends(get_equipment_service),
 ):
-    resolve_caller(authorization, settings.user_service_url)
+    _refuse_attendees(authorization)
     return service.outcome_summary(eventId)
 
 
@@ -261,8 +271,10 @@ def list_requests(
 )
 def get_equipment(
     equipment_id: str = Path(..., description="Equipment id, e.g. `eq1`."),
+    authorization: str | None = Depends(forwarded_bearer),
     service: EquipmentService = Depends(get_equipment_service),
 ):
+    _refuse_attendees(authorization)
     return service.get_equipment(equipment_id)
 
 
@@ -291,8 +303,10 @@ def update_equipment(
 )
 def get_activity_log(
     equipment_id: str = Path(..., description="Equipment id."),
+    authorization: str | None = Depends(forwarded_bearer),
     service: EquipmentService = Depends(get_equipment_service),
 ):
+    _refuse_attendees(authorization)
     return service.get_activity_log(equipment_id)
 
 

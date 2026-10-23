@@ -19,6 +19,25 @@ _registration_client = httpx.Client(timeout=3.0)
 _user_directory_client = httpx.Client(timeout=3.0)
 
 
+REGISTRATIONS_UNREACHABLE = "Your registrations could not be checked right now. Please try again shortly."
+
+
+def registered_event_ids(authorization: str | None) -> set[str]:
+    """SPM-127: the events the caller holds a registration for (registered or withdrawn).
+    An attendee may open those events' public pages. registration-service answers this
+    without calling back here, so the two services never loop. Unreachable is a 503."""
+    headers = {"Authorization": authorization} if authorization else {}
+    try:
+        response = _registration_client.get(
+            f"{settings.registration_service_url}/registrations/mine/event-ids", headers=headers
+        )
+    except httpx.HTTPError as exc:
+        raise service_unavailable(REGISTRATIONS_UNREACHABLE) from exc
+    if response.status_code != 200:
+        raise service_unavailable(REGISTRATIONS_UNREACHABLE)
+    return set(response.json())
+
+
 def registration_count(event_id: str, authorization: str | None = None) -> int:
     start = time.perf_counter()
     headers = {"Authorization": authorization} if authorization else {}

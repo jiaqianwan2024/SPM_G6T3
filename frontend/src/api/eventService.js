@@ -74,6 +74,10 @@ export const getOpenEvents = (params = {}) => axiosClient.get("/events/open-for-
 
 export const getOpenEvent = (eventId) => axiosClient.get(`/events/open-for-registration/${eventId}`);
 
+// SPM-127: an event's public page. An attendee can open a confirmed event or one
+// they are registered for; the full event record is for staff and organisers.
+export const getAttendeeCard = (eventId) => axiosClient.get(`/events/${eventId}/attendee-card`);
+
 export const getReadiness = (eventId) => axiosClient.get(`/events/${eventId}/readiness`);
 
 export const createReadinessItem = (eventId, body) =>
