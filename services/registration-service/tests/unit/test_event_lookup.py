@@ -44,3 +44,20 @@ class TestEventLookup(unittest.TestCase):
                 _event("e1", "Bearer token")
 
         self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_reads_only_the_public_event_page(self):
+        # SPM-127: registration needs public facts only, so it reads the attendee card,
+        # never the full internal event record.
+        with patch("app.services.registration_service.httpx.Client", FakeEventClient):
+            _event("e1", "Bearer token")
+
+        self.assertTrue(FakeEventClient.captured["url"].endswith("/events/e1/attendee-card"))
+
+    def test_an_event_an_attendee_may_not_open_is_not_yet_confirmed(self):
+        FakeEventClient.response = FakeResponse(403, {"detail": "Attendees can open only confirmed event pages"})
+
+        with patch("app.services.registration_service.httpx.Client", FakeEventClient):
+            with self.assertRaises(HTTPException) as ctx:
+                _event("e3", "Bearer token")
+
+        self.assertEqual((ctx.exception.status_code, ctx.exception.detail), (409, "This event has not been confirmed yet."))

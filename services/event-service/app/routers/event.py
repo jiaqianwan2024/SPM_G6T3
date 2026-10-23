@@ -15,7 +15,7 @@ from app.dao.event_safety_handoff_dao import EventSafetyHandoffDAO
 from app.dao.event_safety_review_dao import EventSafetyReviewDAO
 from app.dao.event_status_history_dao import EventStatusHistoryDAO
 from app.db.session import get_db
-from app.orchestration.clients import current_organiser, current_technical_support
+from app.orchestration.clients import current_organiser, current_technical_support, registered_event_ids
 from app.schemas.event import (
     ChangeableFieldsOut,
     ChangeRequestAccept,
@@ -67,6 +67,7 @@ from app.services.event_followup import EventFollowUp
 from app.services.event_service import COORDINATOR_LEAD, EventService
 from shared.auth.deps import forwarded_bearer
 from shared.auth.roles import resolve_caller
+from shared.exceptions.http import forbidden
 from shared.openapi import error_responses
 
 router = APIRouter(
@@ -74,6 +75,16 @@ router = APIRouter(
     tags=["events"],
     responses=error_responses(401),
 )
+
+
+# SPM-127: an attendee sees only confirmed event pages and their own registrations.
+ATTENDEE_REFUSAL = "Attendees can open only confirmed event pages and their own registrations."
+
+
+def _refuse_attendees(authorization: str | None) -> None:
+    """The full event record, event lists and the activity log are staff or organiser pages (403)."""
+    if resolve_caller(authorization, settings.user_service_url).get("role") == "attendee":
+        raise forbidden(ATTENDEE_REFUSAL)
 
 
 def get_followup(db: Session = Depends(get_db)) -> EventFollowUp:
@@ -104,6 +115,7 @@ def list_events(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
+    _refuse_attendees(authorization)
     return service.list_events(authorization)
 
 
@@ -198,6 +210,7 @@ def list_all_events(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
+    _refuse_attendees(authorization)
     return service.list_all_events(authorization)
 
 
@@ -211,6 +224,7 @@ def list_confirmed_events(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
+    _refuse_attendees(authorization)
     return service.list_confirmed_events(authorization)
 
 
@@ -379,17 +393,32 @@ def get_event(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
+    _refuse_attendees(authorization)
     return service.get_event(event_id, authorization)
 
 
-@router.get("/{event_id}/attendee-card", response_model=OpenEventOut)
+@router.get(
+    "/{event_id}/attendee-card",
+    response_model=OpenEventOut,
+    summary="Public event page",
+    description="Public details only. An attendee can open a confirmed event, or one they hold a registration "
+    "for (SPM-127); any other event is 403 for them. Staff and organisers can open any event.",
+    responses=error_responses(403, 404, 503),
+)
 def attendee_card(
     event_id: str,
     authorization: str | None = Depends(forwarded_bearer),
     followup: EventFollowUp = Depends(get_followup),
 ):
-    resolve_caller(authorization, settings.user_service_url)
-    return followup.attendee_card(event_id, authorization)
+    caller = resolve_caller(authorization, settings.user_service_url)
+    card = followup.attendee_card(event_id, authorization)
+    if (
+        caller.get("role") == "attendee"
+        and card.status != "confirmed"
+        and event_id not in registered_event_ids(authorization)
+    ):
+        raise forbidden(ATTENDEE_REFUSAL)
+    return card
 
 
 @router.get("/{event_id}/readiness", response_model=list[ReadinessItemOut])
@@ -1004,6 +1033,7 @@ def get_activity_log(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
+    _refuse_attendees(authorization)
     return service.get_activity_log(event_id, authorization)
 
 

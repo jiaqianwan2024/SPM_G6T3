@@ -67,6 +67,8 @@ class OpenEventOut(BaseModel):
     endsAt: datetime | None = None
     accessibilityNeeds: str = ""
     layoutPreference: str | None = None
+    registrationEnabled: bool = False
+    registrationOpensAt: datetime | None = None
     registrationClosesAt: datetime | None = None
     capacity: int = 0
     registeredCount: int = 0

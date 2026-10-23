@@ -42,7 +42,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getOpenEvent } from '../../api/eventService.js'
+import { getAttendeeCard, getOpenEvent } from '../../api/eventService.js'
 import { formatSgt, formatSgtDate, formatSgtTime, parseServerTime } from '../../utils/datetime.js'
 
 const route = useRoute()
@@ -97,8 +97,15 @@ onMounted(async () => {
   try {
     const { data } = await getOpenEvent(route.params.id)
     event.value = data
-  } catch (err) {
-    error.value = err.response?.data?.detail || 'This event is not open.'
+  } catch {
+    // SPM-127: not open for registration, but still public to this attendee when it is
+    // confirmed or they registered for it (a notification about it can lead here).
+    try {
+      const { data } = await getAttendeeCard(route.params.id)
+      event.value = data
+    } catch (err) {
+      error.value = err.response?.data?.detail || 'This event is not open.'
+    }
   } finally {
     loading.value = false
   }

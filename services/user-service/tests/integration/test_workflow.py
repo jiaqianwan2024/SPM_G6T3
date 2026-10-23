@@ -28,9 +28,16 @@ class TestUserWorkflow(ServiceTestCase):
             me = client.get("/users/me", headers={"Authorization": "Bearer token"})
             self.assertEqual(me.status_code, 200)
             self.assertEqual(me.json()["role"], "attendee")
+            # SPM-127: an attendee never sees other people's details; staff still read the directory.
+            self.assertEqual(client.get("/users", headers={"Authorization": "Bearer token"}).status_code, 403)
+            self.db.add(
+                User(userId="u2", email="ben@example.com", userName="Ben Lee", role="coordinator", firebaseUid="uid-ben")
+            )
+            self.db.commit()
+            app.dependency_overrides[require_authenticated_user] = lambda: {"uid": "uid-ben", "email": "ben@example.com"}
             directory = client.get("/users", headers={"Authorization": "Bearer token"})
             self.assertEqual(directory.status_code, 200)
-            self.assertEqual(directory.json()[0]["userId"], "u5")
+            self.assertEqual(sorted(row["userId"] for row in directory.json()), ["u2", "u5"])
         finally:
             client.__exit__(None, None, None)
             app.dependency_overrides.clear()

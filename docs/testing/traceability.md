@@ -495,6 +495,9 @@
 | SGT | Opening hours and their days are Singapore time in suitability and search | TC-SGT-AC03, TC-SGT-AC03b | `e2e/sgt.spec.js` | Automated |
 | SGT | Times inside messages are written in Singapore time | TC-SGT-AC04 | `e2e/sgt.spec.js` | Automated |
 | SGT | The database and API keep UTC | TC-SGT-AC05 | `e2e/sgt.spec.js` | Automated |
+| SPM-127 | Attendees open only confirmed event pages and their own registrations | TC-SPM127-AC01, TC-SPM127-AC01b, TC-SPM127-AC01c | `e2e/spm127.spec.js` | Automated |
+| SPM-127 | No internal notes, drafts, clarifications or other attendees' details, enforced on the server | TC-SPM127-AC02 | `e2e/spm127.spec.js` | Automated |
+| SPM-127 | Staff-only and organiser-only pages are 403 for an attendee | TC-SPM127-AC03, TC-SPM127-AC03b, TC-SPM127-AC03c | `e2e/spm127.spec.js` | Automated |
 
 A case is Pass only when every active test for that ID passes. A skipped
 UI contract or assignment-gate check keeps the case Blocked even if the
