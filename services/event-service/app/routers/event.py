@@ -137,9 +137,11 @@ def create_event(
         return service.create_draft(
             body.to_draft(), organiser["userId"], organiser.get("organisationId"), authorization
         )
-    return service.create_event(
-        body.to_create(), organiser["userId"], organiser.get("organisationId"), authorization
-    )
+    try:
+        create = body.to_create()
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
+    return service.create_event(create, organiser["userId"], organiser.get("organisationId"), authorization)
 
 @router.post("/drafts", response_model=EventOut, status_code=201)
 def create_draft(

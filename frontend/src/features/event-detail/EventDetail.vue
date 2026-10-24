@@ -241,6 +241,11 @@
                 <dt>Registration</dt>
                 <dd v-if="event.registrationEnabled">
                   Needed · capacity {{ event.capacity }} · {{ registrationPeriod }}
+                  <span
+                    v-if="event.registrationDetailsOutstanding"
+                    class="status-pill attention"
+                    data-testid="registration-details-outstanding"
+                  >Details outstanding</span>
                 </dd>
                 <dd v-else class="muted">Not needed</dd>
               </div>

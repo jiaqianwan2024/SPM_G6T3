@@ -40,6 +40,7 @@ class TestEventRoutes(ServiceTestCase):
             "proposedStartAt": "2026-10-06T09:00:00",
             "proposedEndAt": "2026-10-06T17:00:00",
             "expectedAttendance": 10,
+            "registrationEnabled": False,
         }
         created = self.client.post("/events", headers=headers, json=body)
         self.assertEqual(created.status_code, 201)
@@ -156,6 +157,7 @@ class TestEventRoutes(ServiceTestCase):
                 "proposedStartAt": "2026-10-06T09:00:00",
                 "proposedEndAt": "2026-10-06T17:00:00",
                 "expectedAttendance": 4,
+                "registrationEnabled": False,
                 "accessibilityNeeds": ["Wheelchair accessible"],
                 "requiredFacilities": ["Projector"],
                 "preferredLocation": "",
@@ -169,3 +171,19 @@ class TestEventRoutes(ServiceTestCase):
         discarded = self.client.delete(f"/events/{another.json()['eventId']}", headers=headers)
         self.assertEqual(discarded.status_code, 200)
         self.assertEqual(discarded.json()["status"], "discarded")
+
+    def test_create_rejects_a_registration_window_that_closes_after_the_event_starts(self):
+        response = self.client.post(
+            "/events",
+            headers={"Authorization": "Bearer token"},
+            json={
+                "eventName": "Late close",
+                "proposedStartAt": "2026-10-06T09:00:00",
+                "proposedEndAt": "2026-10-06T17:00:00",
+                "expectedAttendance": 10,
+                "registrationEnabled": True,
+                "registrationOpensAt": "2026-10-01T09:00:00",
+                "registrationClosesAt": "2026-10-06T10:00:00",
+            },
+        )
+        self.assertEqual(response.status_code, 422)

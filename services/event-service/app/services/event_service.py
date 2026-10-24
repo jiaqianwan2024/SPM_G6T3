@@ -56,6 +56,7 @@ from app.schemas.event import (
     ChangeableFieldsOut,
     ChangeRequestAccept,
     ChangeRequestCreate,
+    check_registration_window,
     ChangeRequestDecline,
     ChangeRequestOut,
     ClarificationCreate,
@@ -448,6 +449,31 @@ def _write_requirements(event: Event, data, only_sent: bool) -> None:
         event.equipmentLines = _equipment_line_dicts(data.equipmentLines)
 
 
+def _write_registration(event: Event, data, only_sent: bool) -> None:
+    """SPM-81: the registration needs an organiser states on a draft. A flag left unanswered stays as it was."""
+    sent = data.model_fields_set
+
+    def include(name: str) -> bool:
+        return name in sent if only_sent else True
+
+    if include("registrationEnabled") and data.registrationEnabled is not None:
+        event.registrationEnabled = data.registrationEnabled
+    if include("registrationOpensAt"):
+        event.registrationOpensAt = data.registrationOpensAt
+    if include("registrationClosesAt"):
+        event.registrationClosesAt = data.registrationClosesAt
+    if include("capacity") and data.capacity is not None:
+        event.capacity = data.capacity
+
+
+def _registration_details_outstanding(row: Event) -> bool:
+    """SPM-81 AC3: registration is needed but the period or capacity is still to be set."""
+    return bool(
+        row.registrationEnabled
+        and (row.registrationOpensAt is None or row.registrationClosesAt is None or not row.capacity)
+    )
+
+
 def _date_near(proposed_start: datetime | None) -> bool:
     """True when the proposed start is within the configured lead, inclusive.
 
@@ -494,6 +520,7 @@ def _to_out(
         registrationOpensAt=row.registrationOpensAt,
         registrationClosesAt=row.registrationClosesAt,
         capacity=row.capacity,
+        registrationDetailsOutstanding=_registration_details_outstanding(row),
         submittedAt=row.submittedAt,
         organisationId=row.organisationId,
         organiserId=row.organiserId,
@@ -737,6 +764,7 @@ class EventService(BaseService):
             updatedAt=now,
         )
         _write_requirements(row, data, only_sent=False)
+        _write_registration(row, data, only_sent=False)
         self.event_dao.add(row)
         self.db.commit()
         self.db.refresh(row)
@@ -768,6 +796,7 @@ class EventService(BaseService):
         event.venueRequirements = data.venueRequirements
         event.equipmentRequirements = data.equipmentRequirements
         _write_requirements(event, data, only_sent=True)
+        _write_registration(event, data, only_sent=True)
         event.updatedAt = datetime.utcnow()
         self.db.commit()
         self.db.refresh(event)
@@ -805,6 +834,12 @@ class EventService(BaseService):
         if "expectedAttendance" in sent and data.expectedAttendance is not None:
             event.expectedAttendance = data.expectedAttendance
         _write_requirements(event, data, only_sent=True)
+        _write_registration(event, data, only_sent=True)
+        try:
+            check_registration_window(event.registrationOpensAt, event.registrationClosesAt, event.proposedStartAt)
+        except ValueError as exc:
+            self.db.rollback()
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
         event.updatedAt = datetime.utcnow()
         self.db.commit()
         self.db.refresh(event)
