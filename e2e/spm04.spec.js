@@ -5,7 +5,7 @@ import { equipmentApi } from './support/equipment.js'
 
 test.describe('SPM-04 View upcoming events', () => {
   test('TC-SPM04-AC01 the queue lists upcoming events that have equipment requirements, soonest first', async () => {
-    const queue = await equipmentApi('GET', '/equipment/queue', 'TS-01')
+    const queue = await equipmentApi('GET', '/equipment/upcoming', 'TS-01')
     expect(queue.status).toBe(200)
     const ids = (queue.body || []).map((row) => row.eventId)
     expect(ids).toContain('e1')
@@ -50,7 +50,7 @@ test.describe('SPM-04 View upcoming events', () => {
   })
 
   test('TC-SPM04-AC04 requests needing attention, including re-verification, are shown first within the same date', async () => {
-    const queue = await equipmentApi('GET', '/equipment/queue', 'TS-01')
+    const queue = await equipmentApi('GET', '/equipment/upcoming', 'TS-01')
     expect(queue.status).toBe(200)
     const byDate = {}
     for (const row of queue.body || []) {
@@ -74,17 +74,17 @@ test.describe('SPM-04 View upcoming events', () => {
   test('TC-SPM04-AC05 the queue filters by status and date range, and excludes completed and cancelled by default', async ({
     page,
   }) => {
-    const queue = await equipmentApi('GET', '/equipment/queue', 'TS-01')
+    const queue = await equipmentApi('GET', '/equipment/upcoming', 'TS-01')
     expect((queue.body || []).map((row) => row.eventId)).not.toContain('e8')
     await login(page, account('TS-01'))
     await page.locator('.nav-item').getByText('Upcoming Events', { exact: true }).click()
     await expect(page.getByTestId('equipment-queue-e8')).toHaveCount(0)
-    await page.getByTestId('queue-filter-status').selectOption(/review|pending|requested/i)
+    await page.getByTestId('queue-filter-status').selectOption('awaiting_review')
     await page.getByTestId('queue-filter-from').fill(new Date().toISOString().slice(0, 10))
   })
 
   test('TC-SPM04-AC06 events with no equipment requirements do not appear', async () => {
-    const queue = await equipmentApi('GET', '/equipment/queue', 'TS-01')
+    const queue = await equipmentApi('GET', '/equipment/upcoming', 'TS-01')
     expect(queue.status).toBe(200)
     expect((queue.body || []).map((row) => row.eventId)).not.toContain('e6')
   })
@@ -98,5 +98,47 @@ test.describe('SPM-04 View upcoming events', () => {
     await expect(page).toHaveURL(/e1|equipment|availability|reserv/i)
     await expect(page.getByTestId('equipment-check')).toBeVisible()
     await expect(page.getByTestId('equipment-reserve')).toBeVisible()
+  })
+
+  test('TC-SPM04-EXTRA01 only technical support can read the queue', async () => {
+    for (const id of ['EO-01', 'EC-01', 'ATT-01']) {
+      const refused = await equipmentApi('GET', '/equipment/upcoming', id)
+      expect(refused.status).toBe(403)
+    }
+  })
+
+  test('TC-SPM04-EXTRA02 the status filter narrows the queue to one equipment state', async ({ page }) => {
+    await login(page, account('TS-01'))
+    await page.locator('.nav-item').getByText('Upcoming Events', { exact: true }).click()
+    await expect(page.getByTestId('equipment-queue-e1')).toBeVisible()
+    await page.getByTestId('queue-filter-status').selectOption('fully_reserved')
+    await expect(page.getByTestId('equipment-queue-e1')).toHaveCount(0)
+    await expect(
+      page.locator('[data-testid^="equipment-queue-"][data-equipment-state]:not([data-equipment-state="fully_reserved"])'),
+    ).toHaveCount(0)
+  })
+
+  test('TC-SPM04-EXTRA03 an event needing re-verification is flagged on its row', async ({ page }) => {
+    await login(page, account('TS-01'))
+    await page.locator('.nav-item').getByText('Upcoming Events', { exact: true }).click()
+    await expect(page.getByTestId('equipment-queue-e2')).toContainText(/needs (re-verification|attention)/i)
+  })
+
+  test('TC-SPM04-EXTRA04 an empty queue says what is excluded', async ({ page }) => {
+    await page.route('**/equipment/upcoming**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    )
+    await login(page, account('TS-01'))
+    await page.locator('.nav-item').getByText('Upcoming Events', { exact: true }).click()
+    await expect(page.getByTestId('equipment-queue-empty')).toContainText(/completed and cancelled/i)
+  })
+
+  test('TC-SPM04-EXTRA05 the calendar view is still available beside the queue', async ({ page }) => {
+    await login(page, account('TS-01'))
+    await page.locator('.nav-item').getByText('Upcoming Events', { exact: true }).click()
+    await page.getByTestId('queue-view-calendar').click()
+    await expect(page.locator('.fc').first()).toBeVisible()
+    await page.getByTestId('queue-view-list').click()
+    await expect(page.getByTestId('equipment-queue-e1')).toBeVisible()
   })
 })

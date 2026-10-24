@@ -6,6 +6,8 @@ export const getEquipmentList = () => axiosClient.get("/equipment");
 
 export const getEquipmentQueue = () => axiosClient.get("/equipment/queue");
 
+export const getUpcomingEquipmentQueue = (params) => axiosClient.get("/equipment/upcoming", { params });
+
 export const getEquipment = (equipmentId) => axiosClient.get(`/equipment/${equipmentId}`);
 
 export const createEquipment = (body) => axiosClient.post("/equipment", body);

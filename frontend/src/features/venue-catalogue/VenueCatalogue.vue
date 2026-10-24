@@ -71,6 +71,9 @@
             <span v-if="!selected.isActive" class="retired-tag">Retired</span>
           </h3>
           <div class="detail-actions">
+            <button type="button" class="btn btn-ghost small" data-testid="venue-open-calendar" @click="openCalendar">
+              Open calendar
+            </button>
             <template v-if="canWrite && selected.isActive">
               <button type="button" class="btn btn-ghost small" @click="startEdit">Edit</button>
               <button type="button" class="btn btn-ghost small" @click="showLog = !showLog">
@@ -158,19 +161,23 @@
       </div>
       <div class="venue-detail empty" v-else-if="loadingDetail">Loading venue…</div>
       <div class="venue-detail empty" v-else-if="venues.length">Select a venue to view its details.</div>
-      <div class="venue-detail empty" v-else>No venues are currently available.</div>
+      <div class="venue-detail empty" data-testid="venue-catalogue-empty" v-else>
+        No venues are currently available. Venue staff maintain the catalogue, so check back once they have added a venue.
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { getBookingClashes, getVenue, getVenues, retireVenue } from '../../api/venueService.js'
 import { session } from '../../store/session.js'
 import VenueForm from './VenueForm.vue'
 import VenueActivityLog from './VenueActivityLog.vue'
 import VenueHolds from './VenueHolds.vue'
 
+const router = useRouter()
 const venues = ref([])
 const selected = ref(null)
 const loading = ref(true)
@@ -189,6 +196,11 @@ const retireWarning = ref('')
 const loadingDetail = ref(false)
 
 const canWrite = computed(() => session.role === 'venue')
+
+// SPM-17 AC4: a venue opens its availability calendar.
+function openCalendar() {
+  router.push(`/app/venues/${selected.value.venueId}/calendar`)
+}
 
 const visible = computed(() => {
   const term = query.value.trim().toLowerCase()

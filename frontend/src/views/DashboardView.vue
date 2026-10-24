@@ -50,7 +50,7 @@
       <BookingRequests v-else-if="activeTab === 'Booking Requests'" />
       <BrowseEvents v-else-if="activeTab === 'Browse Events'" />
       <CreateEvent v-else-if="activeTab === 'New Request'" />
-      <UpcomingEventsCalendar v-else-if="activeTab === 'Upcoming Events'"/>
+      <UpcomingEventsQueue v-else-if="activeTab === 'Upcoming Events'"/>
       <EquipmentCatalogue v-else-if="activeTab === 'Equipment Catalogue'" />
       <AssignedEvents v-else-if="activeTab === 'Assigned Events'" />
       <ReviewQueue v-else-if="activeTab === 'Review Queue'" />
@@ -85,7 +85,7 @@ import CreateEvent from '../features/create-event/CreateEvent.vue'
 import { roles } from '../config/roles.js'
 import { auth } from '../firebase.js'
 import { session, logoutSession } from '../store/session.js'
-import UpcomingEventsCalendar from '../features/event-calendar/EventCalendar.vue'
+import UpcomingEventsQueue from '../features/upcoming-events/UpcomingEventsQueue.vue'
 import EquipmentCatalogue from '../features/equipment-catalogue/EquipmentCatalogue.vue'
 import AssignedEvents from '../features/assigned-events/AssignedEvents.vue'
 import ReviewQueue from '../features/review-queue/ReviewQueue.vue'

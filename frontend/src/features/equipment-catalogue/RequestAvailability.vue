@@ -6,7 +6,7 @@
     <article v-for="group in groups" :key="group.eventId" class="event-card">
       <div class="event-header">
         <h3>Event {{ group.eventId }}</h3>
-        <button type="button" class="btn btn-ghost small" @click="check(group.eventId)">Check availability</button>
+        <button type="button" class="btn btn-ghost small" data-testid="equipment-check" @click="check(group.eventId)">Check availability</button>
       </div>
       <p v-if="results[group.eventId]" class="verdict" :class="{ short: !results[group.eventId].canMeet }">
         {{ results[group.eventId].canMeet ? 'This request can be met.' : 'This request cannot be met.' }}
@@ -51,7 +51,7 @@
             <button type="button" class="btn btn-ghost small" :disabled="busy === request.requestId" @click="startDecision(request, 'unavailable')">Mark unavailable</button>
           </div>
           <div v-else-if="request.status === 'approved'" class="actions">
-            <button type="button" class="btn btn-solid small" :disabled="busy === request.requestId" @click="reserve(request)">Reserve</button>
+            <button type="button" class="btn btn-solid small" data-testid="equipment-reserve" :disabled="busy === request.requestId" @click="reserve(request)">Reserve</button>
           </div>
           <form v-if="decisionFor === request.requestId" class="unavailable-form" @submit.prevent="confirmDecision(request)">
             <label>Reason<input v-model="decisionReason" required /></label>
@@ -79,6 +79,11 @@ import {
 } from '../../api/equipmentService.js'
 import { formatSgt, parseServerTime } from '../../utils/datetime.js'
 
+// SPM-4 AC7: when set, only that event's requests are listed.
+const props = defineProps({
+  eventId: { type: String, default: '' },
+})
+
 const requests = ref([])
 const names = ref({})
 const results = ref({})
@@ -95,6 +100,7 @@ const groups = computed(() => {
   const grouped = new Map()
   for (const request of requests.value) {
     if (request.status === 'cancelled') continue
+    if (props.eventId && request.eventId !== props.eventId) continue
     if (!grouped.has(request.eventId)) grouped.set(request.eventId, [])
     grouped.get(request.eventId).push(request)
   }

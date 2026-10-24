@@ -98,6 +98,16 @@ class TestEventListings(EventCase):
         self.assertEqual(queue, ["e-0", "e-1", "e-2"])
         self.assertEqual(self.service.list_submission_queue(assigned_to="nobody"), [])
 
+    def test_completed_events_join_the_queue_only_when_asked_for(self):
+        insert_event(self.db, eventId="e-open", status="submitted", submittedAt=datetime(2026, 1, 1))
+        insert_event(self.db, eventId="e-done", status="completed", submittedAt=datetime(2026, 1, 2))
+
+        default = [row.eventId for row in self.service.list_submission_queue()]
+        included = [row.eventId for row in self.service.list_submission_queue(include_completed=True)]
+
+        self.assertEqual(default, ["e-open"])
+        self.assertEqual(included, ["e-open", "e-done"])
+
     def test_a_proposed_date_is_near_on_the_threshold_and_not_one_second_later(self):
         now = datetime(2026, 10, 3, 12, 0)
         limit = timedelta(days=settings.event_proposed_date_near_days)

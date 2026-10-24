@@ -33,6 +33,18 @@ class TestEventRoutes(ServiceTestCase):
         app.dependency_overrides.clear()
         super().tearDown()
 
+    def test_the_queue_lists_completed_events_only_when_include_completed_is_true(self):
+        headers = {"Authorization": "Bearer token"}
+        mine = COORDINATOR["userId"]
+        insert_event(self.db, eventId="e-open", status="submitted", coordinatorId=mine)
+        insert_event(self.db, eventId="e-done", status="completed", coordinatorId=mine)
+
+        default = self.client.get("/events/queue", headers=headers)
+        included = self.client.get("/events/queue?includeCompleted=true", headers=headers)
+
+        self.assertEqual([row["eventId"] for row in default.json()], ["e-open"])
+        self.assertEqual(sorted(row["eventId"] for row in included.json()), ["e-done", "e-open"])
+
     def test_http_create_list_get_decide_and_assign(self):
         headers = {"Authorization": "Bearer token"}
         body = {

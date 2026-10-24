@@ -1,5 +1,5 @@
 <template>
-  <div class="venue-calendar">
+  <div class="venue-calendar" data-testid="venue-calendar">
     <router-link v-if="!embedded" class="back" to="/app?tab=Venue%20Calendar">All venues</router-link>
 
     <header class="heading">
@@ -12,6 +12,9 @@
       <h1 v-else>{{ venue?.name || 'Venue' }}</h1>
     </header>
 
+    <p v-if="!canSeeBookings" class="note" data-testid="calendar-bookings-hidden">
+      Bookings are visible to coordinators and venue staff. This calendar shows the times the venue is unavailable.
+    </p>
     <p v-if="loadError" class="error">{{ loadError }}</p>
 
     <div v-else class="layout">
@@ -22,8 +25,8 @@
           </p>
           <div class="calendar-bar">
             <ul class="legend">
-              <li><span class="swatch pending"></span>Pending <span class="count">{{ counts.pending }}</span></li>
-              <li><span class="swatch approved"></span>Approved <span class="count">{{ counts.approved }}</span></li>
+              <li v-if="canSeeBookings"><span class="swatch pending"></span>Pending <span class="count">{{ counts.pending }}</span></li>
+              <li v-if="canSeeBookings"><span class="swatch approved"></span>Approved <span class="count">{{ counts.approved }}</span></li>
               <li><span class="swatch unavailable"></span>Unavailable <span class="count">{{ counts.unavailable }}</span></li>
             </ul>
             <button v-if="canWrite" type="button" class="mark-btn" data-testid="mark-unavailable" @click="startCreate">
@@ -175,6 +178,8 @@ const calendarRef = ref(null)
 const detail = reactive({ entry: null, pinned: false, overCard: false, top: 0, left: 0 })
 let hideTimer = 0
 const canWrite = computed(() => session.role === 'venue')
+// Technical support may read a venue's unavailability but not its bookings (the server refuses them).
+const canSeeBookings = computed(() => session.role !== 'techsupport')
 const counts = computed(() => {
   const tally = { pending: 0, approved: 0, unavailable: 0 }
   const range = visibleRange.value
@@ -286,7 +291,7 @@ async function load() {
     const [venueRes, blockRes, bookingRes] = await Promise.all([
       getVenue(venueId.value),
       getVenueUnavailability(venueId.value),
-      getVenueBookings({ venueId: venueId.value })
+      canSeeBookings.value ? getVenueBookings({ venueId: venueId.value }) : Promise.resolve({ data: [] })
     ])
     venue.value = venueRes.data
     const blocks = blockRes.data.map((block) => ({
@@ -806,6 +811,7 @@ select option { background: #1a1030; color: #f3eeff; }
 .mark-btn:disabled { opacity: 0.55; cursor: default; }
 .form-actions { display: flex; gap: 8px; }
 .error { color: #ffb4b4; margin: 8px 0 0; white-space: pre-wrap; }
+.note { color: var(--body); font-size: 13px; margin: 0 0 14px; }
 .calendar-shell {
   min-width: 0;
   background: #fff;

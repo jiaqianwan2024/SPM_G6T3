@@ -237,12 +237,14 @@ def list_confirmed_events(
     description="Event Coordinator Lead and Event Coordinators. Submitted / under-review / changes-requested "
     "events, ordered by submission time - longest-waiting first, unless `sort=proposedStartAt`. The Lead sees "
     "every request, unassigned ones included, and can pass `assignedTo` (a coordinator userId) to see one "
-    "coordinator's assignments. A coordinator only ever sees the requests assigned to them.",
+    "coordinator's assignments. A coordinator only ever sees the requests assigned to them. Completed events "
+    "are left out unless `includeCompleted` is true (SPM-73).",
     responses=error_responses(403, 503),
 )
 def list_submission_queue(
     sort: str | None = Query(default=None, description="`proposedStartAt` to sort by event date instead of wait time."),
     assignedTo: str | None = Query(default=None, description="Lead only: a coordinator userId."),
+    includeCompleted: bool = Query(default=False, description="Also list completed events."),
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
@@ -250,7 +252,9 @@ def list_submission_queue(
     if caller["role"] == "coordinator":
         # Each coordinator manages only the requests assigned to them.
         assignedTo = caller["userId"]
-    return service.list_submission_queue(authorization, sort=sort, assigned_to=assignedTo)
+    return service.list_submission_queue(
+        authorization, sort=sort, assigned_to=assignedTo, include_completed=includeCompleted
+    )
 
 
 @router.get(

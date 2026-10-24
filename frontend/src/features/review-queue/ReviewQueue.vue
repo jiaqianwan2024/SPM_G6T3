@@ -20,6 +20,15 @@
         >
           Unassigned only
         </button>
+        <label class="include-completed">
+          <input
+            v-model="includeCompleted"
+            type="checkbox"
+            data-testid="queue-include-completed"
+            @change="loadEvents"
+          />
+          Include completed events
+        </label>
         <button
           class="filter-btn"
           :class="{ active: sortMode === 'name-asc' }"
@@ -230,6 +239,8 @@ const isLead = computed(() => session.role === 'coordinatorlead')
 // userId -> name, so the Lead sees who each request is with. Display only.
 const coordinatorNames = ref({})
 const query = ref('')
+// SPM-73 AC5: completed events are left out of the queue unless asked for.
+const includeCompleted = ref(false)
 // 'waiting' keeps the server order (longest-waiting first).
 const sortMode = ref('waiting')
 const myUserId = ref(null)
@@ -382,7 +393,7 @@ async function loadEvents() {
     // by submittedAt ascending (longest-waiting first). A coordinator gets
     // only their own requests; the Lead's "unassigned" filter is applied
     // client-side below (filteredEvents) against this list.
-    const { data } = await getSubmissionQueue()
+    const { data } = await getSubmissionQueue({ includeCompleted: includeCompleted.value })
     events.value = data
   } catch (err) {
     error.value = err.response?.data?.detail || 'Could not load the review queue. Please try again.'
@@ -502,6 +513,7 @@ onUnmounted(() => clearInterval(ticker))
   cursor: pointer;
   transition: border-color .3s var(--ease-out), color .3s var(--ease-out), background .3s var(--ease-out);
 }
+.include-completed { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; }
 .filter-btn:hover { border-color: rgba(167, 139, 250, .4); color: var(--text); }
 .filter-btn.active {
   color: var(--text);
