@@ -12,7 +12,7 @@ export const roles = {
   },
   coordinator: {
     label: 'Event Coordinator',
-    tabs: ['Dashboard', 'Assigned Events', 'Review Queue', 'Venue Catalogue', 'Venue Requests', 'Reports', 'Profile'],
+    tabs: ['Dashboard', 'Assigned Events', 'Review Queue', 'Venue Catalogue', 'Venue Calendar', 'Venue Requests', 'Reports', 'Profile'],
     cards: [
       { title: 'Review queue', sub: '4 requests need clarification' },
       { title: 'Venue requests in progress', sub: '2 awaiting Venue Staff decision' },
@@ -40,7 +40,7 @@ export const roles = {
   },
   techsupport: {
     label: 'Technical Support Staff',
-    tabs: ['Dashboard', 'Upcoming Events', 'Equipment Catalogue', 'Reservations', 'My Assignments', 'Maintenance Status', 'Profile'],
+    tabs: ['Dashboard', 'Upcoming Events', 'Venue Catalogue', 'Venue Calendar', 'Equipment Catalogue', 'Reservations', 'My Assignments', 'Maintenance Status', 'Profile'],
     cards: [
       { title: 'Equipment requests', sub: '2 requests pending review' },
       { title: 'Damaged / under maintenance', sub: '1 projector flagged unavailable' },

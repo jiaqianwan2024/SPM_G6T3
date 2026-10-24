@@ -9,6 +9,7 @@ import RegistrationDetail from '../features/my-registrations/RegistrationDetail.
 import EventVenueSelect from '../features/venue-request/EventVenueSelect.vue'
 import BrowseEvent from '../features/browse-events/BrowseEvent.vue'
 import EventReadiness from '../features/event-detail/EventReadiness.vue'
+import EventEquipmentCheck from '../features/equipment-catalogue/EventEquipmentCheck.vue'
 import EquipmentDetail from '../features/equipment-catalogue/EquipmentDetail.vue'
 import NotificationsPage from '../features/notifications/NotificationsPage.vue'
 import NotificationFollow from '../features/notifications/NotificationFollow.vue'
@@ -70,6 +71,12 @@ const router = createRouter({
       path: '/app/events/:id/readiness',
       name: 'event-readiness',
       component: EventReadiness,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/app/events/:id/equipment',
+      name: 'event-equipment',
+      component: EventEquipmentCheck,
       meta: { requiresAuth: true }
     },
     {

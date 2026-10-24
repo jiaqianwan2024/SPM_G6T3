@@ -44,6 +44,16 @@ test.describe('SPM-73 Mark an event completed', () => {
     await expect(page.getByTestId('queue-include-completed')).toBeChecked()
   })
 
+  test('TC-SPM73-EXTRA01 the queue API leaves completed events out unless includeCompleted is set', async () => {
+    const byDefault = await eventApi('GET', '/queue', 'ECL-01')
+    expect(byDefault.status).toBe(200)
+    for (const row of byDefault.body || []) expect(row.status.toLowerCase()).not.toBe('completed')
+    const included = await eventApi('GET', '/queue?includeCompleted=true', 'ECL-01')
+    expect(included.status).toBe(200)
+    const ids = (included.body || []).map((row) => row.eventId)
+    for (const row of byDefault.body || []) expect(ids).toContain(row.eventId)
+  })
+
   test('TC-SPM73-AC06 attendees cannot register for or withdraw from a completed event', async () => {
     const register = await eventApi('POST', '/e1/registrations', 'ATT-01', {})
     expect([400, 403, 404, 409]).toContain(register.status)

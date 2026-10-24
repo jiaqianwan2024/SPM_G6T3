@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 
@@ -28,8 +30,9 @@ from app.schemas.equipment import (
     EquipmentUpdate,
     ReservationRelease,
     ReservationReverificationRequest,
+    UpcomingEventOut,
 )
-from app.orchestration.clients import fetch_event_coordinator
+from app.orchestration.clients import fetch_event_coordinator, fetch_upcoming_events, fetch_venue_name
 from app.services.equipment_service import EquipmentService, require_assigned_coordinator
 from shared.auth.deps import forwarded_bearer
 from shared.auth.roles import resolve_caller
@@ -82,6 +85,28 @@ def reverification_queue(
 ):
     _technical_support(authorization)
     return service.reverification_queue()
+
+
+@router.get(
+    "/upcoming",
+    response_model=list[UpcomingEventOut],
+    summary="Upcoming events with equipment requirements",
+    description="SPM-4. Technical support. Upcoming events that have equipment requirements, soonest first, "
+    "with anything needing attention (including re-verification) ahead of the rest on the same date. "
+    "Completed and cancelled events are left out. `state` is `awaiting_review`, `partly_reserved`, "
+    "`fully_reserved` or `unavailable`.",
+    responses=error_responses(403, 422, 503),
+)
+def upcoming_events_queue(
+    state: str | None = Query(default=None, pattern="^(awaiting_review|partly_reserved|fully_reserved|unavailable)$"),
+    dateFrom: date | None = Query(default=None, description="Earliest event date, inclusive."),
+    dateTo: date | None = Query(default=None, description="Latest event date, inclusive."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EquipmentService = Depends(get_equipment_service),
+):
+    _technical_support(authorization)
+    events = fetch_upcoming_events(authorization)
+    return service.upcoming_queue(events, fetch_venue_name, state, dateFrom, dateTo)
 
 
 def _refuse_attendees(authorization: str | None) -> None:

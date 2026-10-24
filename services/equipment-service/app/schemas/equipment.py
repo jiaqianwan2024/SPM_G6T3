@@ -240,6 +240,24 @@ class EquipmentReservationOut(BaseModel):
     )
 
 
+class UpcomingEventOut(BaseModel):
+    """SPM-4: one upcoming event that has equipment requirements, as technical support's queue shows it."""
+
+    eventId: str
+    eventName: str
+    status: str
+    proposedStartAt: datetime | None = None
+    proposedEndAt: datetime | None = None
+    venueName: str = ""
+    coordinatorId: str | None = None
+    equipmentSummary: str = ""
+    equipmentState: str = Field(
+        description="`awaiting_review`, `partly_reserved`, `fully_reserved` or `unavailable`."
+    )
+    needsAttention: bool = False
+    needsReverification: bool = False
+
+
 class EquipmentOutcomeOut(BaseModel):
     reservationId: str = ""
     requestId: str = ""

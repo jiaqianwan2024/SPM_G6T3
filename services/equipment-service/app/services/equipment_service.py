@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import uuid4
 
 import httpx
@@ -7,6 +7,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from typing import Callable
+
 from app.orchestration.clients import event_recipients, publish_notification
 
 from app.dao.equipment_activity_log_dao import EquipmentActivityLogDAO
@@ -30,6 +32,7 @@ from app.schemas.equipment import (
     EquipmentReservationOut,
     EquipmentUpdate,
     OutOfServiceCounts,
+    UpcomingEventOut,
 )
 from shared.exceptions.http import conflict, forbidden
 from shared.services.base import BaseService
@@ -46,6 +49,30 @@ def _naive(value: datetime) -> datetime:
     if value.tzinfo is not None:
         return value.astimezone(timezone.utc).replace(tzinfo=None)
     return value
+
+
+_RESERVED_DONE = {"reserved", "complete", "resolved"}
+_PARTLY = _RESERVED_DONE | {"partial"}
+_UNAVAILABLE = {"unavailable", "rejected"}
+_NEEDS_ATTENTION = {"attention", "partial", "unavailable"}
+
+
+def _equipment_state(statuses: list[str]) -> str:
+    """SPM-4 AC3: where an event's equipment requests stand, from their statuses."""
+    if not statuses:
+        return "awaiting_review"
+    if all(item in _RESERVED_DONE for item in statuses):
+        return "fully_reserved"
+    if any(item in _PARTLY for item in statuses):
+        return "partly_reserved"
+    if any(item in _UNAVAILABLE for item in statuses):
+        return "unavailable"
+    return "awaiting_review"
+
+
+def _event_start(event: dict) -> datetime | None:
+    value = event.get("proposedStartAt")
+    return _naive(datetime.fromisoformat(value)) if value else None
 
 
 def _counts(damaged: int, maintenance: int, retired: int) -> dict:
@@ -651,6 +678,75 @@ class EquipmentService(BaseService):
                 "equipment.reverification",
             )
         return [_reservation_to_out(row) for row in rows]
+
+    def upcoming_queue(
+        self,
+        events: list[dict],
+        venue_name: Callable[[str], str],
+        state: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> list[UpcomingEventOut]:
+        """SPM-4: upcoming events that have equipment requirements, soonest first, with
+        anything needing attention ahead of the rest on the same date.
+
+        Only events that have an equipment request or equipment lines appear. The
+        caller passes the upcoming events (completed and cancelled are already left out)
+        and a lookup for each event's booked venue.
+        """
+        requests_by_event: dict[str, list[EquipmentRequest]] = {}
+        for row in self.request_dao.list_all():
+            if row.status != "cancelled":
+                requests_by_event.setdefault(row.eventId, []).append(row)
+        flagged = {row.eventId for row in self.reservation_dao.list_needing_reverification()}
+
+        rows = []
+        for event in events:
+            event_id = event["eventId"]
+            requests = requests_by_event.get(event_id, [])
+            lines = event.get("equipmentLines") or []
+            if not requests and not lines:
+                continue
+            statuses = [row.status for row in requests]
+            equipment_state = _equipment_state(statuses)
+            start = _event_start(event)
+            if state and equipment_state != state:
+                continue
+            if start and date_from and start.date() < date_from:
+                continue
+            if start and date_to and start.date() > date_to:
+                continue
+            if requests:
+                parts = [f"{row.quantity} × {self._equipment_label(row.equipmentId)}" for row in requests]
+            else:
+                parts = [f"{line.get('quantity', 1)} × {self._equipment_label(line.get('equipmentId', ''))}" for line in lines]
+            rows.append(
+                (
+                    start,
+                    UpcomingEventOut(
+                        eventId=event_id,
+                        eventName=event.get("eventName", ""),
+                        status=event.get("status", ""),
+                        proposedStartAt=event.get("proposedStartAt"),
+                        proposedEndAt=event.get("proposedEndAt"),
+                        venueName=venue_name(event_id),
+                        coordinatorId=event.get("coordinatorId"),
+                        equipmentSummary=", ".join(parts),
+                        equipmentState=equipment_state,
+                        needsAttention=event_id in flagged or any(item in _NEEDS_ATTENTION for item in statuses),
+                        needsReverification=event_id in flagged,
+                    ),
+                )
+            )
+        latest = datetime.max
+        rows.sort(
+            key=lambda pair: (
+                (pair[0] or latest).date(),
+                not pair[1].needsAttention,
+                pair[0] or latest,
+            )
+        )
+        return [row for _start, row in rows]
 
     def reverification_queue(self) -> list[EquipmentReservationOut]:
         """SPM-86 AC02 and AC07: held reservations technical support still have to re-check."""

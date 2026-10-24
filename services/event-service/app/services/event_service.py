@@ -662,6 +662,7 @@ class EventService(BaseService):
         authorization: str | None = None,
         sort: str | None = None,
         assigned_to: str | None = None,
+        include_completed: bool = False,
     ) -> list[EventOut]:
         """Coordinator review queue: submitted / under review / changes
         requested events - excludes drafts and everything else.
@@ -673,12 +674,14 @@ class EventService(BaseService):
         sort="proposedStartAt" orders by the proposed event date instead of
         the default (submittedAt ascending - longest-waiting first).
         assigned_to filters to one coordinator's own assignments.
+        include_completed (SPM-73 AC5) adds completed events, which the queue leaves out by default.
         """
+        statuses = [*QUEUE_STATUSES, "completed"] if include_completed else list(QUEUE_STATUSES)
         query_start = time.perf_counter()
         if sort == "proposedStartAt":
-            rows = self.event_dao.list_by_statuses_ordered_by_proposed_start(list(QUEUE_STATUSES))
+            rows = self.event_dao.list_by_statuses_ordered_by_proposed_start(statuses)
         else:
-            rows = self.event_dao.list_by_statuses_ordered_by_submitted(list(QUEUE_STATUSES))
+            rows = self.event_dao.list_by_statuses_ordered_by_submitted(statuses)
         if assigned_to is not None:
             rows = [row for row in rows if row.coordinatorId == assigned_to]
         logger.info(

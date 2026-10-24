@@ -31,6 +31,40 @@ def fetch_event_coordinator(event_id: str, authorization: str) -> str | None:
     return response.json().get("coordinatorId")
 
 
+def fetch_upcoming_events(authorization: str) -> list[dict]:
+    """SPM-4: events live in event-service, so the upcoming ones are read from there with
+    the caller's own token. Event-service already leaves out completed, cancelled,
+    rejected and draft events."""
+    try:
+        response = httpx.get(
+            f"{settings.event_service_url}/events/upcoming/technical",
+            headers={"Authorization": authorization},
+            timeout=5.0,
+        )
+    except httpx.HTTPError as exc:
+        raise service_unavailable(EVENT_UNREACHABLE) from exc
+    if response.status_code != 200:
+        raise service_unavailable(EVENT_UNREACHABLE)
+    return response.json()
+
+
+def fetch_venue_name(event_id: str) -> str:
+    """SPM-4: the venue booked for an event, or an empty string when none is booked or
+    venue-service cannot be reached. Authenticated with the service key."""
+    try:
+        response = httpx.get(
+            f"{settings.venue_service_url}/internal/venues/bookings/public-summary",
+            params={"eventId": event_id},
+            headers=service_key_headers(settings.internal_service_key),
+            timeout=2.0,
+        )
+    except httpx.HTTPError:
+        return ""
+    if response.status_code != 200:
+        return ""
+    return response.json().get("venueName") or ""
+
+
 def event_recipients(event: dict, roles: tuple[str, ...]) -> list[dict]:
     """SPM-93: the people on an event record that a trigger is for, as notification
     recipients. `roles` is any of "coordinator" and "organiser"; a role with nobody
