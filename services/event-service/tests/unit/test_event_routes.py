@@ -40,6 +40,7 @@ class TestEventRoutes(ServiceTestCase):
             "proposedStartAt": "2026-10-06T09:00:00",
             "proposedEndAt": "2026-10-06T17:00:00",
             "expectedAttendance": 10,
+            "registrationEnabled": False,
         }
         created = self.client.post("/events", headers=headers, json=body)
         self.assertEqual(created.status_code, 201)
@@ -156,6 +157,7 @@ class TestEventRoutes(ServiceTestCase):
                 "proposedStartAt": "2026-10-06T09:00:00",
                 "proposedEndAt": "2026-10-06T17:00:00",
                 "expectedAttendance": 4,
+                "registrationEnabled": False,
                 "accessibilityNeeds": ["Wheelchair accessible"],
                 "requiredFacilities": ["Projector"],
                 "preferredLocation": "",

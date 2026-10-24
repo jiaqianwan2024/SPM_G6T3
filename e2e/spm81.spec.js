@@ -65,11 +65,10 @@ test.describe('SPM-81 State registration needs at submission time', () => {
         capacity: 0,
       }),
     )
-    const submitted = await submitEvent(created.body.eventId)
-    expect(submitted.status).toBe(200)
-    expect(submitted.body.registrationDetailsOutstanding || submitted.body.registrationOutstanding).toBe(
-      true,
-    )
+    // A complete request is submitted on creation, so the create response is the submission.
+    expect(created.status).toBe(201)
+    expect(created.body.status).toMatch(/submitted/i)
+    expect(created.body.registrationDetailsOutstanding).toBe(true)
   })
 
   test('TC-SPM81-AC04 a closing time that is not after the opening time is rejected', async () => {

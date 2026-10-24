@@ -4,6 +4,16 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_serializer, model_validator
 
 
+def check_registration_window(opens: datetime | None, closes: datetime | None, start: datetime | None) -> None:
+    """SPM-81 AC4/AC5: registration closes after it opens and no later than the event starts.
+    A side that is not known yet is not checked, so a partial draft can still be saved."""
+    opens, closes, start = _naive_utc(opens), _naive_utc(closes), _naive_utc(start)
+    if opens and closes and closes <= opens:
+        raise ValueError("registrationClosesAt must be after registrationOpensAt")
+    if closes and start and closes > start:
+        raise ValueError("registrationClosesAt must be no later than the event start")
+
+
 class EventCreate(BaseModel):
     """Fields an organiser supplies when creating an event request.
 
@@ -32,9 +42,7 @@ class EventCreate(BaseModel):
     def check_windows(self):
         if self.proposedEndAt <= self.proposedStartAt:
             raise ValueError("proposedEndAt must be after proposedStartAt")
-        opens, closes = self.registrationOpensAt, self.registrationClosesAt
-        if opens and closes and closes <= opens:
-            raise ValueError("registrationClosesAt must be after registrationOpensAt")
+        check_registration_window(self.registrationOpensAt, self.registrationClosesAt, self.proposedStartAt)
         return self
 
     model_config = ConfigDict(
@@ -83,6 +91,11 @@ class EventOut(BaseModel):
     registrationOpensAt: datetime | None = None
     registrationClosesAt: datetime | None = None
     capacity: int
+    registrationDetailsOutstanding: bool = Field(
+        default=False,
+        description="SPM-81 AC3: registration is needed but the period or capacity is still blank. "
+        "Clears once the coordinator has set them.",
+    )
     submittedAt: datetime | None = None
     organisationId: str | None = None
     organiserId: str | None = Field(
@@ -853,8 +866,12 @@ class OrganiserDraftPatch(BaseModel):
     accessibilityNeeds: str | list[str] | None = None
     accessibilityNote: str | None = None
     equipmentLines: list[EquipmentLineIn] | None = None
+    registrationEnabled: bool | None = None
+    registrationOpensAt: datetime | None = None
+    registrationClosesAt: datetime | None = None
+    capacity: int | None = Field(default=None, ge=0)
 
-    @field_validator("proposedStartAt", "proposedEndAt")
+    @field_validator("proposedStartAt", "proposedEndAt", "registrationOpensAt", "registrationClosesAt")
     @classmethod
     def as_naive_utc(cls, value: datetime | None) -> datetime | None:
         return _naive_utc(value)
@@ -887,10 +904,19 @@ class EventIntake(BaseModel):
     accessibilityNeeds: str | list[str] = ""
     equipmentRequirements: str = ""
     layoutPreference: str | None = None
-    registrationEnabled: bool = False
+    registrationEnabled: bool | None = Field(
+        default=None,
+        description="SPM-81 AC1: whether attendee registration is needed. Required once dates are given.",
+    )
     registrationOpensAt: datetime | None = None
     registrationClosesAt: datetime | None = None
     capacity: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def check_registration_stated(self):
+        if self.proposedStartAt and self.proposedEndAt and self.registrationEnabled is None:
+            raise ValueError("registrationEnabled is required: say whether attendee registration is needed")
+        return self
 
     def to_create(self) -> EventCreate:
         needs = self.accessibilityNeeds
@@ -926,6 +952,10 @@ class EventIntake(BaseModel):
             venueRequirements=self.venueRequirements,
             equipmentRequirements=self.equipmentRequirements,
             layoutPreference=self.layoutPreference,
+            registrationEnabled=self.registrationEnabled,
+            registrationOpensAt=self.registrationOpensAt,
+            registrationClosesAt=self.registrationClosesAt,
+            capacity=self.capacity,
         )
 
 
@@ -951,11 +981,16 @@ class EventDraftUpsert(BaseModel):
     accessibilityNeeds: str | list[str] = ""
     accessibilityNote: str = ""
     equipmentLines: list[EquipmentLineIn] = Field(default_factory=list)
+    registrationEnabled: bool | None = None
+    registrationOpensAt: datetime | None = None
+    registrationClosesAt: datetime | None = None
+    capacity: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def check_windows(self):
         if self.proposedStartAt and self.proposedEndAt and self.proposedEndAt <= self.proposedStartAt:
             raise ValueError("proposedEndAt must be after proposedStartAt")
+        check_registration_window(self.registrationOpensAt, self.registrationClosesAt, self.proposedStartAt)
         return self
 
 

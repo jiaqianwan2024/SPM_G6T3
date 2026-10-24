@@ -8,6 +8,9 @@
         <span class="status-pill">{{ created.status }}</span>.
       </p>
       <p class="result-id">Reference: {{ created.eventId }}</p>
+      <p v-if="created.registrationDetailsOutstanding" class="field-note" data-testid="registration-outstanding-note">
+        Registration details (period or capacity) are still to be set. The coordinator has been flagged to follow up.
+      </p>
       <button class="btn btn-solid" @click="startAnother">Create another</button>
     </div>
 
@@ -24,6 +27,7 @@
           <input
             id="eventName"
             v-model.trim="form.eventName"
+            data-testid="event-name-input"
             type="text"
             placeholder="e.g. Q3 Partner Summit"
           />
@@ -48,7 +52,13 @@
           <div class="row">
             <div class="col">
               <label for="expectedAttendance">Expected attendance <span class="req">*</span></label>
-              <input id="expectedAttendance" v-model.number="form.expectedAttendance" type="number" min="0" />
+              <input
+                id="expectedAttendance"
+                v-model.number="form.expectedAttendance"
+                type="number"
+                min="0"
+                data-testid="expected-attendance"
+              />
               <p v-if="submitted && !isValidAttendance" class="field-error">
                 Enter an attendance of 0 or more.
               </p>
@@ -72,6 +82,63 @@
             rows="5"
             placeholder="Any extra detail a coordinator should know"
           ></textarea>
+
+          <fieldset class="checks registration" data-testid="registration-section">
+            <legend>Attendee registration <span class="req">*</span></legend>
+            <label>
+              <input v-model="form.registrationEnabled" type="radio" name="registrationNeeded" :value="true" data-testid="registration-needed" />
+              Registration is needed
+            </label>
+            <label>
+              <input v-model="form.registrationEnabled" type="radio" name="registrationNeeded" :value="false" data-testid="registration-not-needed" />
+              Not needed
+            </label>
+            <p v-if="submitted && form.registrationEnabled === null" class="field-error wide">
+              Say whether attendee registration is needed.
+            </p>
+
+            <div v-if="form.registrationEnabled" class="registration-details">
+              <p class="hint">
+                Optional. Leave anything blank and the coordinator will be told it is still to be set.
+              </p>
+              <div class="row">
+                <div class="col">
+                  <label for="registrationOpensAt">Opens</label>
+                  <input id="registrationOpensAt" v-model="form.registrationOpensAt" type="datetime-local" data-testid="registration-opens" />
+                </div>
+                <div class="col">
+                  <label for="registrationClosesAt">Closes</label>
+                  <input id="registrationClosesAt" v-model="form.registrationClosesAt" type="datetime-local" data-testid="registration-closes" />
+                </div>
+              </div>
+              <p v-if="closeNotAfterOpen" class="field-error" data-testid="registration-close-error">
+                Registration must close after it opens.
+              </p>
+              <p v-else-if="closeAfterStart" class="field-error" data-testid="registration-close-error">
+                Registration must close no later than the event starts.
+              </p>
+              <label for="registrationCapacity">Registration capacity</label>
+              <input
+                id="registrationCapacity"
+                v-model.number="form.capacity"
+                type="number"
+                min="0"
+                data-testid="registration-capacity"
+              />
+            </div>
+          </fieldset>
+
+          <div v-if="capacityWarning" class="capacity-warning" role="alert" data-testid="capacity-above-attendance-warning">
+            <p>
+              Registration capacity ({{ form.capacity }}) is above the expected attendance
+              ({{ form.expectedAttendance }}). You can go ahead; the coordinator will check it against the
+              real venue capacity.
+            </p>
+            <button class="btn btn-solid" type="button" data-testid="capacity-proceed" @click="proceedDespiteCapacity">
+              Proceed anyway
+            </button>
+            <button class="btn btn-outline" type="button" @click="capacityWarning = false">Change it</button>
+          </div>
         </div>
 
         <div class="form-col">
@@ -129,6 +196,7 @@
           class="btn btn-outline"
           type="button"
           :disabled="!form.eventName || draftSaving"
+          data-testid="event-save-draft"
           @click="saveAsDraft"
         >
           {{ draftSaving ? 'Saving draft…' : 'Save as draft' }}
@@ -167,7 +235,12 @@ function blankForm() {
     preferredLocation: '',
     requiredFacilities: [],
     accessibilityNeeds: [],
-    accessibilityNote: ''
+    accessibilityNote: '',
+    // null until the organiser answers: submitting needs a Yes or a No (SPM-81 AC1).
+    registrationEnabled: null,
+    registrationOpensAt: '',
+    registrationClosesAt: '',
+    capacity: null
   }
 }
 
@@ -197,7 +270,11 @@ const fieldLabels = {
   preferredLocation: 'Preferred location',
   requiredFacilities: 'Facilities',
   accessibilityNeeds: 'Accessibility',
-  accessibilityNote: 'Accessibility note'
+  accessibilityNote: 'Accessibility note',
+  registrationEnabled: 'Registration needed',
+  registrationOpensAt: 'Registration opens',
+  registrationClosesAt: 'Registration closes',
+  capacity: 'Registration capacity'
 }
 
 function errorText(detail, fallback) {
@@ -232,13 +309,43 @@ const endBeforeStart = computed(
     new Date(form.proposedEndAt) <= new Date(form.proposedStartAt)
 )
 
+// SPM-81 AC4/AC5: mirrors the server's registration-period rules.
+const closeNotAfterOpen = computed(
+  () =>
+    !!form.registrationEnabled &&
+    !!form.registrationOpensAt &&
+    !!form.registrationClosesAt &&
+    new Date(form.registrationClosesAt) <= new Date(form.registrationOpensAt)
+)
+const closeAfterStart = computed(
+  () =>
+    !!form.registrationEnabled &&
+    !!form.registrationClosesAt &&
+    !!form.proposedStartAt &&
+    new Date(form.registrationClosesAt) > new Date(form.proposedStartAt)
+)
+// SPM-81 AC6: a warning, never a block.
+const capacityAboveAttendance = computed(
+  () =>
+    !!form.registrationEnabled &&
+    typeof form.capacity === 'number' &&
+    typeof form.expectedAttendance === 'number' &&
+    form.capacity > form.expectedAttendance
+)
+const capacityWarning = ref(false)
+const capacityAcknowledged = ref(false)
+let afterCapacityWarning = null
+
 const isValid = computed(
   () =>
     !!form.eventName &&
     !!form.proposedStartAt &&
     !!form.proposedEndAt &&
     !endBeforeStart.value &&
-    isValidAttendance.value
+    isValidAttendance.value &&
+    form.registrationEnabled !== null &&
+    !closeNotAfterOpen.value &&
+    !closeAfterStart.value
 )
 
 const isDirty = computed(() => JSON.stringify(form) !== lastSaved.value)
@@ -263,6 +370,11 @@ function populateFormFromEvent(data) {
   form.requiredFacilities = [...(data.requiredFacilities || [])]
   form.accessibilityNeeds = [...(data.accessibilitySelections || [])]
   form.accessibilityNote = data.accessibilityNote || ''
+  // A draft that never answered comes back as not needed; show it as unanswered so submitting asks.
+  form.registrationEnabled = data.registrationEnabled ? true : null
+  form.registrationOpensAt = toInputDatetime(data.registrationOpensAt)
+  form.registrationClosesAt = toInputDatetime(data.registrationClosesAt)
+  form.capacity = data.registrationEnabled ? data.capacity ?? null : null
 }
 
 function buildPayload() {
@@ -280,9 +392,39 @@ function buildPayload() {
     preferredLocation: form.preferredLocation,
     requiredFacilities: form.requiredFacilities,
     accessibilityNeeds: form.accessibilityNeeds,
-    accessibilityNote: form.accessibilityNote
+    accessibilityNote: form.accessibilityNote,
+    registrationEnabled: form.registrationEnabled,
+    registrationOpensAt: form.registrationEnabled ? toPayloadDatetime(form.registrationOpensAt) : null,
+    registrationClosesAt: form.registrationEnabled ? toPayloadDatetime(form.registrationClosesAt) : null,
+    capacity: form.registrationEnabled ? form.capacity ?? 0 : 0
   }
 }
+
+// Holds the save or submit while the capacity warning is shown; "Proceed anyway" resumes it.
+function warnOnceAboutCapacity(action) {
+  if (capacityAboveAttendance.value && !capacityAcknowledged.value) {
+    capacityWarning.value = true
+    afterCapacityWarning = action
+    return true
+  }
+  return false
+}
+
+function proceedDespiteCapacity() {
+  capacityAcknowledged.value = true
+  capacityWarning.value = false
+  const action = afterCapacityWarning
+  afterCapacityWarning = null
+  if (action) action()
+}
+
+watch(
+  () => [form.capacity, form.expectedAttendance, form.registrationEnabled],
+  () => {
+    capacityAcknowledged.value = false
+    capacityWarning.value = false
+  }
+)
 
 function handleBeforeUnload(event) {
   if (isDirty.value) {
@@ -296,6 +438,8 @@ function startAnother() {
   submitted.value = false
   error.value = ''
   created.value = null
+  capacityWarning.value = false
+  capacityAcknowledged.value = false
   editingEventId.value = null
   draftSavedMessage.value = ''
   draftError.value = ''
@@ -306,6 +450,8 @@ async function saveAsDraft() {
   draftError.value = ''
   draftSavedMessage.value = ''
   if (!form.eventName) return // Save as draft is disabled without a name (AC1); nothing else is required.
+  if (closeNotAfterOpen.value || closeAfterStart.value) return // The message is already showing.
+  if (warnOnceAboutCapacity(saveAsDraft)) return
 
   draftSaving.value = true
   try {
@@ -328,6 +474,7 @@ async function submit() {
   // Mirrors the server's own rules so obvious mistakes don't cost a round trip;
   // the API re-validates everything regardless.
   if (!isValid.value) return
+  if (warnOnceAboutCapacity(submit)) return
 
   saving.value = true
   try {
@@ -420,6 +567,20 @@ onUnmounted(() => {
   color: var(--body);
 }
 .checks input { width: auto; height: auto; margin: 0; }
+.registration .wide { flex-basis: 100%; }
+.registration-details { flex-basis: 100%; }
+.registration-details .hint, .field-note { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
+.capacity-warning {
+  font-size: 13px;
+  color: var(--body);
+  background: rgba(255, 196, 87, .08);
+  border: 1px solid rgba(255, 196, 87, .3);
+  border-radius: 9px;
+  padding: 11px 14px;
+  margin: 0 0 16px;
+}
+.capacity-warning p { margin: 0 0 10px; }
+.capacity-warning .btn { margin-right: 10px; }
 .draft-banner {
   font-size: 12px;
   color: var(--halo);
