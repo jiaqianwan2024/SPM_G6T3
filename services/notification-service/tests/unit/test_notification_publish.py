@@ -59,6 +59,17 @@ class TestPublish(ServiceTestCase):
                 self.assertIn("AI in Events Summit", body)
                 self.assertEqual(link, "/app/events/e9")
 
+    def test_a_submitted_request_goes_to_the_coordinator_lead_and_no_one_else(self):
+        lead = {"userId": "u-lead", "role": "coordinatorlead"}
+
+        self.publish(trigger="booking.submitted", recipients=[lead], actor_id="u-organiser")
+
+        row = self.rows()[0]
+        self.assertEqual((row.userId, row.type, row.title), ("u-lead", "booking.submitted", "New booking request submitted"))
+        self.assertIn("waiting to be assigned to a coordinator", row.body)
+        with self.assertRaisesRegex(PublishError, "coordinator cannot receive booking.submitted"):
+            self.publish(trigger="booking.submitted", recipients=[COORD], occurrence="occ-2")
+
     def test_the_person_who_did_the_action_is_not_notified(self):
         result = self.publish(recipients=[COORD, {"userId": "u-lead", "role": "coordinator"}], actor_id="u-lead")
 

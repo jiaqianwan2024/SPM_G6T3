@@ -44,6 +44,13 @@ TRIGGERS: dict[str, Trigger] = {
             body="{eventName} has been assigned to you. Open it to review the booking request.",
             recipient_roles=frozenset({"coordinator"}),
         ),
+        # An organiser submitted a request. The Lead is told so it can be assigned to a coordinator.
+        Trigger(
+            key="booking.submitted",
+            title="New booking request submitted",
+            body="{eventName} was submitted and is waiting to be assigned to a coordinator.",
+            recipient_roles=frozenset({"coordinatorlead"}),
+        ),
         Trigger(
             key="safety.submitted",
             title="Event details submitted",

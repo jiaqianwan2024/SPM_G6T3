@@ -48,6 +48,7 @@ from app.orchestration.clients import (
     registered_attendees,
     registration_count,
     send_notification,
+    users_with_roles,
     venue_details,
 )
 from app.schemas.event import (
@@ -731,7 +732,23 @@ class EventService(BaseService):
         self.event_dao.add(row)
         self.db.commit()
         self.db.refresh(row)
+        self._notify_lead_of_submission(row)
         return _to_out(row, authorization)
+
+    @staticmethod
+    def _notify_lead_of_submission(event: Event) -> None:
+        """Best effort: the request is already saved. Every Event Coordinator Lead is told a
+        request is waiting to be assigned (SPM-93 "booking.submitted")."""
+        recipients = people(event, [COORDINATOR_LEAD], users_with_roles([COORDINATOR_LEAD]) or {})
+        publish_notification(
+            "booking.submitted",
+            event.eventId,
+            f"{event.eventId}:booking.submitted:{event.submittedAt:%Y%m%d%H%M%S}",
+            recipients,
+            {"eventName": event.eventName},
+            actor_id=event.organiserId,
+            resource={"type": "event", "id": event.eventId},
+        )
 
     def create_draft(
         self,
@@ -911,6 +928,7 @@ class EventService(BaseService):
         event.updatedAt = now
         self.db.commit()
         self.db.refresh(event)
+        self._notify_lead_of_submission(event)
         return _to_out(event, authorization)
 
     def list_my_drafts(self, organiser_id: str, authorization: str | None = None) -> list[EventOut]:

@@ -73,11 +73,17 @@ class EventCase(ServiceTestCase):
         self.counts.start()
         self.publishing = patch("app.services.event_service.publish_notification", return_value=True)
         self.published = self.publishing.start()
+        self.leads = patch(
+            "app.services.event_service.users_with_roles",
+            return_value={"lead-1": {"userId": "lead-1", "role": "coordinatorlead"}},
+        )
+        self.leads.start()
         self.service = EventService(
             self.db, EventDAO(self.db), EventAssignmentDAO(self.db), EventStatusHistoryDAO(self.db)
         )
 
     def tearDown(self):
+        self.leads.stop()
         self.publishing.stop()
         self.counts.stop()
         super().tearDown()
