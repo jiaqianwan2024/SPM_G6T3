@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login } from './support/auth.js'
+import { login, logout } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { venueRequest } from './support/venue.js'
 import { THEATRE_EVENT, approvedEvent, requestVenue } from './support/venue-request.js'
@@ -150,7 +150,7 @@ test.describe('SPM-10 Reject a Venue Booking Request', () => {
 
     // The coordinator sees why, and where to try instead, on their Choose venues page.
     const coordinator = page
-    await coordinator.getByRole('button', { name: 'Log out' }).click()
+    await logout(coordinator)
     await login(coordinator, account('EC-01'))
     await coordinator.goto(`/app/events/${suggestedFor.event.eventId}/venues`)
     await expect(coordinator.getByTestId(`venue-rejection-${suggestedFor.booking.bookingId}`)).toContainText(
