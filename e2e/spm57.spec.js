@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login } from './support/auth.js'
+import { login, logout } from './support/auth.js'
 import { account } from './support/test-data.js'
 
 test.describe('SPM-57 Venue Staff dashboard', () => {
@@ -51,7 +51,7 @@ test.describe('SPM-57 Venue Staff dashboard', () => {
   test('TC-SPM57-AC05 lists obey the same access rules as the work screens', async ({ page }) => {
     await login(page, account('VS-01'))
     await expect(page.getByTestId('venue-pending-vb-pending')).toBeVisible()
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await logout(page)
     await login(page, account('EO-01'))
     await expect(page.getByTestId('venue-pending-vb-pending')).toHaveCount(0)
     await expect(page.getByTestId('venue-section-pending')).toHaveCount(0)

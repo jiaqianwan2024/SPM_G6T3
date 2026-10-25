@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login } from './support/auth.js'
+import { login, logout } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { eventApi } from './support/event.js'
 import { notificationRequest, venueRequest } from './support/venue.js'
@@ -54,11 +54,11 @@ test.describe('SPM-86 Re-verify arrangements affected by a significant change', 
     await page.goto('/app/events/e2/readiness')
     await expect(page.getByTestId('readiness-reverify')).toBeVisible()
     await page.goto('/app')
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await logout(page)
     await login(page, account('VS-01'))
     await page.goto('/app/venues/v1/calendar')
     await expect(page.getByTestId('calendar-reverify')).toBeVisible()
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await logout(page)
     await login(page, account('TS-01'))
     await page.goto('/app')
     await expect(page.getByTestId('tech-reverification-er-e2')).toBeVisible()
