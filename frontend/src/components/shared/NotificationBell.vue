@@ -24,53 +24,33 @@
 
     <div v-if="open" class="backdrop" @click="close"></div>
 
-    <div v-if="open" class="panel" data-testid="notification-panel" role="dialog" aria-label="Notifications">
-      <div class="panel-head">
-        <h3>Notifications</h3>
-        <button type="button" class="mark-all-btn" data-testid="notification-see-all" @click="seeAll">See all</button>
-        <button
-          class="mark-all-btn"
-          type="button"
-          :disabled="!unreadCount || markingAll"
-          data-testid="notification-mark-all-read"
-          @click="markAll"
-        >
-          {{ markingAll ? 'Marking…' : 'Mark all read' }}
-        </button>
-      </div>
-
-      <p v-if="loading" class="empty-note">Loading…</p>
-      <p v-else-if="error" class="form-error">{{ error }}</p>
-      <p v-else-if="!items.length" class="empty-note" data-testid="notification-empty">
-        You're all caught up.
-      </p>
-
-      <ul v-else class="list">
-        <li
-          v-for="item in items"
-          :key="item.notificationId"
-          class="item"
-          :class="{ unread: !item.isRead }"
-          :data-testid="`notification-${item.notificationId}`"
-          @click="openItem(item)"
-        >
-          <span class="dot" v-if="!item.isRead"></span>
-          <div class="item-body">
-            <div class="item-title">{{ item.title }}</div>
-            <div class="item-text">{{ item.body }}</div>
-            <div class="item-time">{{ formatSgt(item.createdAt) }}</div>
-          </div>
-        </li>
-      </ul>
-    </div>
+    <NotificationMenu
+      v-if="open"
+      class="panel"
+      :items="items"
+      :loading="loading"
+      :error="error"
+      :marking-all="markingAll"
+      :clearing="clearing"
+      @open="openItem"
+      @see-all="seeAll"
+      @mark-all="markAll"
+      @clear-all="clearAll"
+      @dismiss="dismiss"
+    />
   </div>
 </template>
 
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getNotifications, markAllNotificationsRead } from '../../api/notificationService.js'
-import { formatSgt } from '../../utils/datetime.js'
+import {
+  clearAllNotifications,
+  clearNotification,
+  getNotifications,
+  markAllNotificationsRead,
+} from '../../api/notificationService.js'
+import NotificationMenu from './NotificationMenu.vue'
 import { refreshUnreadCount, unreadCount } from '../../features/notifications/unreadCount.js'
 
 // `inline` places the bell in the flow (the app shell's top bar) instead of pinning it to the viewport corner.
@@ -83,6 +63,7 @@ const items = ref([])
 const loading = ref(false)
 const error = ref('')
 const markingAll = ref(false)
+const clearing = ref(false)
 
 let pollTimer = null
 
@@ -90,7 +71,7 @@ async function loadList() {
   loading.value = true
   error.value = ''
   try {
-    const { data } = await getNotifications({ pageSize: 20 })
+    const { data } = await getNotifications({ pageSize: 20, bell: true })
     items.value = data
   } catch (err) {
     error.value = err.response?.data?.detail || 'Could not load notifications. Please try again.'
@@ -130,6 +111,33 @@ async function markAll() {
     // Best effort - leaves the list as it was; the user can try again.
   } finally {
     markingAll.value = false
+  }
+}
+
+// Removes one row straight away (optimistic); if the server call fails the row comes back.
+async function dismiss(item) {
+  const index = items.value.findIndex((n) => n.notificationId === item.notificationId)
+  if (index === -1) return
+  items.value = items.value.filter((n) => n.notificationId !== item.notificationId)
+  if (!item.isRead && unreadCount.value > 0) unreadCount.value -= 1
+  try {
+    await clearNotification(item.notificationId)
+  } catch {
+    items.value.splice(Math.min(index, items.value.length), 0, item)
+    if (!item.isRead) unreadCount.value += 1
+  }
+}
+
+async function clearAll() {
+  clearing.value = true
+  try {
+    await clearAllNotifications()
+    items.value = []
+    unreadCount.value = 0
+  } catch {
+    // Best effort - leaves the list as it was; the user can try again.
+  } finally {
+    clearing.value = false
   }
 }
 
@@ -173,7 +181,7 @@ onUnmounted(() => clearInterval(pollTimer))
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-radius: 50%;
-  color: var(--text);
+  color: var(--icon);
   cursor: pointer;
   transition: border-color .3s var(--ease-out), background .3s var(--ease-out);
 }
@@ -198,83 +206,11 @@ onUnmounted(() => clearInterval(pollTimer))
 
 .backdrop { position: fixed; inset: 0; z-index: 49; }
 
-.panel {
-  position: absolute;
-  top: 50px;
-  right: 0;
-  width: 340px;
-  max-width: calc(100vw - 48px);
-  max-height: 440px;
-  display: flex;
-  flex-direction: column;
-  background: linear-gradient(160deg, #1A0C3B, #0D0524);
-  border: 1px solid rgba(167, 139, 250, .28);
-  box-shadow: 0 30px 90px rgba(4, 1, 12, .7), 0 0 60px rgba(124, 77, 255, .18);
-  border-radius: var(--radius);
-  padding: 16px;
-  z-index: 50;
-}
-
-.panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.panel-head h3 { margin: 0; font-size: 15px; font-weight: 500; color: var(--text); }
-.mark-all-btn {
-  background: none;
-  border: none;
-  color: var(--halo);
-  font-size: 12px;
-  cursor: pointer;
-  padding: 2px 4px;
-}
-.mark-all-btn:disabled { color: var(--muted); cursor: default; }
-
-.empty-note { font-size: 13px; color: var(--muted); margin: 10px 0; }
-.form-error {
-  color: #FF8A76;
-  font-size: 13px;
-  background: rgba(255, 138, 118, .08);
-  border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: var(--radius);
-  padding: 11px 14px;
-}
-
-.list { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
-.item {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  padding: 10px 6px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: background .2s var(--ease-out);
-}
-.item:hover { background: rgba(167, 139, 250, .1); }
-.item.unread .item-title { color: var(--text); font-weight: 600; }
-
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--iris-soft, #A78BFA);
-  margin-top: 6px;
-  flex-shrink: 0;
-}
-.item:not(.unread) .item-body { padding-left: 15px; }
-
-.item-body { min-width: 0; }
-.item-title { font-size: 13px; color: var(--body); margin-bottom: 2px; }
-.item-text {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.5;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-.item-time { font-size: 11px; color: var(--muted); margin-top: 4px; }
+/* The panel's look lives in NotificationMenu; the bell only places it. */
+.panel { position: absolute; top: 50px; right: 0; z-index: 50; }
 
 @media (max-width: 480px) {
   .bell-wrap:not(.inline) { top: 12px; right: 14px; }
-  .panel { right: -8px; }
+  .bell-wrap:not(.inline) .panel { right: -8px; }
 }
 </style>

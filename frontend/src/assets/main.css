@@ -41,6 +41,20 @@
   --radius-sm: 8px;
   --radius-pill: 999px;
 
+  /* Profile menu / card panel */
+  --profile-bg: #2F2340;
+
+  /* PAGE EDGES: where every signed-in page starts and ends, measured from the window edge.
+     The left edge lines up with the navbar logo; the right edge with the profile card that opens
+     from the navbar. Set here and used only by AppShell and AppNavbar: do not use or override these
+     anywhere else (see frontend/CLAUDE.md). */
+  --edge-left: 40px;
+  --edge-right: 28px;
+  --scrollbar-w: 10px;
+
+  /* Icons are always white, whatever they sit on */
+  --icon: #FFFFFF;
+
   /* Type: one family across the whole app (loaded in index.html) */
   --font: 'Inter', sans-serif;
 
@@ -108,10 +122,18 @@ select optgroup {
   color: #F3EEFF;
 }
 
-::-webkit-scrollbar { width: 10px; }
-::-webkit-scrollbar-track { background: var(--void); }
-::-webkit-scrollbar-thumb { background: rgba(167, 139, 250, .2); border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(167, 139, 250, .35); }
+/* Transparent track and a soft white thumb, so the bar sits quietly on the dark page and on purple
+   panels alike. The transparent border slims the thumb without changing the 10px the layout reserves. */
+::-webkit-scrollbar { width: var(--scrollbar-w); height: var(--scrollbar-w); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, .22);
+  background-clip: content-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, .38); background-clip: content-box; }
+::-webkit-scrollbar-corner { background: transparent; }
 
 /* ---------- Type utilities ---------- */
 

@@ -1,13 +1,11 @@
 <template>
   <div class="page">
-    <PageHeader title="UI components" subtitle="Dev-only catalogue. Every shared primitive in its main states.">
-      <template #actions><UiButton variant="outline" size="sm">Action</UiButton></template>
-    </PageHeader>
+    <PageHeader title="UI components" subtitle="Dev-only catalogue. Every shared primitive in its main states." />
 
     <SectionBlock title="Navbar">
       <p class="note">
         The app's top bar (<code>AppNavbar</code>): logo left, the role's tabs in the middle, notifications and
-        profile right. Click the tabs to see the active underline. Icons are static here.
+        profile right. Click the tabs to see the active underline. The bell is static here; the profile icon opens the menu.
       </p>
       <div class="navbar-demo">
         <AppNavbar :tabs="navTabs" :active-tab="navTab" demo @select="navTab = $event" />
@@ -61,6 +59,61 @@
         <div class="shape hover-demo" style="border-radius: var(--radius)">Hover highlight</div>
         <span class="shape chip" style="border-radius: var(--radius-pill)">Chip</span>
         <span class="shape chip" style="border-radius: var(--radius-sm)">Small square button</span>
+      </div>
+    </SectionBlock>
+
+    <SectionBlock title="Profile card">
+      <p class="note">
+        <code>ProfileMenu</code>: the panel behind the navbar's profile icon, made of <code>ProfileCard</code> and
+        a Log Out row. Each detail is a white icon followed by its value: role, email, organisation, in that order.
+        Long values wrap, with the icon staying beside the first line. The panel is 280px wide with
+        <code>--profile-bg</code> as its background. In the app the card loads the signed-in user; pass
+        <code>sample</code> to show fixed data, as here. Left: typical values. Right: very long values.
+      </p>
+      <div class="row top">
+        <ProfileMenu :sample="profileSample" />
+        <ProfileMenu :sample="profileLong" />
+      </div>
+    </SectionBlock>
+
+    <SectionBlock title="Notification card">
+      <p class="note">
+        <code>NotificationMenu</code>: the panel behind the bell, built like the profile card (400px wide,
+        <code>--profile-bg</code>). A slim action row on top has See all, Mark all read (disabled when nothing is
+        unread) and Clear all (disabled when the panel is empty). Each row is a white bold title, the description, and the
+        time on a 12-hour clock (Singapore time, no zone label); unread rows have a small dot at the left. Hovering a row
+        swaps its time for a bin button that deletes it from the bell (always shown on touch screens). Long lists scroll
+        inside the panel with the action row pinned. The component only displays what it is given.
+      </p>
+      <div class="cards">
+        <figure>
+          <NotificationMenu :items="notifications" />
+          <figcaption>With unread and read notifications</figcaption>
+        </figure>
+        <figure>
+          <NotificationMenu :items="notifications.map((n) => ({ ...n, isRead: true }))" />
+          <figcaption>All read (Mark all read disabled)</figcaption>
+        </figure>
+        <figure>
+          <NotificationMenu :items="longTextNotifications" />
+          <figcaption>Long title and description wrap and clamp</figcaption>
+        </figure>
+        <figure>
+          <NotificationMenu :items="manyNotifications" />
+          <figcaption>Many notifications scroll, action row pinned</figcaption>
+        </figure>
+        <figure>
+          <NotificationMenu :items="[]" />
+          <figcaption>Empty (Clear all disabled)</figcaption>
+        </figure>
+        <figure>
+          <NotificationMenu loading />
+          <figcaption>Loading</figcaption>
+        </figure>
+        <figure>
+          <NotificationMenu error="Could not load notifications. Please try again." />
+          <figcaption>Error</figcaption>
+        </figure>
       </div>
     </SectionBlock>
 
@@ -151,6 +204,8 @@
 <script setup>
 import { ref } from 'vue'
 import AppNavbar from '../components/layout/AppNavbar.vue'
+import NotificationMenu from '../components/shared/NotificationMenu.vue'
+import ProfileMenu from '../components/shared/ProfileMenu.vue'
 import PageHeader from '../components/layout/PageHeader.vue'
 import SectionBlock from '../components/layout/SectionBlock.vue'
 import StatGrid from '../components/layout/StatGrid.vue'
@@ -188,6 +243,43 @@ const sizes = [
   { token: '--fs-lg', px: '18px', use: 'Section headings' },
   { token: '--fs-xl', px: '24px', use: 'Page headings and big numbers' },
 ]
+const profileSample = {
+  userName: 'Alice Tan',
+  email: 'organiser@connectsphere.com',
+  role: 'organiser',
+  organisationId: 'demo',
+  organisationName: 'Apex Partners',
+}
+const profileLong = {
+  userName: 'Alexandria Bartholomew-Fitzgerald',
+  email: 'alexandria.bartholomew-fitzgerald@events.connectsphere.example.com',
+  role: 'coordinatorlead',
+  organisationId: 'demo',
+  organisationName: 'The International Association of Independent Event Producers',
+}
+const notifications = [
+  { notificationId: 'n1', isRead: false, title: 'Clarification requested', body: 'Your coordinator asked you to confirm the expected attendance for Partner Networking Night.', createdAt: '2026-10-26T01:40:00Z' },
+  { notificationId: 'n2', isRead: false, title: 'Request approved', body: 'AI in Events Summit has been approved.', createdAt: '2026-10-25T09:15:00Z' },
+  { notificationId: 'n3', isRead: true, title: 'Venue confirmed', body: 'Marina Hall A is booked for 12 Nov, 18:00 – 21:00.', createdAt: '2026-10-23T04:05:00Z' },
+]
+// A long list: the panel stops at its max height and the list scrolls, with the action row staying on top.
+const longTextNotifications = [
+  {
+    notificationId: 'long-1',
+    isRead: false,
+    title: 'Change request declined for the Beacon Q4 Showcase layout and seating plan',
+    body: 'The venue cannot fit the banquet layout you asked for at the current expected attendance, so the coordinator declined the change and kept the theatre layout. Please review the capacity options and raise a new request if you still need to change it.',
+    createdAt: '2026-10-26T01:40:00Z',
+  },
+  { notificationId: 'long-2', isRead: true, title: 'Venue confirmed', body: 'Marina Hall A is booked.', createdAt: '2026-10-25T09:15:00Z' },
+]
+const manyNotifications = Array.from({ length: 12 }, (_, i) => ({
+  notificationId: `many-${i}`,
+  isRead: i > 3,
+  title: ['Clarification requested', 'Request approved', 'Venue confirmed', 'Equipment reserved'][i % 4],
+  body: `Update ${i + 1} for the Partner Networking Night event.`,
+  createdAt: `2026-10-${String(25 - (i % 20)).padStart(2, '0')}T09:15:00Z`,
+}))
 const navTabs = ['Dashboard', 'My Events', 'New Request', 'Drafts']
 const manyTabs = ['Dashboard', 'Upcoming Events', 'Venue Catalogue', 'Venue Calendar', 'Equipment Catalogue', 'Reservations', 'My Assignments', 'Maintenance Status']
 const navTab = ref('Dashboard')
@@ -202,7 +294,9 @@ const desc = ref('')
 </script>
 
 <style scoped>
-.page { max-width: 960px; margin: 0 auto; padding: var(--space-6) var(--space-5); }
+/* Full width with the app's own page edges (see frontend/CLAUDE.md), so components render at the sizes they
+   have in the app. This page scrolls with the window, so it gives back the scrollbar space itself. */
+.page { padding: 38px calc(var(--edge-right) - var(--scrollbar-w)) 38px var(--edge-left); }
 .row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
 .form { display: grid; gap: var(--space-4); }
 .stack { display: grid; gap: var(--space-3); }
@@ -216,6 +310,11 @@ const desc = ref('')
 .type-row code { justify-self: start; }
 .sample { color: var(--text); }
 .demo-h { margin: 0 0 var(--space-1); }
+.top { align-items: flex-start; }
+.cards { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-5); }
+.cards figure { margin: 0; display: grid; gap: var(--space-2); }
+.cards figcaption { font-size: var(--fs-xs); color: var(--muted); }
+.sub { margin: var(--space-5) 0 var(--space-2); font-size: var(--fs-md); font-weight: 500; }
 .navbar-demo { margin-bottom: var(--space-3); border: 1px solid var(--hairline); border-radius: var(--radius); background: var(--void); overflow: hidden; }
 code { padding: 1px 6px; border-radius: 6px; background: var(--glass-strong); font-size: var(--fs-xs); }
 </style>

@@ -9,6 +9,8 @@ from app.db.session import get_db
 from app.services.notifier import (
     count_unread,
     list_for_user,
+    clear_all_from_bell,
+    clear_one_from_bell,
     mark_all_read,
     mark_read,
     record_notification,
@@ -117,6 +119,10 @@ class MarkAllReadOut(BaseModel):
     updated: int
 
 
+class ClearAllOut(BaseModel):
+    cleared: int
+
+
 class UnreadCountOut(BaseModel):
     unreadCount: int
 
@@ -161,11 +167,12 @@ def list_notifications(
     unreadOnly: bool = Query(False, description="Only notifications not yet marked read."),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
+    bell: bool = Query(False, description="For the bell panel: leave out notifications the user cleared."),
     authorization: str | None = Depends(forwarded_bearer),
     db: Session = Depends(get_db),
 ):
     caller = resolve_caller(authorization, settings.user_service_url)
-    return list_for_user(db, caller["userId"], unread_only=unreadOnly, page=page, page_size=pageSize)
+    return list_for_user(db, caller["userId"], unread_only=unreadOnly, page=page, page_size=pageSize, bell=bell)
 
 
 @router.get(
@@ -217,6 +224,45 @@ def read_all(
     updated = mark_all_read(db, caller["userId"])
     db.commit()
     return MarkAllReadOut(updated=updated)
+
+
+@router.post(
+    "/{notification_id}/clear",
+    response_model=NotificationOut,
+    summary="Clear one notification from the bell",
+    description="Hides one of the caller's notifications from the bell and marks it read. Nothing is deleted. "
+    "404 for someone else's or an unknown id.",
+    responses=error_responses(404),
+)
+def clear_one(
+    notification_id: str,
+    authorization: str | None = Depends(forwarded_bearer),
+    db: Session = Depends(get_db),
+):
+    caller = resolve_caller(authorization, settings.user_service_url)
+    row = clear_one_from_bell(db, caller["userId"], notification_id)
+    if row is None:
+        raise not_found("Notification not found")
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.post(
+    "/clear-all",
+    response_model=ClearAllOut,
+    summary="Clear the caller's bell",
+    description="Hides every notification from the bell panel and marks them read. Nothing is deleted: "
+    "`GET /notifications` without `bell=true` still lists them.",
+)
+def clear_all(
+    authorization: str | None = Depends(forwarded_bearer),
+    db: Session = Depends(get_db),
+):
+    caller = resolve_caller(authorization, settings.user_service_url)
+    cleared = clear_all_from_bell(db, caller["userId"])
+    db.commit()
+    return ClearAllOut(cleared=cleared)
 
 
 @router.post(

@@ -585,6 +585,7 @@ input, select {
   justify-content: center;
   border-radius: 8px;
 }
+.row-actions .icon-btn { color: var(--icon); }
 .row-actions .icon-btn svg { width: 16px; height: 16px; }
 .row-actions .icon-btn.danger:hover { color: #ff8a76; }
 .edit-form {

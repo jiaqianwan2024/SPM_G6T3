@@ -23,9 +23,11 @@ import { session } from './store/session.js'
 // The public pages have their own header and the full backdrop; the bell is for the signed-in app.
 const route = useRoute()
 const isPublicPage = computed(() => route.name === 'landing' || route.name === 'login')
+// The /dev/ui catalogue shows the bell itself, in its navbar demo.
+const isDevPage = computed(() => route.name === 'dev-ui')
 // The dashboard shell carries its own bell in the top bar; other signed-in pages float it in the corner.
 const showFloatingBell = computed(
-  () => session.isAuthenticated && !isPublicPage.value && route.name !== 'dashboard',
+  () => session.isAuthenticated && !isPublicPage.value && !isDevPage.value && route.name !== 'dashboard',
 )
 </script>
 

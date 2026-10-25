@@ -19,48 +19,34 @@
     </nav>
 
     <div class="top-actions">
-      <!-- demo: static icons for the /dev/ui catalogue, so it makes no API calls. -->
-      <template v-if="demo">
-        <button type="button" class="icon-btn" aria-label="Notifications">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 3.5c-2.9 0-5.1 2.2-5.1 5.2v3.1c0 .6-.2 1.2-.6 1.7l-1.1 1.4c-.6.8 0 2 1 2h11.6c1 0 1.6-1.2 1-2l-1.1-1.4c-.4-.5-.6-1.1-.6-1.7V8.7c0-3-2.2-5.2-5.1-5.2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" />
-            <path d="M10.2 19.5a1.9 1.9 0 0 0 3.6 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
-          </svg>
-        </button>
-        <button type="button" class="icon-btn" aria-label="Account menu">
+      <!-- demo: a static bell (no API polling); the profile menu is the real one, fed sample data. -->
+      <button v-if="demo" type="button" class="icon-btn" aria-label="Notifications">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3.5c-2.9 0-5.1 2.2-5.1 5.2v3.1c0 .6-.2 1.2-.6 1.7l-1.1 1.4c-.6.8 0 2 1 2h11.6c1 0 1.6-1.2 1-2l-1.1-1.4c-.4-.5-.6-1.1-.6-1.7V8.7c0-3-2.2-5.2-5.1-5.2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" />
+          <path d="M10.2 19.5a1.9 1.9 0 0 0 3.6 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+        </svg>
+      </button>
+      <NotificationBell v-else inline />
+
+      <div class="profile" @keydown.esc="menuOpen = false">
+        <button
+          type="button"
+          class="icon-btn avatar"
+          data-testid="profile-menu-button"
+          aria-haspopup="menu"
+          :aria-expanded="menuOpen"
+          aria-label="Account menu"
+          @click="menuOpen = !menuOpen"
+        >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="12" cy="8.5" r="3.6" fill="none" stroke="currentColor" stroke-width="1.5" />
             <path d="M4.6 19.5c.9-3.4 3.9-5.2 7.4-5.2s6.5 1.8 7.4 5.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
           </svg>
         </button>
-      </template>
 
-      <template v-else>
-        <NotificationBell inline />
-
-        <div class="profile" @keydown.esc="menuOpen = false">
-          <button
-            type="button"
-            class="icon-btn avatar"
-            data-testid="profile-menu-button"
-            aria-haspopup="menu"
-            :aria-expanded="menuOpen"
-            aria-label="Account menu"
-            @click="menuOpen = !menuOpen"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="8.5" r="3.6" fill="none" stroke="currentColor" stroke-width="1.5" />
-              <path d="M4.6 19.5c.9-3.4 3.9-5.2 7.4-5.2s6.5 1.8 7.4 5.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-            </svg>
-          </button>
-
-          <div v-if="menuOpen" class="backdrop" @click="menuOpen = false"></div>
-          <div v-if="menuOpen" class="menu" role="dialog" aria-label="Your profile">
-            <ProfileCard />
-            <button type="button" class="menu-item danger" @click="logout">Log out</button>
-          </div>
-        </div>
-      </template>
+        <div v-if="menuOpen" class="backdrop" @click="menuOpen = false"></div>
+        <ProfileMenu v-if="menuOpen" class="menu" :sample="demo ? DEMO_PROFILE : null" @logout="logout" />
+      </div>
     </div>
   </header>
 </template>
@@ -69,10 +55,10 @@
 import { ref } from 'vue'
 import AppLogo from '../shared/AppLogo.vue'
 import NotificationBell from '../shared/NotificationBell.vue'
-import ProfileCard from '../shared/ProfileCard.vue'
+import ProfileMenu from '../shared/ProfileMenu.vue'
 
 // The app's top navbar: logo left, role tabs in the middle, bell and profile right.
-// `demo` swaps the live bell and profile menu for static icons (the /dev/ui catalogue).
+// `demo` swaps the live bell for a static one and feeds the profile card sample data (the /dev/ui catalogue).
 defineProps({
   tabs: { type: Array, default: () => [] },
   activeTab: { type: String, default: '' },
@@ -81,6 +67,14 @@ defineProps({
 const emit = defineEmits(['select', 'logout'])
 
 const menuOpen = ref(false)
+
+const DEMO_PROFILE = {
+  userName: 'Alice Tan',
+  email: 'organiser@connectsphere.com',
+  role: 'organiser',
+  organisationId: 'demo',
+  organisationName: 'Apex Partners',
+}
 
 function logout() {
   menuOpen.value = false
@@ -97,9 +91,9 @@ function logout() {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-5);
-  /* Edges line up with the content below: the logo starts 40px in, and the profile glyph ends
-     40px from the right (28 + the ~12px of space inside its 40px button). */
-  padding: 0 28px 0 40px;
+  /* PAGE EDGES (--edge-left / --edge-right in main.css): the logo starts at the left edge and the
+     profile button ends at the right edge, the same lines the page content uses. Do not change. */
+  padding: 0 var(--edge-right) 0 var(--edge-left);
   /* No fill of its own: the bar shares the page background with the content below. */
   position: relative;
   z-index: 10;
@@ -174,7 +168,7 @@ function logout() {
   background: none;
   border: none;
   border-radius: var(--radius);
-  color: var(--text);
+  color: var(--icon);
   cursor: pointer;
   transition: background .3s var(--ease-out);
 }
@@ -185,37 +179,7 @@ function logout() {
 /* ---------- Profile menu ---------- */
 .profile { position: relative; }
 .backdrop { position: fixed; inset: 0; z-index: 59; }
-.menu {
-  position: absolute;
-  top: 50px;
-  right: 0;
-  z-index: 60;
-  width: 280px;
-  max-width: calc(100vw - 32px);
-  padding: var(--space-2);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  background: linear-gradient(160deg, #1A0C3B, #0D0524);
-  border: 1px solid rgba(167, 139, 250, .28);
-  border-radius: var(--radius);
-  box-shadow: 0 30px 90px rgba(4, 1, 12, .7), 0 0 60px rgba(124, 77, 255, .18);
-}
-.menu-item {
-  margin-top: var(--space-1);
-  padding: 9px var(--space-3);
-  background: none;
-  border: none;
-  border-radius: var(--radius);
-  text-align: left;
-  font: var(--fs-sm) var(--font);
-  color: var(--body);
-  cursor: pointer;
-  transition: background .25s var(--ease-out), color .25s var(--ease-out);
-}
-.menu-item:hover { background: rgba(167, 139, 250, .12); color: var(--text); }
-.menu-item.danger:hover { background: rgba(255, 107, 138, .14); color: var(--danger); }
-.menu-item:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.menu { position: absolute; top: 50px; right: 0; z-index: 60; }
 
 @media (max-width: 720px) {
   .topbar { height: 56px; padding: 0 var(--space-2) 0 var(--space-4); gap: var(--space-2); }

@@ -227,13 +227,13 @@ async function submit() {
   border: none;
   border-radius: 8px;
   padding: 0;
-  color: #1A1A1A;
+  color: var(--icon);
   cursor: pointer;
   transition: background .2s var(--ease-out);
 }
 .password-toggle:hover,
 .password-toggle:focus-visible {
-  background: rgba(0, 0, 0, .08);
+  background: rgba(255, 255, 255, .1);
 }
 .password-toggle svg { width: 17px; height: 17px; }
 

@@ -33,10 +33,11 @@ defineEmits(['select', 'logout'])
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  /* The 10px scrollbar (main.css) is always reserved, so the content's right edge is steady, and the
-     padding gives that space back: the content ends 40px from the window edge, like the navbar's icons. */
+  /* PAGE EDGES (--edge-left / --edge-right in main.css): do not change this horizontal padding.
+     The scrollbar space is always reserved, so the right edge is steady, and the padding gives
+     that space back so the content ends exactly at --edge-right. */
   scrollbar-gutter: stable;
-  padding: 38px 30px 38px 40px;
+  padding: 38px calc(var(--edge-right) - var(--scrollbar-w)) 38px var(--edge-left);
 }
 
 @media (max-width: 720px) {
