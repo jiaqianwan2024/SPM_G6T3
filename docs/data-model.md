@@ -263,6 +263,24 @@ SPM-71: one row per field a coordinator edits. `GET /events/{id}/activity-log` m
 | changed_by | VARCHAR(64) | Logical FK → users |
 | created_at | DATETIME | |
 
+### event_reschedules
+
+SPM-87 AC9: one row per reschedule (`POST /events/{id}/reschedule`). `GET /events/{id}/activity-log` lists each as `kind: reschedule`, after the start and end `edit` entries it made and before any status change it caused. The `0013` migration added this table.
+
+| Column | Type | Notes |
+|---|---|---|
+| reschedule_id | VARCHAR(64) PK | |
+| event_id | VARCHAR(64) | FK → events, indexed |
+| old_start_at | DATETIME nullable | UTC, before the move |
+| old_end_at | DATETIME nullable | UTC |
+| new_start_at | DATETIME | UTC, after the move |
+| new_end_at | DATETIME | UTC |
+| reason | TEXT | Required |
+| rescheduled_by | VARCHAR(64) | Logical FK → users; the assigned coordinator |
+| rescheduled_at | DATETIME | |
+
+**Rescheduling (SPM-87):** the assigned coordinator moves an `approved`, `planning`, or `confirmed` event (including `safety review`, `safety approved`, `preparing`, `prepared`, and `reconsidering`). Each `approved` venue booking that is free and suitable at the new occupied window gets the new `starts_at`/`ends_at`, a recomputed occupied window, and `needs_reverification`. Any other approved booking becomes `cancelled`. A `pending` request takes the new times. Held equipment reservations and the event's open equipment requests take the new times, and a reservation whose quantity cannot be met then gets `needs_reverification`. A `registration_closes_at` after the new start becomes the new start. Status changes as for an SPM-71 significant change.
+
 ---
 
 ## 3. venue-service (`venue`)

@@ -92,6 +92,14 @@ TRIGGERS: dict[str, Trigger] = {
             recipient_roles=frozenset({"organiser"}),
             required_context=("eventName", "reason", "explanation"),
         ),
+        # SPM-87 AC7: the coordinator moved the event. Attendees are told by event-service directly.
+        Trigger(
+            key="event.rescheduled",
+            title="{eventName} has been rescheduled",
+            body="{eventName} has moved from {oldPeriod} to {newPeriod}. Reason: {reason}",
+            recipient_roles=frozenset({"organiser", "venue", "techsupport"}),
+            required_context=("eventName", "oldPeriod", "newPeriod", "reason"),
+        ),
         # SPM-78 AC4: a reservation released on a confirmed event. The reason is required,
         # so a release with no reason publishes nothing.
         Trigger(

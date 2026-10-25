@@ -12,6 +12,7 @@ from app.dao.event_assignment_dao import EventAssignmentDAO
 from app.dao.event_change_request_dao import EventChangeRequestDAO
 from app.dao.event_dao import EventDAO
 from app.dao.event_field_change_dao import EventFieldChangeDAO
+from app.dao.event_reschedule_dao import EventRescheduleDAO
 from app.dao.event_review_dao import EventReviewDAO
 from app.dao.event_safety_handoff_dao import EventSafetyHandoffDAO
 from app.dao.event_safety_review_dao import EventSafetyReviewDAO
@@ -21,6 +22,7 @@ from app.models.event_assignment import EventAssignment
 from app.models.event_change_request import EventChangeRequest
 from app.models.event_clarification_reply import EventClarificationReply
 from app.models.event_field_change import EventFieldChange
+from app.models.event_reschedule import EventReschedule
 from app.models.event_review import EventReview
 from app.models.event_safety_handoff import EventSafetyHandoff
 from app.models.event_safety_review import EventSafetyReview
@@ -41,12 +43,16 @@ from app.orchestration.clients import (
     flag_venue_arrangements,
     list_users,
     organisation_names,
+    preview_equipment_reschedule,
+    preview_venue_reschedule,
     publish_notification,
     record_notification,
     release_event_holds,
     release_event_venue_bookings,
     registered_attendees,
     registration_count,
+    reschedule_equipment,
+    reschedule_venues,
     send_notification,
     users_with_roles,
     venue_details,
@@ -89,6 +95,10 @@ from app.schemas.event import (
     RegistrationAccessOut,
     RegistrationSettingsOut,
     RegistrationSettingsUpdate,
+    RescheduleEquipmentOut,
+    RescheduleOut,
+    ReschedulePreviewOut,
+    RescheduleVenueOut,
     SafetyApproval,
     SafetyChangeRequest,
     SafetyEquipmentLine,
@@ -103,6 +113,7 @@ from app.schemas.event import (
     SafetyVenueHandoff,
     SupervisedEventOut,
     SignificantFieldsOut,
+    _naive_utc,
 )
 from app.services.arrangements import (
     SETTLED_REQUESTS,
@@ -217,6 +228,11 @@ SAFETY_APPROVED = "safety approved"
 # A significant change in either sends the event back to planning for a new review.
 SAFETY_STAGES = (SAFETY_REVIEW, SAFETY_APPROVED)
 SAFETY_SUBMITTABLE_STATUSES = ("approved", "planning")
+# SPM-87 AC1: Approved, Planning, or Confirmed, as the organiser sees them: safety review,
+# safety approved, preparing and prepared are planning, and reconsidering is still confirmed.
+RESCHEDULABLE_STATUSES = (
+    "approved", "planning", SAFETY_REVIEW, SAFETY_APPROVED, "preparing", "prepared", "confirmed", RECONSIDERING
+)
 REGISTRATION_SETUP_STATUSES = (
     "approved", "planning", SAFETY_REVIEW, SAFETY_APPROVED, "preparing", "prepared", "confirmed", RECONSIDERING
 )
@@ -355,6 +371,56 @@ def _setting_text(value) -> str:
     if isinstance(value, datetime):
         return f"{to_sgt(value):%d %b %Y, %H:%M} SGT"
     return str(value)
+
+
+def _period_text(start: datetime | None, end: datetime | None) -> str:
+    return f"{_setting_text(start)} to {_setting_text(end)}"
+
+
+def _venue_unavailable(venues: list) -> HTTPException:
+    """SPM-87 AC4: named before anything is committed. Confirming releases them; abandoning changes nothing."""
+    names = ", ".join(venue.venueName for venue in venues)
+    one = len(venues) == 1
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail={
+            "message": f"{names} {'is' if one else 'are'} not available at the new time. Reschedule anyway to "
+            f"release {'that booking' if one else 'those bookings'} and search for another venue, or abandon the "
+            "reschedule. Bookings for venues that are still available stay in place.",
+            "requiresConfirmation": True,
+            "unavailableVenues": [venue.model_dump() for venue in venues],
+        },
+    )
+
+
+def _reschedule_messages(
+    venues: list, equipment: list, old_close: datetime | None, start: datetime, applied: bool = False
+) -> list[str]:
+    """SPM-87: one plain sentence per point, for the preview (AC2) and after applying."""
+    messages = []
+    for venue in venues:
+        if venue.status == "pending" or venue.outcome == "moved":
+            verb = "now asks" if applied else "will ask"
+            messages.append(f"The request for {venue.venueName} is still waiting for Venue Staff and {verb} for the new time.")
+        elif venue.outcome == "carried" or (not applied and venue.free and venue.suitable):
+            verb = "was carried across" if applied else "is free and suitable at the new time and can be carried across"
+            messages.append(f"{venue.venueName} {verb}; Venue Staff are asked to re-confirm it.")
+        elif venue.outcome == "released" or not applied:
+            verb = "was released" if applied else "is not available at the new time"
+            messages.append(" ".join([f"{venue.venueName} {verb}.", *venue.reasons, "Search for another venue."]))
+    for line in equipment:
+        if not line.canMeet:
+            verb = "is flagged for technical support" if applied else "will be flagged for technical support"
+            messages.append(
+                f"{line.quantity} × {line.equipmentName}: only {line.availableQuantity} free at the new time, so it {verb}."
+            )
+    if old_close is not None:
+        verb = "now closes" if applied else "will close"
+        messages.append(
+            f"Registration closed {_setting_text(old_close)}, after the new start, so it {verb} at the new start, "
+            f"{_setting_text(start)}."
+        )
+    return messages
 
 
 def _differs(old, new) -> bool:
@@ -577,6 +643,7 @@ class EventService(BaseService):
         change_request_dao: EventChangeRequestDAO | None = None,
         safety_dao: EventSafetyReviewDAO | None = None,
         handoff_dao: EventSafetyHandoffDAO | None = None,
+        reschedule_dao: EventRescheduleDAO | None = None,
     ):
         super().__init__(db)
         self.event_dao = event_dao
@@ -587,6 +654,7 @@ class EventService(BaseService):
         self.change_request_dao = change_request_dao or EventChangeRequestDAO(db)
         self.safety_dao = safety_dao or EventSafetyReviewDAO(db)
         self.handoff_dao = handoff_dao or EventSafetyHandoffDAO(db)
+        self.reschedule_dao = reschedule_dao or EventRescheduleDAO(db)
 
     def _require_event(self, event_id: str) -> Event:
         return self._require(self.event_dao.get_by_id(event_id), "Event not found")
@@ -1016,7 +1084,24 @@ class EventService(BaseService):
             )
             for row in self.history_dao.list_by_event(event_id)
         ]
-        return sorted(assignments + edits + changes, key=lambda entry: (entry.createdAt, entry.kind == "status"))
+        # SPM-87 AC9: a reschedule is listed after the edits it made and before the status change it caused.
+        reschedules = [
+            EventActivityOut(
+                historyId=row.rescheduleId,
+                eventId=row.eventId,
+                kind="reschedule",
+                field="schedule",
+                oldValue=_period_text(row.oldStartAt, row.oldEndAt),
+                newValue=_period_text(row.newStartAt, row.newEndAt),
+                changedBy=row.rescheduledBy,
+                note=row.reason,
+                createdAt=row.rescheduledAt,
+            )
+            for row in self.reschedule_dao.list_by_event(event_id)
+        ]
+        return sorted(
+            assignments + edits + reschedules + changes, key=lambda entry: (entry.createdAt, entry.kind == "status")
+        )
 
     @staticmethod
     def significant_fields() -> SignificantFieldsOut:
@@ -1097,17 +1182,23 @@ class EventService(BaseService):
                     raise self._confirmation_required(event, significant, affected)
 
         now = datetime.utcnow()
-        if significant and event.status == "confirmed":
-            self._record_status_change(event, RECONSIDERING, changed_by, summary, now)
-            event.status = RECONSIDERING
-        elif significant and event.status in SAFETY_STAGES:
-            self._supersede_safety_review(event, changed_by, summary, now)
-        handoff = self.handoff_dao.get(event.eventId)
-        if significant and handoff is not None:
-            # SPM-120: arrangements sent before the change must be sent again.
-            self.handoff_dao.delete(handoff)
+        if significant:
+            self._after_significant_change(event, changed_by, summary, now)
         self._log_and_set(event, changes, changed_by, now)
         return flagged, "proposedStartAt" in changes or "proposedEndAt" in changes
+
+    def _after_significant_change(self, event: Event, changed_by: str, summary: str, now: datetime) -> None:
+        """SPM-71 AC6 and SPM-120: a confirmed event no longer reads as confirmed, a safety
+        review or approval is withdrawn, and arrangements sent for the review must be sent
+        again. Shared by an edit, an accepted change request, and a reschedule (SPM-87)."""
+        if event.status == "confirmed":
+            self._record_status_change(event, RECONSIDERING, changed_by, summary, now)
+            event.status = RECONSIDERING
+        elif event.status in SAFETY_STAGES:
+            self._supersede_safety_review(event, changed_by, summary, now)
+        handoff = self.handoff_dao.get(event.eventId)
+        if handoff is not None:
+            self.handoff_dao.delete(handoff)
 
     def _log_and_set(self, event: Event, changes: dict, changed_by: str, now: datetime) -> None:
         """Write each change to the activity log (SPM-71 AC5, SPM-90 AC7), then apply it."""
@@ -1169,6 +1260,187 @@ class EventService(BaseService):
                 "arrangements": affected,
                 "statusChange": status_change,
             },
+        )
+
+    def _reschedule_target(self, event_id: str, coordinator_id: str, start: datetime, end: datetime) -> Event:
+        """SPM-87 AC1: the assigned coordinator, an approved, planning, or confirmed event, and a real move."""
+        event = self._require_event(event_id)
+        _require_assigned_coordinator(event, coordinator_id, "reschedule it")
+        if event.status not in RESCHEDULABLE_STATUSES:
+            raise conflict(
+                f"Only an approved, planning, or confirmed event can be rescheduled (this one is {event.status})"
+            )
+        if end <= start:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The end must be after the start")
+        if start <= datetime.utcnow():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The new start must be in the future"
+            )
+        if start == event.proposedStartAt and end == event.proposedEndAt:
+            raise conflict("The event is already at that date and time")
+        return event
+
+    @staticmethod
+    def _registration_close_for(event: Event, start: datetime) -> tuple[datetime | None, bool]:
+        """SPM-87 AC8: registration may not close after the event starts (SPM-90 AC2), so a
+        close later than the new start is brought forward to it. If registration would only
+        open at or after the new start there is no window left, so the period must change first."""
+        closes = event.registrationClosesAt
+        if not event.registrationEnabled or closes is None or closes <= start:
+            return closes, False
+        if event.registrationOpensAt and event.registrationOpensAt >= start:
+            raise conflict(
+                f"Registration opens {_setting_text(event.registrationOpensAt)}, which is not before the new start "
+                f"({_setting_text(start)}). Change the registration period first, then reschedule."
+            )
+        return start, True
+
+    def preview_reschedule(
+        self, event_id: str, coordinator_id: str, new_start: datetime, new_end: datetime, authorization: str | None = None
+    ) -> ReschedulePreviewOut:
+        """SPM-87 AC2: before anything is applied, each booked venue judged at the new occupied
+        window (free, suitable) and each held equipment reservation at the new period. Nothing
+        is moved or released (AC5)."""
+        start, end = _naive_utc(new_start), _naive_utc(new_end)
+        event = self._reschedule_target(event_id, coordinator_id, start, end)
+        closes, adjusted = self._registration_close_for(event, start)
+        venues = [RescheduleVenueOut(**row) for row in preview_venue_reschedule(event.eventId, start, end, authorization)]
+        equipment = [
+            RescheduleEquipmentOut(**row) for row in preview_equipment_reschedule(event.eventId, start, end, authorization)
+        ]
+        booked = [venue for venue in venues if venue.status == "approved"]
+        return ReschedulePreviewOut(
+            eventId=event.eventId,
+            currentStartAt=event.proposedStartAt,
+            currentEndAt=event.proposedEndAt,
+            proposedStartAt=start,
+            proposedEndAt=end,
+            venues=venues,
+            # No booked venue means nothing to judge, not a free one.
+            venueFree=all(venue.free for venue in booked) if booked else None,
+            venueSuitable=all(venue.suitable for venue in booked) if booked else None,
+            unavailableVenues=[venue.venueName for venue in booked if not (venue.free and venue.suitable)],
+            equipment=equipment,
+            equipmentAvailable=all(line.canMeet for line in equipment),
+            registrationClosesAt=closes,
+            registrationCloseAdjusted=adjusted,
+            messages=_reschedule_messages(venues, equipment, event.registrationClosesAt if adjusted else None, start),
+        )
+
+    def reschedule(
+        self,
+        event_id: str,
+        coordinator_id: str,
+        new_start: datetime,
+        new_end: datetime,
+        reason: str,
+        authorization: str | None = None,
+        carry_venue: bool = True,
+        confirm_venue_unavailable: bool = False,
+    ) -> RescheduleOut:
+        """SPM-87: move the event and every arrangement with it.
+
+        A booked venue that is not free or not suitable at the new time is named in a 409
+        until the coordinator confirms; confirming releases that booking and keeps the
+        others (AC4). Venue bookings move first, since another event may take a venue
+        meanwhile and then nothing has moved; the free and suitable ones are carried across
+        for Venue Staff to re-confirm (AC3). The old times are given up only now (AC5).
+        Equipment follows and any reservation that cannot be met is flagged (AC6); if
+        equipment-service cannot be reached the reschedule still stands, says so, and the
+        reservations stay for technical support to re-check. A registration close after the
+        new start is brought forward (AC8). The status follows SPM-71's rule for a
+        significant change. The move, both periods, the reason, who and when are logged
+        (AC9), then the organiser, Venue Staff, technical support and registered attendees
+        are told (AC7)."""
+        start, end = _naive_utc(new_start), _naive_utc(new_end)
+        reason = (reason or "").strip()
+        if not reason:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Give a reason for the reschedule")
+        event = self._reschedule_target(event_id, coordinator_id, start, end)
+        closes, adjusted = self._registration_close_for(event, start)
+
+        if carry_venue and not confirm_venue_unavailable:
+            judged = [RescheduleVenueOut(**row) for row in preview_venue_reschedule(event.eventId, start, end, authorization)]
+            unavailable = [v for v in judged if v.status == "approved" and not (v.free and v.suitable)]
+            if unavailable:
+                raise _venue_unavailable(unavailable)
+        venues = [
+            RescheduleVenueOut(**row)
+            for row in reschedule_venues(event.eventId, start, end, reason, carry_venue, authorization)
+        ]
+        try:
+            equipment = [
+                RescheduleEquipmentOut(**row) for row in reschedule_equipment(event.eventId, start, end, reason, authorization)
+            ]
+            equipment_checked = True
+        except HTTPException:
+            logger.warning("equipment for %s could not be moved to the new time", event.eventId)
+            equipment, equipment_checked = [], False
+
+        now = datetime.utcnow()
+        old_start, old_end, old_closes = event.proposedStartAt, event.proposedEndAt, event.registrationClosesAt
+        old_period, new_period = _period_text(old_start, old_end), _period_text(start, end)
+        self.reschedule_dao.add(
+            EventReschedule(
+                rescheduleId=str(uuid4()),
+                eventId=event.eventId,
+                oldStartAt=old_start,
+                oldEndAt=old_end,
+                newStartAt=start,
+                newEndAt=end,
+                reason=reason,
+                rescheduledBy=coordinator_id,
+                rescheduledAt=now,
+            )
+        )
+        changes = {"proposedStartAt": start, "proposedEndAt": end}
+        if adjusted:
+            changes["registrationClosesAt"] = closes
+        self._after_significant_change(
+            event, coordinator_id, f"Rescheduled from {old_period} to {new_period}. Reason: {reason}", now
+        )
+        self._log_and_set(event, changes, coordinator_id, now)
+        self.db.commit()
+        self.db.refresh(event)
+
+        self._publish_reschedule(event, old_period, new_period, reason, coordinator_id, now)
+        told = self._tell_registered_attendees(event, "schedule", authorization)
+        messages = _reschedule_messages(venues, equipment, old_closes if adjusted else None, start, applied=True)
+        if not equipment_checked:
+            messages.append(
+                "The equipment reservations could not be moved right now. Ask technical support to re-check them."
+            )
+        return _to_out(
+            event,
+            authorization,
+            out_type=RescheduleOut,
+            previousStartAt=old_start,
+            previousEndAt=old_end,
+            rescheduleReason=reason,
+            venues=venues,
+            venueCarried=any(venue.outcome == "carried" for venue in venues),
+            releasedVenues=[venue.venueName for venue in venues if venue.outcome == "released"],
+            equipment=equipment,
+            equipmentChecked=equipment_checked,
+            registrationCloseAdjusted=adjusted,
+            previousRegistrationClosesAt=old_closes if adjusted else None,
+            notifiedAttendees=told,
+            messages=messages,
+        )
+
+    def _publish_reschedule(
+        self, event: Event, old_period: str, new_period: str, reason: str, actor_id: str, at: datetime
+    ) -> None:
+        """AC7, best effort: the reschedule is already saved. Attendees are told separately."""
+        directory = users_with_roles(["venue", "techsupport"]) or {}
+        publish_notification(
+            "event.rescheduled",
+            event.eventId,
+            f"{event.eventId}:event.rescheduled:{at:%Y%m%d%H%M%S}",
+            people(event, ["organiser", "venue", "techsupport"], directory),
+            {"eventName": event.eventName, "oldPeriod": old_period, "newPeriod": new_period, "reason": reason},
+            actor_id=actor_id,
+            resource={"type": "event", "id": event.eventId},
         )
 
     def update_registration_settings(

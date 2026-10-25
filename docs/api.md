@@ -52,6 +52,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `POST /events/{id}/safety-reviews/{rid}/claim` | `safety`; 409 once another officer has claimed the event |
 | `POST /events/{id}/safety-reviews/{rid}/approve`, `/reject`, or `/request-changes` | the `safety` officer who claimed the event; another officer and every other role get 403, an unclaimed review is 409 |
 | `GET /events/{id}/confirmation`, `POST /events/{id}/confirm` | `coordinator` assigned to the event (SPM-72); confirming only from `safety approved` |
+| `POST /events/{id}/reschedule/preview`, `POST /events/{id}/reschedule` | `coordinator` assigned to the event (SPM-87); approved, planning, or confirmed |
 | `POST` or `DELETE /events/{id}/equipment-lines/{equipmentId}/not-required` | `coordinator` assigned to the event (SPM-72); only in `planning` |
 | `PATCH /events/{id}/registration-settings` | `coordinator` assigned to the event (SPM-90); from `planning` until `confirmed` |
 | `GET /events/{id}/change-requests` | `organiser` of that event's organisation, `coordinator`, `venue`, `techsupport` (SPM-106) |
@@ -79,6 +80,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `POST /venues/bookings/{id}/hold` and `/hold/release` | `venue` (SPM-116); a hold needs a pending request and an `expiresAt` in the future and no later than the event's start, and is refused (409) when the venue is already taken for that window; the event's coordinator is told in the app until when |
 | `POST /venues/bookings/reverification` | `coordinator`, `safety` (event-service calls it on a confirmed significant edit, or when a Safety Officer requests changes) |
 | `POST /venues/bookings/{id}/recheck` | `coordinator`, `venue` (SPM-86). Reports the new window and does not move the booking |
+| `POST /venues/bookings/reschedule/preview`, `POST /venues/bookings/reschedule` | `coordinator` assigned to the event (SPM-87) |
 | `POST /venues/bookings/{id}/reconfirm` | `venue` (SPM-86). Moves an approved flagged booking onto the event's current times, or releases that booking |
 | `POST /equipment/requests` | `coordinator` assigned to the event (SPM-46) |
 | `PATCH /equipment/requests/{id}/details` | `coordinator` assigned to the event (SPM-46), and only while the request is still pending |
@@ -88,6 +90,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `POST /equipment/reservations/{id}/release` | `techsupport` |
 | `GET /equipment/reservations?eventId=` | `coordinator`, `techsupport` |
 | `POST /equipment/reservations/reverification` | `coordinator`, `safety` (event-service calls it on a confirmed significant edit, or when a Safety Officer requests changes) |
+| `POST /equipment/reservations/reschedule/preview`, `POST /equipment/reservations/reschedule` | `coordinator` assigned to the event (SPM-87) |
 | `GET /equipment/queue` | `techsupport` (SPM-86). Held reservations still waiting for re-verification |
 | `POST /equipment/reservations/{id}/reconfirm` | `techsupport` (SPM-86). Clears the flag and does not raise the reserved quantity |
 | `POST /events/{id}/reverification/settle` | `venue`, `techsupport`, `coordinator` (SPM-86). Returns a `reconsidering` event to `confirmed` only when every flag is clear |
@@ -360,5 +363,34 @@ A flagged arrangement is a gap. Safety submission and Confirm both refuse while 
 `POST /events/{id}/attendee-notice` with `{"change": "schedule"}` or `{"change": "venue"}`. Venue Staff or a coordinator. Every registered attendee is told by email and in-app (`event.changed`). A date or time change on an edit or an accepted change request sends the schedule notice after the save commits. Releasing a booking on re-confirm sends the venue notice.
 
 Flagging a booking notifies Venue Staff (`venue.reverification`). Flagging a reservation notifies technical support (`equipment.reverification`). A Safety Officer change request sets the same flag.
+
+## Rescheduling (SPM-87)
+
+The assigned coordinator moves an event to a new date, start and end. Only `approved`, `planning`, `confirmed`, and the stages the organiser reads as those (`safety review`, `safety approved`, `preparing`, `prepared`, `reconsidering`). Times are sent in UTC. The new start must be in the future and the end after it (422). Moving to the event's current time is 409. Another coordinator gets 403, and an event with no coordinator gets 409.
+
+`POST /events/{id}/reschedule/preview` with `{proposedStartAt, proposedEndAt}` saves nothing (AC5). It returns:
+
+- `venues`: each pending request and approved booking judged at the new occupied window, with the same suitability check as a new request and the event's own bookings left out. `free` is false when a confirmed booking, an active hold, or unavailability overlaps. `suitable` is false for any other failed point. Each has `verdict` and `reasons`.
+- `venueFree` and `venueSuitable` cover every approved booking (null when nothing is booked). `unavailableVenues` names the ones that are not free or not suitable.
+- `equipment`: each held reservation with `availableQuantity`, `canMeet` and `shortfall`. Other events' reservations are counted. The event's own are left out, and its reservations of the same equipment share what is free. `equipmentAvailable` covers them all.
+- `registrationClosesAt` and `registrationCloseAdjusted` (AC8), and `messages`, one plain sentence per point.
+
+`POST /events/{id}/reschedule` with `{proposedStartAt, proposedEndAt, reason, carryVenueBooking = true, confirmVenueUnavailable = false}`. `reason` is required.
+
+- If an approved booking is not free or not suitable, the call is 409 with `requiresConfirmation` and `unavailableVenues`, and nothing changes (AC4). Abandoning means not sending it again. Resending with `confirmVenueUnavailable: true` releases those bookings and keeps the others.
+- Bookings move first. A free and suitable approved booking is carried to the new time (`outcome: "carried"`), the occupied window is recomputed, and it is flagged with `needsReverification`. Venue Staff are told to re-confirm it through the usual re-confirm (AC3). Any other approved booking, or every one with `carryVenueBooking: false`, becomes `cancelled` (`released`). A pending request takes the new time (`moved`), and an active hold that would outlast the new start is released. If another event took a venue at the new time meanwhile, the call is 409 and nothing has moved. The old times are freed only here (AC5).
+- Held equipment reservations then move. One whose quantity cannot be met is flagged, not dropped, and technical support are told (AC6). The event's open equipment requests take the new time too. If equipment-service cannot be reached, the reschedule still stands with `equipmentChecked: false`.
+- A registration close after the new start becomes the new start (`registrationCloseAdjusted`, `previousRegistrationClosesAt`). If registration would only open at or after the new start, the call is 409 and the period must change first (AC8).
+- Status follows the significant-change rule: `confirmed` becomes `reconsidering` until the venue is re-confirmed, a safety review or approval is withdrawn back to `planning`, and a safety hand-off must be sent again.
+- `GET /events/{id}/activity-log` gets a `kind: "reschedule"` entry: `field: "schedule"`, the old and new period in `oldValue` and `newValue` (SGT), the reason in `note`, and `changedBy` and `createdAt` (AC9). The start and end also appear as `edit` entries.
+- The organiser, Venue Staff and technical support get `event.rescheduled` with both periods and the reason. Registered attendees get the schedule notice (`event.changed`) (AC7).
+- The approaching-event reminder (SPM-95) is checked straight away for the new date, so an event moved into the reminder window is reminded without waiting for the next run (AC10).
+
+The response is the event plus `previousStartAt`, `previousEndAt`, `rescheduleReason`, `venues` (each with its `outcome`), `venueCarried`, `releasedVenues`, `equipment`, `equipmentChecked`, `registrationCloseAdjusted`, `notifiedAttendees`, and `messages`. 503 when the venue arrangements cannot be checked; nothing is saved then.
+
+Event-service calls these on the coordinator's behalf; each is limited to the event's assigned coordinator:
+
+- `POST /venues/bookings/reschedule/preview` and `POST /venues/bookings/reschedule`, with `{eventId, startsAt, endsAt}` plus `reason` and `carry` on apply.
+- `POST /equipment/reservations/reschedule/preview` and `POST /equipment/reservations/reschedule`, with `{eventId, startsAt, endsAt}` plus `reason` on apply.
 
 JSON is camelCase. Tables and conflict rules: [data-model.md](data-model.md). How to run the stack: [architecture.md](architecture.md). Acceptance tests: [testing/README.md](testing/README.md).

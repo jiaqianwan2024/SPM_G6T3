@@ -4,12 +4,18 @@ import { account } from './support/test-data.js'
 import { eventApi } from './support/event.js'
 import { venueRequest } from './support/venue.js'
 
+// A fresh slot on each call, so no test moves an event to the time an earlier test
+// (or an earlier run) already left it at; the backend refuses a move to the current
+// time. 10:00 to 13:00 Singapore time sits inside the seeded venues' opening hours.
 const later = () => {
-  const start = new Date(Date.now() + 50 * 86400000)
-  start.setUTCHours(10, 0, 0, 0)
+  const start = new Date(Date.now() + (50 + Math.floor(Math.random() * 300)) * 86400000)
+  start.setUTCHours(2, 0, 0, 0)
   const end = new Date(start.getTime() + 3 * 3600000)
   return { proposedStartAt: start.toISOString(), proposedEndAt: end.toISOString() }
 }
+
+// The API returns naive UTC ("2027-01-05T02:00:00"); compare instants, not strings.
+const instant = (value) => new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`).toISOString()
 
 test.describe('SPM-87 Reschedule an event', () => {
   test('TC-SPM87-AC01 the assigned coordinator can reschedule Approved, Planning, or Confirmed events with a reason', async () => {
@@ -19,7 +25,7 @@ test.describe('SPM-87 Reschedule an event', () => {
       reason: 'Client asked to move',
     })
     expect(moved.status).toBe(200)
-    expect(moved.body.proposedStartAt).toBe(period.proposedStartAt)
+    expect(instant(moved.body.proposedStartAt)).toBe(period.proposedStartAt)
     expect(moved.body.reason || moved.body.rescheduleReason).toMatch(/Client/)
   })
 
@@ -37,10 +43,11 @@ test.describe('SPM-87 Reschedule an event', () => {
   })
 
   test('TC-SPM87-AC03 when the venue is free and suitable, the coordinator can carry the booking across', async () => {
-    const preview = await eventApi('POST', '/e3/reschedule/preview', 'EC-01', later())
+    const period = later()
+    const preview = await eventApi('POST', '/e3/reschedule/preview', 'EC-01', period)
     if (preview.body?.venueFree && preview.body?.venueSuitable) {
       const moved = await eventApi('POST', '/e3/reschedule', 'EC-01', {
-        ...later(),
+        ...period,
         reason: 'Carry booking',
         carryVenueBooking: true,
       })

@@ -32,6 +32,9 @@ from app.schemas.equipment import (
     EquipmentReservationOut,
     EquipmentUpdate,
     OutOfServiceCounts,
+    RescheduledReservationOut,
+    ReservationReschedule,
+    ReservationReschedulePreview,
     UpcomingEventOut,
 )
 from shared.exceptions.http import conflict, forbidden
@@ -49,6 +52,13 @@ def _naive(value: datetime) -> datetime:
     if value.tzinfo is not None:
         return value.astimezone(timezone.utc).replace(tzinfo=None)
     return value
+
+
+def _reschedule_period(data: ReservationReschedulePreview) -> tuple[datetime, datetime]:
+    starts_at, ends_at = _naive(data.startsAt), _naive(data.endsAt)
+    if ends_at <= starts_at:
+        raise HTTPException(status_code=422, detail="The end time must be after the start time.")
+    return starts_at, ends_at
 
 
 _RESERVED_DONE = {"reserved", "complete", "resolved"}
@@ -747,6 +757,101 @@ class EquipmentService(BaseService):
             )
         )
         return [row for _start, row in rows]
+
+    def _judged_at(
+        self, event_id: str, starts_at: datetime, ends_at: datetime, lock: bool = False
+    ) -> list[tuple[EquipmentReservation, RescheduledReservationOut]]:
+        """SPM-87: each reservation still holding stock for the event, judged at the new time.
+        The event's own reservations all move together, so they are left out of what is held,
+        and its reservations of the same equipment share what is free, earliest first."""
+        judged = []
+        remaining: dict[str, int] = {}
+        for row in self.reservation_dao.list_active_for_event(event_id):
+            if row.equipmentId not in remaining:
+                equipment = self._locked_equipment(row.equipmentId) if lock else self._require_equipment(row.equipmentId)
+                held = [item for item in self._active_reservations(row.equipmentId) if item.eventId != event_id]
+                remaining[row.equipmentId] = self._equipment_out(equipment).serviceableQuantity - _overlapping_quantity(
+                    held, starts_at, ends_at
+                )
+            available = max(0, remaining[row.equipmentId])
+            remaining[row.equipmentId] -= row.quantity
+            judged.append(
+                (
+                    row,
+                    RescheduledReservationOut(
+                        reservationId=row.reservationId,
+                        equipmentId=row.equipmentId,
+                        equipmentName=self._equipment_label(row.equipmentId),
+                        quantity=row.quantity,
+                        availableQuantity=available,
+                        canMeet=row.quantity <= available,
+                        shortfall=max(0, row.quantity - available),
+                        needsReverification=bool(row.needsReverification),
+                        startsAt=row.startsAt,
+                        endsAt=row.endsAt,
+                    ),
+                )
+            )
+        return judged
+
+    def preview_reschedule(self, data: ReservationReschedulePreview) -> list[RescheduledReservationOut]:
+        """SPM-87 AC2: whether the reserved equipment is free at the new time. Nothing moves (AC5)."""
+        starts_at, ends_at = _reschedule_period(data)
+        return [out for _row, out in self._judged_at(data.eventId, starts_at, ends_at)]
+
+    def reschedule_reservations(
+        self, data: ReservationReschedule, caller: dict, authorization: str | None = None
+    ) -> list[RescheduledReservationOut]:
+        """SPM-87 AC6: the event has moved. Every held reservation moves with it, giving up the old
+        time (AC5). One whose quantity cannot be met at the new time is flagged for technical
+        support, who are told; it is never dropped. The event's open equipment requests take the
+        new time too, so the queue and availability checks read it."""
+        starts_at, ends_at = _reschedule_period(data)
+        reason = data.reason.strip()
+        if reason and reason[-1] not in ".!?":
+            reason += "."
+        results, flagged = [], []
+        for row, out in self._judged_at(data.eventId, starts_at, ends_at, lock=True):
+            row.startsAt, row.endsAt = starts_at, ends_at
+            if out.canMeet:
+                out.outcome = "moved"
+            else:
+                row.needsReverification = True
+                row.reverificationNote = " ".join(
+                    part
+                    for part in (
+                        "Event rescheduled.",
+                        reason,
+                        f"Only {out.availableQuantity} of {row.quantity} {out.equipmentName} are free at the new time.",
+                    )
+                    if part
+                )
+                out.outcome = "flagged"
+                flagged.append(f"{row.quantity} × {out.equipmentName} (short by {out.shortfall})")
+            out.needsReverification = bool(row.needsReverification)
+            out.startsAt, out.endsAt = row.startsAt, row.endsAt
+            self._log_change(
+                row.equipmentId,
+                "reschedule",
+                caller,
+                {"eventId": data.eventId, "startsAt": str(starts_at), "endsAt": str(ends_at), "shortfall": out.shortfall},
+            )
+            results.append(out)
+        for request in self.request_dao.list_for_event(data.eventId):
+            if request.status not in ("rejected", "cancelled"):
+                request.startsAt, request.endsAt = starts_at, ends_at
+        self.db.commit()
+        if flagged:
+            _notify_role(
+                "techsupport",
+                data.eventId,
+                "Equipment needs re-verification",
+                f"{data.eventId} was rescheduled and these reservations cannot be met at the new time: "
+                f"{', '.join(flagged)}. Re-check them.",
+                authorization,
+                "equipment.reverification",
+            )
+        return results
 
     def reverification_queue(self) -> list[EquipmentReservationOut]:
         """SPM-86 AC02 and AC07: held reservations technical support still have to re-check."""
