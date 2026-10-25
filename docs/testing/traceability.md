@@ -356,12 +356,12 @@
 | SPM-86 | Registered attendees notified | TC-SPM86-AC09 | `e2e/spm86.spec.js` | Automated |
 | SPM-86 | All re-verified restores presentation | TC-SPM86-AC10 | `e2e/spm86.spec.js` | Automated |
 | SPM-87 | Reschedule Approved, Planning, or Confirmed | TC-SPM87-AC01 | `e2e/spm87.spec.js` | Automated |
-| SPM-87 | Preview venue and equipment at the new period | TC-SPM87-AC02 | `e2e/spm87.spec.js` | Automated |
+| SPM-87 | Preview venue and equipment at the new period | TC-SPM87-AC02 | `e2e/spm87.spec.js`; `services/event-service/tests/unit/test_event_reschedule.py` | API steps automated; the UI steps fail until the reschedule screen is built (not part of the backend-only SPM-87 branch) |
 | SPM-87 | Carry booking when free and suitable | TC-SPM87-AC03 | `e2e/spm87.spec.js` | Automated |
-| SPM-87 | Unavailable venue: proceed or abandon | TC-SPM87-AC04 | `e2e/spm87.spec.js` | Automated |
+| SPM-87 | Unavailable venue: proceed or abandon | TC-SPM87-AC04 | `e2e/spm87.spec.js`; `services/event-service/tests/unit/test_event_reschedule.py` | UI-only test, which fails until the reschedule screen is built (not part of the backend-only SPM-87 branch); the 409 and confirm path are covered by unit tests |
 | SPM-87 | Old period released only after apply | TC-SPM87-AC05 | `e2e/spm87.spec.js` | Automated |
 | SPM-87 | Equipment shortfalls flagged, not dropped | TC-SPM87-AC06 | `e2e/spm87.spec.js` | Automated |
-| SPM-87 | Organiser, staff, and attendees notified | TC-SPM87-AC07 | `e2e/spm87.spec.js` | Automated |
+| SPM-87 | Organiser, staff, and attendees notified | TC-SPM87-AC07 | `e2e/spm87.spec.js`; `services/event-service/tests/unit/test_event_reschedule.py` | Notices covered by unit tests. API steps automated; the UI steps fail until the reschedule screen is built (not part of the backend-only SPM-87 branch) |
 | SPM-87 | Registration close brought forward | TC-SPM87-AC08 | `e2e/spm87.spec.js` | Automated |
 | SPM-87 | Reschedule written to the activity log | TC-SPM87-AC09 | `e2e/spm87.spec.js` | Automated |
 | SPM-88 | Organiser and coordinator can cancel | TC-SPM88-AC01 | `e2e/spm88.spec.js` | Automated |

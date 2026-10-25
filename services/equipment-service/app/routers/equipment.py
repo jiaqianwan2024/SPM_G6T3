@@ -28,7 +28,10 @@ from app.schemas.equipment import (
     EquipmentRequestUnavailable,
     EquipmentReservationOut,
     EquipmentUpdate,
+    RescheduledReservationOut,
     ReservationRelease,
+    ReservationReschedule,
+    ReservationReschedulePreview,
     ReservationReverificationRequest,
     UpcomingEventOut,
 )
@@ -248,6 +251,49 @@ def release_holds_for_event(
         authorization, settings.user_service_url, allowed_roles={"coordinator", "techsupport"}
     )
     return service.release_holds_for_event(body.eventId, caller, body.reason)
+
+
+@router.post(
+    "/reservations/reschedule/preview",
+    response_model=list[RescheduledReservationOut],
+    summary="Check an event's reservations at a new date and time",
+    description="SPM-87 AC2. The event's assigned coordinator only. For each reservation still holding stock, "
+    "whether its quantity is free at the new time, with other events' reservations counted and the event's own "
+    "left out. Nothing is moved.",
+    responses=error_responses(403, 404, 422),
+)
+def preview_reservation_reschedule(
+    body: ReservationReschedulePreview,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EquipmentService = Depends(get_equipment_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    require_assigned_coordinator(
+        fetch_event_coordinator(body.eventId, authorization), caller["userId"], "reschedule its equipment"
+    )
+    return service.preview_reschedule(body)
+
+
+@router.post(
+    "/reservations/reschedule",
+    response_model=list[RescheduledReservationOut],
+    summary="Move an event's reservations to its new date and time",
+    description="SPM-87 AC6. The event's assigned coordinator only; event-service calls it when a reschedule is "
+    "applied. Every reservation still holding stock moves to the new time, freeing the old one. Any whose "
+    "quantity cannot be met then is flagged for re-verification, not dropped, and technical support are "
+    "notified. The event's open equipment requests take the new time too.",
+    responses=error_responses(403, 404, 422),
+)
+def reschedule_reservations(
+    body: ReservationReschedule,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EquipmentService = Depends(get_equipment_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    require_assigned_coordinator(
+        fetch_event_coordinator(body.eventId, authorization), caller["userId"], "reschedule its equipment"
+    )
+    return service.reschedule_reservations(body, caller, authorization)
 
 
 @router.post(
