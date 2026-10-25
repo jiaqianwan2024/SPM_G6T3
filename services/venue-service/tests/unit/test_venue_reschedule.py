@@ -1,12 +1,14 @@
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
 from app.main import app
 from app.schemas.venue import BookingReschedule, BookingReschedulePreview, EventFacts, UnavailabilityCreate
 from app.services import occupancy
+from app.services.venue_service import APPROVED_ELSEWHERE
 from shared.auth.deps import require_authenticated_user
 from tests.unit.support import CALLER, COORDINATOR, END, START, VenueCase, booking_create, venue_create
 from tests.unit.test_venue_reverification import OPEN
@@ -212,6 +214,44 @@ class TestApply(RescheduleCase):
 
         self.assertEqual(denied.exception.status_code, 403)
         self.assertEqual(self.service.get_booking(booking_id).startsAt, START)
+
+    def test_when_the_database_refuses_an_overlap_nothing_moves(self):
+        self.booking(self.hall)
+        refused = OperationalError("UPDATE venue_bookings", {}, MagicMock(args=(1644, "overlap")))
+
+        with patch.object(self.service.db, "commit", side_effect=refused), patch.object(
+            self.service.db, "rollback"
+        ) as rollback, self.assertRaises(HTTPException) as ctx:
+            self.apply()
+
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertIn("Nothing was moved", ctx.exception.detail)
+        rollback.assert_called_once()
+
+    def test_any_other_database_error_is_not_disguised_as_a_clash(self):
+        self.booking(self.hall)
+        broken = OperationalError("UPDATE venue_bookings", {}, MagicMock(args=(2013, "lost connection")))
+
+        with patch.object(self.service.db, "commit", side_effect=broken), patch.object(self.service.db, "rollback"):
+            with self.assertRaises(OperationalError):
+                self.apply()
+
+    def test_a_booking_approved_meanwhile_is_caught_by_the_locked_check(self):
+        booking_id = self.booking(self.hall)
+        unlocked = self.service.commitments
+
+        def approved_meanwhile(venue, start, end, exclude_event_id=None, lock=False, exclude_booking_id=None):
+            held = unlocked(venue, start, end, exclude_event_id, lock, exclude_booking_id)
+            if lock:
+                held.confirmed.append(MagicMock())
+            return held
+
+        with patch.object(self.service, "commitments", side_effect=approved_meanwhile):
+            [released] = self.apply()
+
+        self.assertEqual((released.outcome, released.free), ("released", False))
+        self.assertEqual(released.reasons[0], APPROVED_ELSEWHERE)
+        self.assertEqual(self.service.get_booking(booking_id).status, "cancelled")
 
     def test_other_events_bookings_are_left_alone(self):
         other = self.booking(self.hall, event_id="e2", start=START + timedelta(days=3), end=END + timedelta(days=3))

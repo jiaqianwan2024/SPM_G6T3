@@ -1,11 +1,14 @@
+import unittest
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+import httpx
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models.event import Event
+from app.orchestration import clients
 from app.models.event_safety_review import EventSafetyReview
 from app.models.event_status_history import EventStatusHistory
 from app.schemas.event import RescheduleIn
@@ -476,6 +479,87 @@ class TestRescheduleRoutes(ServiceTestCase):
         )
 
         self.assertEqual(moved.status_code, 200)
+
+
+def reply(status_code, body=None):
+    response = MagicMock(status_code=status_code)
+    response.json.return_value = body
+    return response
+
+
+def fake_client(method, *responses):
+    """Stands in for httpx.Client, answering each `method` call in turn."""
+    client = MagicMock()
+    getattr(client.__enter__.return_value, method).side_effect = list(responses)
+    return patch("app.orchestration.clients.httpx.Client", MagicMock(return_value=client)), client
+
+
+class TestRescheduleClients(unittest.TestCase):
+    """The calls event-service makes to venue-service and equipment-service."""
+
+    def test_the_previews_post_the_new_period_with_the_callers_token(self):
+        stub, client = fake_client("request", reply(200, [venue()]), reply(200, [reservation()]))
+        with stub:
+            venues = clients.preview_venue_reschedule("e1", NEW_START, NEW_END, "Bearer token")
+            equipment = clients.preview_equipment_reschedule("e1", NEW_START, NEW_END, "Bearer token")
+
+        self.assertEqual((venues[0]["bookingId"], equipment[0]["reservationId"]), ("vb-1", "rs-1"))
+        venue_call, equipment_call = client.__enter__.return_value.request.call_args_list
+        self.assertEqual(venue_call.args[0], "POST")
+        self.assertTrue(venue_call.args[1].endswith("/venues/bookings/reschedule/preview"))
+        self.assertTrue(equipment_call.args[1].endswith("/equipment/reservations/reschedule/preview"))
+        self.assertEqual(
+            venue_call.kwargs["json"], {"eventId": "e1", "startsAt": NEW_START.isoformat(), "endsAt": NEW_END.isoformat()}
+        )
+        self.assertEqual(venue_call.kwargs["headers"], {"Authorization": "Bearer token"})
+
+    def test_an_unreadable_preview_is_a_503_that_says_nothing_was_rescheduled(self):
+        stub, _client = fake_client("request", reply(500))
+        with stub, self.assertRaises(HTTPException) as ctx:
+            clients.preview_venue_reschedule("e1", NEW_START, NEW_END, None)
+
+        self.assertEqual((ctx.exception.status_code, ctx.exception.detail), (503, clients.RESCHEDULE_UNCHECKED))
+
+    def test_moving_the_venues_sends_the_reason_and_whether_to_carry(self):
+        stub, client = fake_client("post", reply(200, [venue(outcome="carried")]))
+        with stub:
+            moved = clients.reschedule_venues("e1", NEW_START, NEW_END, "Speaker moved", False, None)
+
+        self.assertEqual(moved[0]["outcome"], "carried")
+        call = client.__enter__.return_value.post.call_args
+        self.assertTrue(call.args[0].endswith("/venues/bookings/reschedule"))
+        self.assertEqual((call.kwargs["json"]["reason"], call.kwargs["json"]["carry"]), ("Speaker moved", False))
+        self.assertEqual(call.kwargs["headers"], {})
+
+    def test_a_venue_taken_meanwhile_is_passed_on_as_a_409(self):
+        for body, expected in (
+            ({"detail": "Taken at the new time."}, "Taken at the new time."),
+            ({}, "A venue could not be moved to the new time."),
+        ):
+            stub, _client = fake_client("post", reply(409, body))
+            with stub, self.assertRaises(HTTPException) as ctx:
+                clients.reschedule_venues("e1", NEW_START, NEW_END, "x", True, "Bearer token")
+            self.assertEqual((ctx.exception.status_code, ctx.exception.detail), (409, expected))
+
+    def test_moving_the_venues_is_a_503_when_venue_service_fails_or_cannot_be_reached(self):
+        stub, _client = fake_client("post", reply(500))
+        with stub, self.assertRaises(HTTPException) as failed:
+            clients.reschedule_venues("e1", NEW_START, NEW_END, "x", True, "Bearer token")
+        stub, _client = fake_client("post", httpx.ConnectError("refused"))
+        with stub, self.assertRaises(HTTPException) as unreachable:
+            clients.reschedule_venues("e1", NEW_START, NEW_END, "x", True, "Bearer token")
+
+        self.assertEqual((failed.exception.status_code, unreachable.exception.status_code), (503, 503))
+
+    def test_moving_the_equipment_sends_the_reason(self):
+        stub, client = fake_client("request", reply(200, [{**reservation(), "outcome": "moved"}]))
+        with stub:
+            moved = clients.reschedule_equipment("e1", NEW_START, NEW_END, "Speaker moved", "Bearer token")
+
+        self.assertEqual(moved[0]["outcome"], "moved")
+        call = client.__enter__.return_value.request.call_args
+        self.assertTrue(call.args[1].endswith("/equipment/reservations/reschedule"))
+        self.assertEqual(call.kwargs["json"]["reason"], "Speaker moved")
 
 
 class TestReminderFollowsTheNewDate(EventCase):
