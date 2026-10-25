@@ -91,7 +91,7 @@ onMounted(load)
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 
@@ -108,7 +108,7 @@ onMounted(load)
 .search input {
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -135,7 +135,7 @@ onMounted(load)
   gap: 12px 28px;
   background: var(--glass);
   border: 1px dashed var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 18px 20px;
   transition: border-color .4s var(--ease-out), background .4s var(--ease-out);
 }
@@ -143,7 +143,7 @@ onMounted(load)
 .draft-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .draft-name {
   margin: 0;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   font-weight: 500;
   color: var(--text);
   font-size: 18px;

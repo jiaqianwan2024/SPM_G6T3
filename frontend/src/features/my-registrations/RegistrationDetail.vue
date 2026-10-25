@@ -148,7 +148,7 @@ onMounted(load)
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin-top: 16px;
 }
@@ -192,7 +192,7 @@ onMounted(load)
 .panel {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
 }
 .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; margin: 0; }
@@ -216,7 +216,7 @@ onMounted(load)
 .modal {
   background: linear-gradient(160deg, #1A0C3B, #0D0524);
   border: 1px solid rgba(167, 139, 250, .28);
-  border-radius: 18px;
+  border-radius: var(--radius);
   padding: 30px;
   width: 380px;
 }

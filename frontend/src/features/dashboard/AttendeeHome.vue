@@ -185,7 +185,7 @@ onMounted(async () => {
 .block { display: flex; flex-direction: column; gap: 12px; }
 .block h3 {
   margin: 0;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   font-size: 15px;
   font-weight: 500;
   color: var(--text);
@@ -196,7 +196,7 @@ onMounted(async () => {
   color: #FF8A76;
   font-size: 13px;
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 .event-card {
@@ -207,7 +207,7 @@ onMounted(async () => {
   text-align: left;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 18px 20px;
   cursor: pointer;
   color: inherit;
@@ -225,7 +225,7 @@ onMounted(async () => {
   color: var(--muted);
 }
 .event-name {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   font-size: 20px;
   font-weight: 500;
   letter-spacing: -.02em;

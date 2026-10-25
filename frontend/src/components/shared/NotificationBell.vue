@@ -1,5 +1,5 @@
 <template>
-  <div class="bell-wrap">
+  <div class="bell-wrap" :class="{ inline }">
     <button
       type="button"
       class="bell-btn"
@@ -73,6 +73,9 @@ import { getNotifications, markAllNotificationsRead } from '../../api/notificati
 import { formatSgt } from '../../utils/datetime.js'
 import { refreshUnreadCount, unreadCount } from '../../features/notifications/unreadCount.js'
 
+// `inline` places the bell in the flow (the app shell's top bar) instead of pinning it to the viewport corner.
+defineProps({ inline: { type: Boolean, default: false } })
+
 const router = useRouter()
 
 const open = ref(false)
@@ -145,6 +148,20 @@ onUnmounted(() => clearInterval(pollTimer))
   z-index: 50;
 }
 
+.bell-wrap.inline { position: relative; top: auto; right: auto; }
+/* In the app's top bar the bell matches the other header icons: bare, 24px, soft hover. */
+.bell-wrap.inline .bell-btn {
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.bell-wrap.inline .bell-btn:hover { background: rgba(255, 255, 255, .08); }
+.bell-wrap.inline .bell-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.bell-wrap.inline .bell-icon { width: 24px; height: 24px; }
+.bell-wrap.inline .badge { top: 2px; right: 2px; }
+
 .bell-btn {
   position: relative;
   width: 40px;
@@ -193,7 +210,7 @@ onUnmounted(() => clearInterval(pollTimer))
   background: linear-gradient(160deg, #1A0C3B, #0D0524);
   border: 1px solid rgba(167, 139, 250, .28);
   box-shadow: 0 30px 90px rgba(4, 1, 12, .7), 0 0 60px rgba(124, 77, 255, .18);
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 16px;
   z-index: 50;
 }
@@ -216,7 +233,7 @@ onUnmounted(() => clearInterval(pollTimer))
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 
@@ -226,7 +243,7 @@ onUnmounted(() => clearInterval(pollTimer))
   gap: 8px;
   align-items: flex-start;
   padding: 10px 6px;
-  border-radius: 10px;
+  border-radius: var(--radius);
   cursor: pointer;
   transition: background .2s var(--ease-out);
 }
@@ -257,7 +274,7 @@ onUnmounted(() => clearInterval(pollTimer))
 .item-time { font-size: 11px; color: var(--muted); margin-top: 4px; }
 
 @media (max-width: 480px) {
-  .bell-wrap { top: 12px; right: 14px; }
+  .bell-wrap:not(.inline) { top: 12px; right: 14px; }
   .panel { right: -8px; }
 }
 </style>

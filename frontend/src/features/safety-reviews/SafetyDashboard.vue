@@ -346,13 +346,13 @@ onMounted(() => {
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-.count-value { font-family: 'Space Grotesk', sans-serif; font-size: 26px; color: var(--text); }
+.count-value { font-family: var(--font); font-size: 26px; color: var(--text); }
 .count-label { font-size: 12px; color: var(--muted); letter-spacing: .04em; }
 
 .block h3 { margin: 0 0 10px; font-size: 15px; font-weight: 500; color: var(--text); }
@@ -363,14 +363,14 @@ onMounted(() => {
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 16px 18px;
   margin-bottom: 10px;
 }
 .item.open { border-color: rgba(167, 139, 250, .38); }
 .item-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
 .item-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.item-name { font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: var(--text); font-size: 15px; }
+.item-name { font-family: var(--font); font-weight: 500; color: var(--text); font-size: 15px; }
 .item-meta { font-size: 12px; color: var(--muted); line-height: 1.5; }
 .flag {
   align-self: flex-start;
@@ -417,13 +417,13 @@ textarea {
   box-sizing: border-box;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 10px 12px;
   margin-bottom: 10px;
   font-size: 14px;
   line-height: 1.5;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
   resize: vertical;
 }
 textarea:focus { outline: none; border-color: rgba(167, 139, 250, .6); box-shadow: 0 0 0 3px rgba(124, 77, 255, .16); }
@@ -450,7 +450,7 @@ textarea:focus { outline: none; border-color: rgba(167, 139, 250, .6); box-shado
   color: var(--halo);
   background: rgba(124, 77, 255, .1);
   border: 1px solid rgba(167, 139, 250, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 0;
 }
@@ -459,7 +459,7 @@ textarea:focus { outline: none; border-color: rgba(167, 139, 250, .6); box-shado
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 0 0 10px;
 }

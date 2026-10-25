@@ -182,7 +182,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.activity-log { border-radius: 16px; padding: 22px; margin-top: 16px; }
+.activity-log { border-radius: var(--radius); padding: 22px; margin-top: 16px; }
 .log-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .hint { color: var(--muted); font-size: 13px; margin: 0; }
 .field-error { color: #FF8A76; font-size: 13px; margin: 0; }

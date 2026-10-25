@@ -211,7 +211,7 @@ async function save(confirmSignificantChange) {
   background: linear-gradient(160deg, #1A0C3B, #0D0524);
   border: 1px solid rgba(167, 139, 250, .28);
   box-shadow: 0 30px 90px rgba(4, 1, 12, .7), 0 0 60px rgba(124, 77, 255, .18);
-  border-radius: 18px;
+  border-radius: var(--radius);
   padding: 30px;
   width: 440px;
   max-width: 100%;
@@ -240,13 +240,13 @@ textarea {
   box-sizing: border-box;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 0 12px;
   height: 42px;
   margin-bottom: 16px;
   font-size: 14px;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
 }
 textarea { height: auto; padding: 10px 12px; resize: vertical; line-height: 1.5; }
 input:focus, select:focus, textarea:focus {
@@ -262,7 +262,7 @@ select option { background: #1A1030; color: #F3EEFF; }
 .significant {
   border: 1px solid rgba(255, 196, 120, .28);
   background: rgba(255, 196, 120, .04);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 16px 16px 2px;
   margin-top: 4px;
 }
@@ -282,7 +282,7 @@ select option { background: #1A1030; color: #F3EEFF; }
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 12px 0 0;
 }

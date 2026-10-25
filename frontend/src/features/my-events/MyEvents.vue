@@ -273,7 +273,7 @@ onMounted(load)
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 
@@ -297,7 +297,7 @@ onMounted(load)
 .toolbar select {
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -364,7 +364,7 @@ onMounted(load)
   gap: 12px;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 18px 20px;
   cursor: pointer;
 }
@@ -372,7 +372,7 @@ onMounted(load)
 .event-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .event-name {
   margin: 0;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   font-size: 18px;
   font-weight: 500;
   letter-spacing: -.02em;

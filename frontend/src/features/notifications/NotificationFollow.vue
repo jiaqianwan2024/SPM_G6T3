@@ -59,7 +59,7 @@ onMounted(async () => {
 .panel {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 28px 24px;
 }
 .panel h1 { margin: 0 0 8px; font-size: 20px; font-weight: 500; color: var(--text); }

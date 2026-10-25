@@ -8,7 +8,9 @@
         <a href="#roles">Roles</a>
       </nav>
       <div class="actions">
-        <router-link to="/login" class="btn btn-solid">Log in</router-link>
+        <router-link :to="session.isAuthenticated ? '/app' : '/login'" class="btn btn-solid">
+          {{ session.isAuthenticated ? 'Go to dashboard' : 'Log in' }}
+        </router-link>
       </div>
     </header>
 
@@ -128,6 +130,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import AppLogo from '../components/shared/AppLogo.vue'
 import AnimatedOrb from '../components/shared/AnimatedOrb.vue'
 import { vReveal } from '../composables/reveal.js'
+import { session } from '../store/session.js'
 
 // Hardcoded content — swap for real copy once the customer confirms release-1 scope.
 const offerings = [
@@ -315,7 +318,7 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
   align-items: center;
   gap: 26px;
   padding-right: 26px;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   font-size: 13px;
   letter-spacing: .26em;
   text-transform: uppercase;
@@ -376,13 +379,13 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
 .row:hover::before { opacity: 1; }
 
 .row-index {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   font-size: 12px;
   letter-spacing: .1em;
   color: var(--muted);
 }
 .row-name {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   font-size: clamp(16px, 2vw, 20px);
   color: var(--text);
   font-weight: 400;
@@ -404,7 +407,7 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
   gap: 16px;
 }
 .step {
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 26px 22px 28px;
   transition: transform .5s var(--ease-out), border-color .5s var(--ease-out),
               background .5s var(--ease-out);
@@ -415,7 +418,7 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
   background: var(--glass-strong);
 }
 .step-index {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   font-size: 11px;
   letter-spacing: .2em;
   color: var(--iris-soft);

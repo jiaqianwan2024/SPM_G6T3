@@ -410,7 +410,7 @@ watch(() => props.event.status, load)
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
   margin-top: 18px;
 }
@@ -438,18 +438,18 @@ textarea {
   box-sizing: border-box;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 10px 12px;
   margin-bottom: 12px;
   font-size: 14px;
   line-height: 1.5;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
   resize: vertical;
 }
 textarea:focus { outline: none; border-color: rgba(167, 139, 250, .6); box-shadow: 0 0 0 3px rgba(124, 77, 255, .16); }
 
-.submit-form, .decision { border: 1px solid var(--hairline); border-radius: 12px; padding: 16px; margin: 0 0 14px; }
+.submit-form, .decision { border: 1px solid var(--hairline); border-radius: var(--radius); padding: 16px; margin: 0 0 14px; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .affected { border: none; padding: 0; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 6px 18px; }
 .affected legend { margin-bottom: 8px; padding: 0; }
@@ -458,7 +458,7 @@ textarea:focus { outline: none; border-color: rgba(167, 139, 250, .6); box-shado
 .notice, .outcome, .warning {
   font-size: 13px;
   line-height: 1.6;
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 0 0 14px;
 }
@@ -488,7 +488,7 @@ textarea:focus { outline: none; border-color: rgba(167, 139, 250, .6); box-shado
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 0 0 12px;
 }

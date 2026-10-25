@@ -15,9 +15,15 @@ import NotificationsPage from '../features/notifications/NotificationsPage.vue'
 import NotificationFollow from '../features/notifications/NotificationFollow.vue'
 import { session } from '../store/session.js'
 
+// Component catalogue for developers; not registered in production builds.
+const devRoutes = import.meta.env.DEV
+  ? [{ path: '/dev/ui', name: 'dev-ui', component: () => import('../views/UiShowcase.vue') }]
+  : []
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    ...devRoutes,
     { path: '/', name: 'landing', component: LandingView },
     { path: '/login', name: 'login', component: LoginView },
     { path: '/app', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },

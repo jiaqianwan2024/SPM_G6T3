@@ -200,7 +200,7 @@ onMounted(load)
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
 }
 h3 { margin: 0 0 14px; font-size: 16px; font-weight: 500; }
@@ -208,7 +208,7 @@ h3 { margin: 0 0 14px; font-size: 16px; font-weight: 500; }
 .lines li {
   background: rgba(255, 255, 255, .03);
   border: 1px solid var(--hairline);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 12px 14px;
 }
 .line-main { display: flex; align-items: center; gap: 10px; }
@@ -217,7 +217,7 @@ h3 { margin: 0 0 14px; font-size: 16px; font-weight: 500; }
   height: 28px;
   display: grid;
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: rgba(124, 77, 255, .18);
   color: var(--halo);
   font-size: 13px;
@@ -241,7 +241,7 @@ h3 { margin: 0 0 14px; font-size: 16px; font-weight: 500; }
 .outcome {
   margin: 0 0 14px;
   padding: 12px;
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .3);
 }
@@ -253,7 +253,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color:
 input, textarea, select {
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;

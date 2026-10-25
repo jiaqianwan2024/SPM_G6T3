@@ -687,7 +687,7 @@ h1 { margin: 0; font-size: 28px; line-height: 1.15; }
 .reverify-banner {
   margin: 0 0 12px;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: #fef3c7;
   color: #92400e;
   font-size: 0.9rem;
@@ -771,7 +771,7 @@ h1 { margin: 0; font-size: 28px; line-height: 1.15; }
   gap: 12px;
   padding: 16px;
   border: 1px solid var(--hairline, rgba(243, 238, 255, 0.16));
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: rgba(26, 16, 48, 0.55);
 }
 .panel h2 { margin: 0; font-size: 18px; }
@@ -783,7 +783,7 @@ input, select, textarea {
   background: #1a1030;
   color-scheme: dark;
   border: 1px solid rgba(243, 238, 255, 0.2);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 8px 10px;
 }
 select option { background: #1a1030; color: #f3eeff; }
@@ -816,7 +816,7 @@ select option { background: #1a1030; color: #f3eeff; }
   min-width: 0;
   background: #fff;
   color: #1c1233;
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 12px 16px 16px;
   overflow: auto;
 }
@@ -825,7 +825,7 @@ select option { background: #1a1030; color: #f3eeff; }
   color: #1c1233;
   background: #f4f0fb;
   border: 1px solid #d9d0ea;
-  border-radius: 8px;
+  border-radius: var(--radius);
   font-weight: 650;
 }
 .calendar-shell :deep([role='tab']) {
@@ -858,7 +858,7 @@ select option { background: #1a1030; color: #f3eeff; }
   color: #f3eeff;
   background: #1a1030;
   border: 1px solid #c4b5fd;
-  border-radius: 12px;
+  border-radius: var(--radius);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 .detail-card header {

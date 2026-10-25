@@ -120,7 +120,7 @@ onMounted(async () => {
   color: #FF8A76;
   font-size: 13px;
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 .event-card {
@@ -131,7 +131,7 @@ onMounted(async () => {
   text-align: left;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 18px 20px;
   cursor: pointer;
   color: inherit;
@@ -139,7 +139,7 @@ onMounted(async () => {
 }
 .event-name {
   margin: 0 0 12px;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   font-size: 22px;
   font-weight: 500;
   letter-spacing: -.02em;

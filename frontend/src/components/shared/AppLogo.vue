@@ -28,7 +28,7 @@ defineProps({ dark: { type: Boolean, default: false } })
   display: flex;
   align-items: center;
   gap: 10px;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   color: var(--text);
 }
 

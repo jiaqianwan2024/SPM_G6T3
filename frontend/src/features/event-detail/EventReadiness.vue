@@ -498,7 +498,7 @@ onMounted(() => {
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 .panel, .sheet, .event-card {
@@ -506,7 +506,7 @@ onMounted(() => {
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
 }
 .panel { padding: 28px 24px 22px; margin-bottom: 18px; }
 .panel h2, .edit-form h2 { margin: 0 0 14px; font-size: 16px; font-weight: 500; color: var(--text); }
@@ -521,7 +521,7 @@ input, select {
   color: var(--text);
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 8px 10px;
 }
 .panel .btn { margin-top: 14px; }
@@ -607,7 +607,7 @@ input, select {
   width: min(420px, calc(100% - 32px));
   background: linear-gradient(160deg, #1a0c3b, #0d0524);
   border: 1px solid rgba(167, 139, 250, .28);
-  border-radius: 18px;
+  border-radius: var(--radius);
   padding: 28px;
   box-shadow: 0 30px 90px rgba(4, 1, 12, .7);
 }

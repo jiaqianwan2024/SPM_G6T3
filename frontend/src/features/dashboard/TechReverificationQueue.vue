@@ -39,7 +39,7 @@ onMounted(async () => {
 .queue h3 { margin: 0; font-size: 1rem; }
 .row {
   padding: 12px 14px;
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: #fef3c7;
   color: #92400e;
 }

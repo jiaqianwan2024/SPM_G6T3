@@ -362,7 +362,7 @@ async function submit() {
 
 <style scoped>
 .venue-form {
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 26px;
   display: flex;
   flex-direction: column;
@@ -378,7 +378,7 @@ async function submit() {
 .field input, .field textarea, .venue-form select {
   background: rgba(255, 255, 255, .03);
   border: 1px solid var(--hairline);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 9px 12px;
   color: var(--text);
   font-size: 14px;
@@ -400,7 +400,7 @@ async function submit() {
 .repeat-row input, .repeat-row select {
   background: rgba(255, 255, 255, .03);
   border: 1px solid var(--hairline);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 8px 10px;
   color: var(--text);
   font-size: 13px;
@@ -423,7 +423,7 @@ async function submit() {
 .other-name-input {
   background: rgba(255, 255, 255, .03);
   border: 1px solid var(--hairline);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 8px 10px;
   color: var(--text);
   font-size: 13px;

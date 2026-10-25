@@ -250,7 +250,7 @@ onMounted(async () => {
   min-width: 0;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 12px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -268,7 +268,7 @@ onMounted(async () => {
 .filters select {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 12px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 13px;
@@ -301,7 +301,7 @@ onMounted(async () => {
   text-align: left;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 10px 12px;
   cursor: pointer;
   color: inherit;
@@ -313,7 +313,7 @@ onMounted(async () => {
   background: linear-gradient(90deg, rgba(124, 77, 255, .22), rgba(124, 77, 255, .04));
 }
 .item-name {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   font-weight: 500;
   color: var(--text);
   font-size: 14px;
@@ -331,7 +331,7 @@ onMounted(async () => {
 .item-detail {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 26px;
 }
 .item-detail.empty { display: flex; align-items: center; justify-content: center; color: var(--muted); min-height: 180px; }
@@ -361,7 +361,7 @@ dd { margin: 0; font-size: 14px; line-height: 1.6; color: var(--body); }
 .availability input {
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 13px;

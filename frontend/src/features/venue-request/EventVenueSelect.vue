@@ -506,21 +506,21 @@ onMounted(async () => {
 .form-error {
   color: #FF8A76; font-size: 13px;
   background: rgba(255, 138, 118, .08); border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px; padding: 11px 14px;
+  border-radius: var(--radius); padding: 11px 14px;
 }
 .hint { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.6; }
 .all-clear { margin-bottom: 18px; }
 .request-error { margin-top: 14px; }
 
 .arrangement {
-  margin: 0 0 18px; padding: 14px 16px; border-radius: 12px;
+  margin: 0 0 18px; padding: 14px 16px; border-radius: var(--radius);
   background: rgba(255, 198, 109, .08); border: 1px solid rgba(255, 198, 109, .3);
 }
 .arrangement.complete {
   background: rgba(56, 224, 200, .08); border-color: rgba(56, 224, 200, .3);
 }
 .replacement {
-  margin: 0 0 18px; padding: 14px 16px; border-radius: 12px;
+  margin: 0 0 18px; padding: 14px 16px; border-radius: var(--radius);
   background: rgba(255, 138, 118, .06); border: 1px solid rgba(255, 138, 118, .25);
 }
 .replacement .booking-list { margin-top: 10px; }
@@ -536,11 +536,11 @@ onMounted(async () => {
   font-size: 13px; color: var(--text);
 }
 .read-only-note {
-  margin: 0 0 18px; padding: 11px 14px; border-radius: 9px; font-size: 13px; line-height: 1.6;
+  margin: 0 0 18px; padding: 11px 14px; border-radius: var(--radius); font-size: 13px; line-height: 1.6;
   color: var(--body); background: var(--glass); border: 1px solid var(--hairline);
 }
 .success-note {
-  margin: 0 0 18px; padding: 11px 14px; border-radius: 9px; font-size: 13px;
+  margin: 0 0 18px; padding: 11px 14px; border-radius: var(--radius); font-size: 13px;
   color: var(--signal); background: rgba(56, 224, 200, .08); border: 1px solid rgba(56, 224, 200, .25);
 }
 
@@ -552,7 +552,7 @@ onMounted(async () => {
 .notes { display: flex; flex-direction: column; gap: 6px; margin: 0 0 14px; font-size: 12px; color: var(--muted); }
 .notes textarea {
   font: inherit; font-size: 13px; color: var(--text); resize: vertical;
-  background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: 9px; padding: 9px 11px;
+  background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: var(--radius); padding: 9px 11px;
 }
 
 .event-summary h2 { margin: 0 0 6px; font-size: 22px; font-weight: 500; }
@@ -564,7 +564,7 @@ onMounted(async () => {
 .venue-row {
   background: var(--glass); border: 1px solid var(--hairline);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  border-radius: 12px; padding: 14px 16px; cursor: pointer;
+  border-radius: var(--radius); padding: 14px 16px; cursor: pointer;
   transition: background .4s var(--ease-out), border-color .4s var(--ease-out), transform .4s var(--ease-out);
 }
 .venue-row:hover { background: var(--glass-strong); transform: translateX(3px); }
@@ -572,7 +572,7 @@ onMounted(async () => {
   border-color: rgba(167, 139, 250, .55);
   background: linear-gradient(90deg, rgba(124, 77, 255, .22), rgba(124, 77, 255, .04));
 }
-.venue-name { font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: var(--text); font-size: 14px; }
+.venue-name { font-family: var(--font); font-weight: 500; color: var(--text); font-size: 14px; }
 .venue-meta { font-size: 12px; margin-top: 3px; color: var(--muted); }
 .contested {
   display: inline-block; margin-top: 6px; padding: 2px 8px; border-radius: 999px; font-size: 11px;
@@ -589,7 +589,7 @@ onMounted(async () => {
 .verdict-panel {
   background: var(--glass); border: 1px solid var(--hairline);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  border-radius: 16px; padding: 26px; min-height: 140px;
+  border-radius: var(--radius); padding: 26px; min-height: 140px;
   /* Stays in view while a long venue list scrolls, so a click always shows its verdict. */
   position: sticky; top: 24px;
 }
