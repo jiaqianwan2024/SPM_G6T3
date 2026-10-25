@@ -1,3 +1,4 @@
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, Path, Query, Request
@@ -51,6 +52,10 @@ from app.schemas.event import (
     RegistrationAccessOut,
     RegistrationSettingsOut,
     RegistrationSettingsUpdate,
+    RescheduleIn,
+    RescheduleOut,
+    ReschedulePreviewIn,
+    ReschedulePreviewOut,
     ReverificationSettleOut,
     SafetyApproval,
     SafetyChangeRequest,
@@ -65,10 +70,13 @@ from app.schemas.event import (
 from app.schemas.followup import OpenEventOut, ReadinessCreate, ReadinessItemOut, ReadinessPatch
 from app.services.event_followup import EventFollowUp
 from app.services.event_service import COORDINATOR_LEAD, EventService
+from app.services.reminders import EventReminders
 from shared.auth.deps import forwarded_bearer
 from shared.auth.roles import resolve_caller
 from shared.exceptions.http import forbidden
 from shared.openapi import error_responses
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/events",
@@ -577,6 +585,69 @@ def update_event(
     except ValidationError as exc:
         raise RequestValidationError(exc.errors()) from exc
     return service.update_event(event_id, body, caller["userId"], authorization)
+
+
+@router.post(
+    "/{event_id}/reschedule/preview",
+    response_model=ReschedulePreviewOut,
+    summary="Preview a reschedule",
+    description="SPM-87 AC2. The assigned coordinator only, for an approved, planning, or confirmed event. For "
+    "each booked venue, whether it is free (nothing else holds the new occupied window) and suitable at the new "
+    "time; for each held equipment reservation, whether its quantity is free then; and where registration would "
+    "close. Nothing is moved or released (AC5). 422 for an end at or before the start or a start in the past; "
+    "409 when the event cannot be rescheduled or is already at that time; 503 when the arrangements cannot be checked.",
+    responses=error_responses(403, 404, 409, 422, 503),
+)
+def preview_reschedule(
+    body: ReschedulePreviewIn,
+    event_id: str = Path(..., description="Event id, e.g. `e3`."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    return service.preview_reschedule(event_id, caller["userId"], body.proposedStartAt, body.proposedEndAt, authorization)
+
+
+@router.post(
+    "/{event_id}/reschedule",
+    response_model=RescheduleOut,
+    summary="Reschedule an event",
+    description="SPM-87. The assigned coordinator only, for an approved, planning, or confirmed event, with a "
+    "reason. Booked venues that are free and suitable at the new occupied window are carried across and Venue "
+    "Staff are asked to re-confirm them (AC3); with `carryVenueBooking: false` every booked venue is released "
+    "instead. A booked venue that is not available is named in a 409 (`requiresConfirmation`, "
+    "`unavailableVenues`) until `confirmVenueUnavailable` is true, which releases it and keeps the others (AC4). "
+    "The old times are freed only now (AC5). Equipment reservations move and any that cannot be met are flagged "
+    "(AC6). A registration close after the new start is brought forward (AC8). A confirmed event reads as "
+    "reconsidering until the venue is re-confirmed, and a safety review or approval is withdrawn, as for any "
+    "significant change (SPM-71). The move is in the activity log (AC9); the organiser, Venue Staff, technical "
+    "support and registered attendees are notified (AC7), and the approaching-event reminder follows the new "
+    "date (AC10).",
+    responses=error_responses(403, 404, 409, 422, 503),
+)
+def reschedule_event(
+    body: RescheduleIn,
+    event_id: str = Path(..., description="Event id, e.g. `e3`."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+    db: Session = Depends(get_db),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    moved = service.reschedule(
+        event_id,
+        caller["userId"],
+        body.proposedStartAt,
+        body.proposedEndAt,
+        body.reason,
+        authorization,
+        carry_venue=body.carryVenueBooking,
+        confirm_venue_unavailable=body.confirmVenueUnavailable,
+    )
+    try:
+        EventReminders(db).run_for_event(event_id)
+    except Exception:  # Best effort: the reschedule is saved; the scheduled run catches up.
+        logger.warning("could not refresh the reminder for %s after its reschedule", event_id)
+    return moved
 
 
 @router.patch(

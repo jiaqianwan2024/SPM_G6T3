@@ -38,14 +38,32 @@ class EventReminders(BaseService):
         directory = users_with_roles(STAFF_ROLES) or {}
         reminded, skipped = [], []
         for event in rows:
-            inputs = arrangement_inputs(event.eventId)
-            if inputs is None:
-                skipped.append(ReminderSkippedOut(eventId=event.eventId, reason="Its arrangements could not be read"))
-                continue
-            pending = self.followup.not_ready(event.eventId, *inputs)
-            if pending:
-                reminded.append(self._remind(event, pending, directory))
+            outcome = self._check(event, directory)
+            if isinstance(outcome, ReminderSkippedOut):
+                skipped.append(outcome)
+            elif outcome is not None:
+                reminded.append(outcome)
         return ReminderRunOut(ranAt=now, leadDays=lead, checked=len(rows), reminded=reminded, skipped=skipped)
+
+    def run_for_event(self, event_id: str, now: datetime | None = None) -> ReminderEventOut | ReminderSkippedOut | None:
+        """SPM-87 AC10: after a reschedule the event's reminder follows its new date at once,
+        rather than at the next scheduled run. Only an event now inside the lead time is
+        checked. A reminder is one occurrence per start date, so the new date gets its own and
+        one already sent for it is not repeated."""
+        now = now or datetime.utcnow()
+        event = self.events.get_by_id(event_id)
+        if event is None or event.status in LOCKED_STATUSES or event.proposedStartAt is None:
+            return None
+        if not now <= event.proposedStartAt <= now + timedelta(days=settings.event_reminder_lead_days):
+            return None
+        return self._check(event, users_with_roles(STAFF_ROLES) or {})
+
+    def _check(self, event: Event, directory: dict[str, dict]) -> ReminderEventOut | ReminderSkippedOut | None:
+        inputs = arrangement_inputs(event.eventId)
+        if inputs is None:
+            return ReminderSkippedOut(eventId=event.eventId, reason="Its arrangements could not be read")
+        pending = self.followup.not_ready(event.eventId, *inputs)
+        return self._remind(event, pending, directory) if pending else None
 
     def _remind(self, event: Event, pending: list[dict], directory: dict[str, dict]) -> ReminderEventOut:
         context = {

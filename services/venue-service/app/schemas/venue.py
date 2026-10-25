@@ -358,6 +358,46 @@ class BookingReverificationRequest(BaseModel):
     )
 
 
+class BookingReschedulePreview(BaseModel):
+    """SPM-87 AC2: try an event's new date and time against each of its bookings. Nothing is saved."""
+
+    eventId: str = Field(min_length=1)
+    startsAt: datetime
+    endsAt: datetime
+
+
+class BookingReschedule(BookingReschedulePreview):
+    """SPM-87: move an event's bookings to its new date and time."""
+
+    reason: str = Field(default="", description="Why the event moved, kept on each booking's note.")
+    carry: bool = Field(
+        default=True,
+        description="Carry each approved booking that is free and suitable at the new time across (AC3). False "
+        "releases every approved booking so the coordinator can search again.",
+    )
+
+
+class RescheduledBookingOut(BaseModel):
+    """One of the event's bookings judged at the new time (SPM-87 AC2), and on apply what happened to it."""
+
+    bookingId: str
+    venueId: str
+    venueName: str
+    status: str = Field(description="The booking's status: `pending` or `approved` before, as it is after on apply.")
+    free: bool = Field(description="No confirmed booking, active hold, or unavailability overlaps the new occupied window.")
+    suitable: bool = Field(description="The venue passes every other suitability point at the new time.")
+    verdict: Literal["suitable", "suitable with warnings", "not suitable"]
+    reasons: list[str] = Field(default=[], description="Failures first, then warnings.")
+    outcome: Literal["carried", "released", "moved"] | None = Field(
+        default=None,
+        description="Apply only. `carried`: an approved booking moved to the new time and flagged for Venue Staff "
+        "to re-confirm. `released`: an approved booking cancelled because it is not free or suitable (or not "
+        "carried), freeing the old time. `moved`: a pending request now asks for the new time.",
+    )
+    startsAt: datetime
+    endsAt: datetime
+
+
 class VenueBookingOut(BaseModel):
     bookingId: str
     venueId: str

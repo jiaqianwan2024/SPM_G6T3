@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -59,6 +60,43 @@ class EquipmentActivityLogOut(BaseModel):
 
 class ReservationRelease(BaseModel):
     reason: str = ""
+
+
+class ReservationReschedulePreview(BaseModel):
+    """SPM-87 AC2: try an event's new date and time against its held reservations. Nothing is saved."""
+
+    eventId: str = Field(min_length=1)
+    startsAt: datetime
+    endsAt: datetime
+
+
+class ReservationReschedule(ReservationReschedulePreview):
+    """SPM-87 AC6: move an event's reservations to its new date and time."""
+
+    reason: str = Field(default="", description="Why the event moved, kept on any flagged reservation.")
+
+
+class RescheduledReservationOut(BaseModel):
+    """One held reservation judged at the new time, and on apply what happened to it."""
+
+    reservationId: str
+    equipmentId: str
+    equipmentName: str
+    quantity: int
+    availableQuantity: int = Field(
+        description="Units of this equipment free at the new time for this reservation, after other events' "
+        "reservations and this event's earlier reservations of the same equipment."
+    )
+    canMeet: bool
+    shortfall: int = 0
+    outcome: Literal["moved", "flagged"] | None = Field(
+        default=None,
+        description="Apply only. `moved`: held at the new time. `flagged`: moved too, but the quantity cannot be "
+        "met then, so it is flagged for technical support (AC6); nothing is dropped.",
+    )
+    needsReverification: bool = False
+    startsAt: datetime
+    endsAt: datetime
 
 
 class ReservationReverificationRequest(BaseModel):

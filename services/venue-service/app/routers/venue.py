@@ -15,7 +15,10 @@ from app.schemas.venue import (
     BookingRecheck,
     BookingRecheckOut,
     BookingReleaseRequest,
+    BookingReschedule,
+    BookingReschedulePreview,
     BookingReverificationRequest,
+    RescheduledBookingOut,
     HoldRequest,
     SuitabilityOut,
     SuitabilityRequest,
@@ -504,6 +507,45 @@ def release_event_bookings(
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"organiser", "coordinator"})
     service.check_release_allowed(caller, fetch_event_facts(body.eventId, authorization))
     return service.release_event_bookings(body.eventId)
+
+
+@router.post(
+    "/bookings/reschedule/preview",
+    response_model=list[RescheduledBookingOut],
+    summary="Check an event's bookings at a new date and time",
+    description="SPM-87 AC2. The event's assigned coordinator only. Each pending request and approved booking is "
+    "judged at the new occupied window with the same suitability check as a new request, the event's own bookings "
+    "left out: `free` when nothing else holds the venue then, `suitable` when it passes every other point. "
+    "Nothing is moved.",
+    responses=error_responses(403, 404, 422, 503),
+)
+def preview_reschedule(
+    body: BookingReschedulePreview,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    return service.preview_reschedule(body, caller, fetch_event_facts(body.eventId, authorization))
+
+
+@router.post(
+    "/bookings/reschedule",
+    response_model=list[RescheduledBookingOut],
+    summary="Move an event's bookings to its new date and time",
+    description="SPM-87. The event's assigned coordinator only; event-service calls it when a reschedule is "
+    "applied. An approved booking that is free and suitable at the new time is carried across and flagged for "
+    "Venue Staff to re-confirm, and they are notified. Any other approved booking, or every one when `carry` is "
+    "false, is released. A pending request takes the new time. The old times are freed only here. 409 when "
+    "another event took a venue at the new time meanwhile; nothing is moved then.",
+    responses=error_responses(403, 404, 409, 422, 503),
+)
+def reschedule_bookings(
+    body: BookingReschedule,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    return service.reschedule_bookings(body, caller, fetch_event_facts(body.eventId, authorization), authorization)
 
 
 @router.post(

@@ -7,7 +7,7 @@ import httpx
 from app.core.config import settings
 from app.core.sgt import to_sgt
 from shared.auth.service_key import service_key_headers
-from shared.exceptions.http import forbidden, service_unavailable, unauthorized
+from shared.exceptions.http import conflict, forbidden, service_unavailable, unauthorized
 
 logger = logging.getLogger("perf.clients")
 
@@ -133,6 +133,11 @@ ARRANGEMENTS_UNREACHABLE = (
     "Venue bookings and equipment reservations could not be checked right now, "
     "so the change was not saved. Please try again shortly."
 )
+# SPM-87: a reschedule is never applied with its arrangements unchecked.
+RESCHEDULE_UNCHECKED = (
+    "Venue bookings and equipment reservations could not be checked at the new time right now, so the event "
+    "was not rescheduled. Please try again shortly."
+)
 # Equipment reservation statuses that still hold stock for the event.
 HOLDING_RESERVATION_STATUSES = ("active", "reserved")
 
@@ -215,6 +220,70 @@ def flag_technical_arrangements(event_id: str, reason: str, authorization: str |
         json={"eventId": event_id, "reason": reason},
     )
     return [_equipment_arrangement(row) for row in reservations]
+
+
+def _period(event_id: str, starts_at: datetime, ends_at: datetime) -> dict:
+    return {"eventId": event_id, "startsAt": starts_at.isoformat(), "endsAt": ends_at.isoformat()}
+
+
+def preview_venue_reschedule(event_id: str, starts_at: datetime, ends_at: datetime, authorization: str | None) -> list[dict]:
+    """SPM-87 AC2: each of the event's bookings judged at the new time. Nothing moves."""
+    return _arrangement_rows(
+        "POST",
+        f"{settings.venue_service_url}/venues/bookings/reschedule/preview",
+        authorization,
+        RESCHEDULE_UNCHECKED,
+        json=_period(event_id, starts_at, ends_at),
+    )
+
+
+def preview_equipment_reschedule(
+    event_id: str, starts_at: datetime, ends_at: datetime, authorization: str | None
+) -> list[dict]:
+    """SPM-87 AC2: each held reservation judged at the new time. Nothing moves."""
+    return _arrangement_rows(
+        "POST",
+        f"{settings.equipment_service_url}/equipment/reservations/reschedule/preview",
+        authorization,
+        RESCHEDULE_UNCHECKED,
+        json=_period(event_id, starts_at, ends_at),
+    )
+
+
+def reschedule_venues(
+    event_id: str, starts_at: datetime, ends_at: datetime, reason: str, carry: bool, authorization: str | None
+) -> list[dict]:
+    """SPM-87 AC3 to AC5: carry the free and suitable bookings across, release the rest.
+    A 409 (a venue taken at the new time meanwhile) is passed on, so the coordinator sees it."""
+    headers = {"Authorization": authorization} if authorization else {}
+    url = f"{settings.venue_service_url}/venues/bookings/reschedule"
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.post(
+                url, headers=headers, json={**_period(event_id, starts_at, ends_at), "reason": reason, "carry": carry}
+            )
+    except httpx.HTTPError as exc:
+        logger.info("POST %s raised %r", url, exc)
+        raise service_unavailable(RESCHEDULE_UNCHECKED) from exc
+    if response.status_code == 409:
+        raise conflict(response.json().get("detail") or "A venue could not be moved to the new time.")
+    if response.status_code != 200:
+        logger.info("POST %s got status %s", url, response.status_code)
+        raise service_unavailable(RESCHEDULE_UNCHECKED)
+    return response.json()
+
+
+def reschedule_equipment(
+    event_id: str, starts_at: datetime, ends_at: datetime, reason: str, authorization: str | None
+) -> list[dict]:
+    """SPM-87 AC6: move the held reservations, flagging any that cannot be met."""
+    return _arrangement_rows(
+        "POST",
+        f"{settings.equipment_service_url}/equipment/reservations/reschedule",
+        authorization,
+        RESCHEDULE_UNCHECKED,
+        json={**_period(event_id, starts_at, ends_at), "reason": reason},
+    )
 
 
 def flag_arrangements(event_id: str, reason: str, authorization: str | None) -> list[dict]:

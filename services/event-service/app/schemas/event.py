@@ -342,11 +342,12 @@ class ClarificationOut(BaseModel):
 
 class EventActivityOut(BaseModel):
     """One activity-log entry: a status change, one field edited (SPM-71 AC5),
-    or a coordinator assignment (SPM-66 AC4)."""
+    a coordinator assignment (SPM-66 AC4), or a reschedule (SPM-87 AC9: the old
+    and new period in `oldValue` and `newValue`, the reason in `note`)."""
 
     historyId: str
     eventId: str
-    kind: Literal["status", "edit", "assignment"] = "status"
+    kind: Literal["status", "edit", "assignment", "reschedule"] = "status"
     fromStatus: str | None = None
     toStatus: str | None = None
     field: str | None = Field(
@@ -498,6 +499,120 @@ class EventUpdateOut(EventOut):
     flaggedArrangements: list[AffectedArrangement] = Field(
         default=[], description="Venue bookings and equipment reservations now marked for re-verification."
     )
+
+
+class ReschedulePreviewIn(BaseModel):
+    """SPM-87 AC2: the new date, start time, and end time to try. Sent in UTC."""
+
+    proposedStartAt: datetime
+    proposedEndAt: datetime
+
+    @field_validator("proposedStartAt", "proposedEndAt")
+    @classmethod
+    def as_naive_utc(cls, value: datetime) -> datetime:
+        return _naive_utc(value)
+
+
+class RescheduleIn(ReschedulePreviewIn):
+    """SPM-87 AC1: move the event, with a reason."""
+
+    reason: str = Field(min_length=1, max_length=2000, description="Why the event is moving. Required.")
+    carryVenueBooking: bool = Field(
+        default=True,
+        description="AC3: carry each booked venue that is free and suitable at the new time across. False releases "
+        "every booked venue, so the coordinator searches again.",
+    )
+    confirmVenueUnavailable: bool = Field(
+        default=False,
+        description="AC4: a booked venue is not free or not suitable at the new time. Without this the reschedule "
+        "is refused with a 409 naming it; with it, that booking is released and the others stay.",
+    )
+
+    @field_validator("reason")
+    @classmethod
+    def not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Give a reason for the reschedule")
+        return value.strip()
+
+
+class RescheduleVenueOut(BaseModel):
+    """One of the event's venue bookings at the new time (SPM-87 AC2 to AC4)."""
+
+    bookingId: str
+    venueId: str
+    venueName: str
+    status: str = Field(description="`pending` or `approved`; on apply, the status after (`cancelled` when released).")
+    free: bool
+    suitable: bool
+    verdict: str
+    reasons: list[str] = []
+    outcome: Literal["carried", "released", "moved"] | None = Field(
+        default=None, description="Apply only: carried across, released, or (a pending request) moved."
+    )
+
+
+class RescheduleEquipmentOut(BaseModel):
+    """One held equipment reservation at the new time (SPM-87 AC2, AC6)."""
+
+    reservationId: str
+    equipmentId: str
+    equipmentName: str
+    quantity: int
+    availableQuantity: int
+    canMeet: bool
+    shortfall: int = 0
+    outcome: Literal["moved", "flagged"] | None = Field(
+        default=None, description="Apply only: held at the new time, or moved and flagged because it cannot be met."
+    )
+
+
+class ReschedulePreviewOut(BaseModel):
+    """SPM-87 AC2: what the reschedule would do, before anything is applied (AC5)."""
+
+    eventId: str
+    currentStartAt: datetime | None
+    currentEndAt: datetime | None
+    proposedStartAt: datetime
+    proposedEndAt: datetime
+    venues: list[RescheduleVenueOut]
+    venueFree: bool | None = Field(
+        description="Every booked (approved) venue is free at the new occupied window; null when nothing is booked."
+    )
+    venueSuitable: bool | None = Field(
+        description="Every booked venue passes the other suitability points at the new time; null when nothing is booked."
+    )
+    unavailableVenues: list[str] = Field(
+        default=[], description="AC4: booked venues that are not free or not suitable, released if the reschedule goes ahead."
+    )
+    equipment: list[RescheduleEquipmentOut]
+    equipmentAvailable: bool = Field(description="Every held reservation can be met at the new time.")
+    registrationClosesAt: datetime | None = Field(
+        default=None, description="AC8: where registration would close; the new start when it closed later."
+    )
+    registrationCloseAdjusted: bool = False
+    messages: list[str] = Field(default=[], description="Plain sentences for the coordinator, one per point.")
+
+
+class RescheduleOut(EventOut):
+    """SPM-87: the rescheduled event and what happened to each arrangement."""
+
+    previousStartAt: datetime | None
+    previousEndAt: datetime | None
+    rescheduleReason: str
+    venues: list[RescheduleVenueOut] = []
+    venueCarried: bool = Field(default=False, description="AC3: at least one booking was carried across.")
+    releasedVenues: list[str] = Field(default=[], description="AC4: venues released; search for another.")
+    equipment: list[RescheduleEquipmentOut] = []
+    equipmentChecked: bool = Field(
+        default=True,
+        description="False when equipment-service could not be reached; the reservations were then not moved and "
+        "technical support must re-check them.",
+    )
+    registrationCloseAdjusted: bool = Field(default=False, description="AC8: registration now closes at the new start.")
+    previousRegistrationClosesAt: datetime | None = None
+    notifiedAttendees: int = 0
+    messages: list[str] = Field(default=[], description="Plain sentences telling the coordinator what changed.")
 
 
 class ReverificationSettleOut(BaseModel):

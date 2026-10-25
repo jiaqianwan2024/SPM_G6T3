@@ -17,10 +17,13 @@ from app.models.venue_unavailability import VenueUnavailability
 from app.schemas.venue import (
     BookingClashOut,
     BookingRecheckOut,
+    BookingReschedule,
+    BookingReschedulePreview,
     ClashingBooking,
     EventFacts,
     HoldOut,
     ReplacementRequest,
+    RescheduledBookingOut,
     SuitabilityOut,
     SuitabilityRequest,
     UnavailabilityCreate,
@@ -44,6 +47,8 @@ from shared.services.base import BaseService
 PLANNING_STATUSES = ("approved", "planning", "reconsidering")
 # MySQL's error number for SIGNAL, which the SPM-64 trigger raises on an overlapping approval.
 SIGNALLED_ERROR = 1644
+# SPM-87: the suitability points that mean the venue is taken at a time, rather than unsuited to the event.
+TAKEN_CHECKS = frozenset({"clash", "hold", "unavailable"})
 APPROVED_ELSEWHERE = (
     "Another request for this venue at an overlapping time, including setup and turnaround, "
     "was approved first, so this request cannot be approved."
@@ -998,6 +1003,128 @@ class VenueService(BaseService):
         if authorization:
             settle_reverification(row.eventId, authorization)
         return _booking_to_out(row)
+
+    @staticmethod
+    def _require_rescheduler(caller: dict, event: EventFacts) -> None:
+        if not event.coordinatorId or caller.get("userId") != event.coordinatorId:
+            raise forbidden("Only the coordinator assigned to this event can reschedule its venue bookings.")
+
+    @staticmethod
+    def _new_period(data: BookingReschedulePreview) -> tuple[datetime, datetime]:
+        start, end = suitability._utc(data.startsAt), suitability._utc(data.endsAt)
+        if end <= start:
+            raise HTTPException(status_code=422, detail="The end time must be after the start time.")
+        return start, end
+
+    def _judged_at(self, row: VenueBooking, event: EventFacts, start: datetime, end: datetime) -> RescheduledBookingOut:
+        """SPM-87 AC2: the same suitability check as a new request, at the new occupied window,
+        with the event's own bookings left out. A clash, hold, or unavailability means not free."""
+        checked = self.check_suitability(
+            SuitabilityRequest(eventId=row.eventId, venueId=row.venueId, startsAt=start, endsAt=end), event
+        )
+        failures = [reason for reason in checked.reasons if reason.severity == "failure"]
+        return RescheduledBookingOut(
+            bookingId=row.bookingId,
+            venueId=row.venueId,
+            venueName=self._venue_name(row.venueId),
+            status=row.status,
+            free=not any(reason.check in TAKEN_CHECKS for reason in failures),
+            suitable=not any(reason.check not in TAKEN_CHECKS for reason in failures),
+            verdict=checked.verdict,
+            reasons=[reason.message for reason in checked.reasons],
+            startsAt=row.startsAt,
+            endsAt=row.endsAt,
+        )
+
+    def preview_reschedule(
+        self, data: BookingReschedulePreview, caller: dict, event: EventFacts
+    ) -> list[RescheduledBookingOut]:
+        """SPM-87 AC2: each pending request and approved booking judged at the new time. Nothing moves (AC5)."""
+        self._require_rescheduler(caller, event)
+        start, end = self._new_period(data)
+        return [self._judged_at(row, event, start, end) for row in self.booking_dao.list_open_for_event(data.eventId)]
+
+    def reschedule_bookings(
+        self, data: BookingReschedule, caller: dict, event: EventFacts, authorization: str | None = None
+    ) -> list[RescheduledBookingOut]:
+        """SPM-87: the event has moved. An approved booking that is free and suitable at the new
+        occupied window moves with it and is flagged for Venue Staff to re-confirm (AC3); any other
+        approved booking is released so the coordinator can search again, while the free ones stay
+        (AC4). A pending request now asks for the new time; it holds nothing, and Venue Staff decide
+        on it as before. Each moved row gives up its old window only here, on apply (AC5)."""
+        self._require_rescheduler(caller, event)
+        start, end = self._new_period(data)
+        reason = data.reason.strip()
+        if reason and reason[-1] not in ".!?":
+            reason += "."
+        results, carried = [], []
+        for row in self.booking_dao.list_open_for_event(data.eventId):
+            out = self._judged_at(row, event, start, end)
+            venue = self._require_venue(row.venueId)
+            if row.status == "pending":
+                self._move_booking(row, venue, start, end)
+                # SPM-116: a hold may not outlast the event's start, so an earlier start releases it.
+                if row.holdExpiresAt and row.holdExpiresAt > start:
+                    _end_hold(row, "released")
+                out.outcome = "moved"
+            elif self._can_carry(data, out, venue, row.eventId, start, end):
+                self._move_booking(row, venue, start, end)
+                row.needsReverification = True
+                row.reverificationNote = " ".join(
+                    part for part in ("Event rescheduled.", reason, "Re-confirm the booking at the new time.") if part
+                )
+                out.outcome = "carried"
+                carried.append(out.venueName)
+            else:
+                why = " ".join(out.reasons) if not (out.free and out.suitable) else "It was not carried across."
+                row.status = "cancelled"
+                row.needsReverification = False
+                row.reverificationNote = f"Released when the event was rescheduled. {why}"
+                out.outcome = "released"
+            out.status, out.startsAt, out.endsAt = row.status, row.startsAt, row.endsAt
+            results.append(out)
+        try:
+            self.db.commit()
+        except DBAPIError as exc:
+            self.db.rollback()
+            if getattr(exc.orig, "args", (None,))[0] == SIGNALLED_ERROR:
+                raise conflict(
+                    "A venue was booked by another event at the new time while this was being rescheduled. "
+                    "Nothing was moved. Check the new time again."
+                ) from exc
+            raise
+        if authorization and carried:
+            notify_role(
+                "venue",
+                data.eventId,
+                "Re-confirm a rescheduled booking",
+                f"{event.eventName or data.eventId} has moved to {suitability._span(start, end)}. The booking at "
+                f"{', '.join(carried)} was carried across to the new time. Re-confirm it.",
+                authorization,
+                "venue.reverification",
+            )
+        return results
+
+    def _can_carry(
+        self, data: BookingReschedule, out: RescheduledBookingOut, venue: VenueInfo, event_id: str, start, end
+    ) -> bool:
+        """AC3: carried only when asked and the venue is free and suitable. The nearby bookings are
+        read again with a lock, as approval does, so a booking approved meanwhile is not overlapped;
+        the database trigger is the backstop."""
+        if not (data.carry and out.free and out.suitable):
+            return False
+        if self.commitments(venue, start, end, exclude_event_id=event_id, lock=True).conflicts:
+            out.free = False
+            out.reasons = [APPROVED_ELSEWHERE, *out.reasons]
+            return False
+        return True
+
+    @staticmethod
+    def _move_booking(row: VenueBooking, venue: VenueInfo, start: datetime, end: datetime) -> None:
+        row.startsAt, row.endsAt = start, end
+        row.setupStartsAt, row.teardownEndsAt = occupancy.occupied_window(
+            start, end, venue.setupMinutes, venue.turnaroundMinutes
+        )
 
     def withdraw_booking(self, booking_id: str, caller: dict, event_coordinator_id: str | None) -> VenueBookingOut:
         """SPM-63 AC8. A withdrawn request no longer counts anywhere: the
