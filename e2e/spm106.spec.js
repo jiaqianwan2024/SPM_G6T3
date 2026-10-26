@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login } from './support/auth.js'
+import { login, logout } from './support/auth.js'
 import { account } from './support/test-data.js'
 import {
   assignCoordinator,
@@ -86,7 +86,7 @@ test.describe('SPM-106 Request a change to a submitted event', () => {
     // A signed-in user is sent away from /login, so sign the coordinator out
     // first (Log out is on the dashboard, not the event page).
     await page.goto('/app')
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await logout(page)
     await login(page, account('EO-01'))
     await page.goto(`/app/events/${event.eventId}`)
     await expect(page.getByTestId('pending-change-request')).toContainText(/Banquet|pending/i)

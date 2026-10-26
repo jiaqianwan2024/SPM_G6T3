@@ -125,7 +125,7 @@ onMounted(async () => {
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 .page-head { margin-bottom: 18px; }
@@ -153,7 +153,7 @@ onMounted(async () => {
 .panel {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
 }
 .facts {

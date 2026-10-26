@@ -82,7 +82,7 @@ onMounted(load)
 .coordinator {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 18px 20px;
 }
 .coordinator-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -100,7 +100,7 @@ onMounted(load)
   text-align: left;
   background: rgba(255, 255, 255, .02);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 10px 12px;
   color: var(--text);
   font: inherit;
@@ -115,7 +115,7 @@ onMounted(load)
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 </style>

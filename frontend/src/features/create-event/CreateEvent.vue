@@ -536,14 +536,14 @@ onUnmounted(() => {
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 26px 28px;
 }
 
 .form-intro { font-size: 13px; line-height: 1.7; color: var(--muted); margin: 0 0 18px; }
 .checks {
   border: 1px solid var(--hairline);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 12px 14px 8px;
   margin: 0 0 16px;
   display: flex;
@@ -576,7 +576,7 @@ onUnmounted(() => {
   color: var(--body);
   background: rgba(255, 196, 87, .08);
   border: 1px solid rgba(255, 196, 87, .3);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 0 0 16px;
 }
@@ -587,7 +587,7 @@ onUnmounted(() => {
   color: var(--halo);
   background: rgba(124, 77, 255, .12);
   border: 1px dashed rgba(167, 139, 250, .35);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 8px 12px;
   margin: 0 0 18px;
 }
@@ -608,13 +608,13 @@ textarea {
   width: 100%;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 0 12px;
   height: 42px;
   margin-bottom: 16px;
   font-size: 14px;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
   transition: border-color .35s var(--ease-out), box-shadow .35s var(--ease-out);
 }
 textarea { height: auto; padding: 11px 12px; resize: vertical; line-height: 1.6; }
@@ -635,7 +635,7 @@ select option { background: #1A1030; color: #F3EEFF; }
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 4px 0 16px;
 }
@@ -644,7 +644,7 @@ select option { background: #1A1030; color: #F3EEFF; }
   font-size: 13px;
   background: rgba(124, 77, 255, .1);
   border: 1px solid rgba(167, 139, 250, .3);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 4px 0 16px;
 }

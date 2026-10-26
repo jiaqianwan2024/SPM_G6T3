@@ -509,7 +509,7 @@ The current application rejects a duplicate email among rows whose status is `re
 
 ## 6. notification-service (`notification`)
 
-The schema contains persisted notification records, and seed data inserts one example. `POST /notifications` is an email stub accepting `to`, `subject`, and `body`; it prints the message and returns `queued`. `POST /notifications/records` stores a row for the signed-in user, or for `userId` when the caller is staff (coordinator, venue, techsupport, safety); anyone else naming another user gets 403. `GET /notifications` returns only the caller's rows. Registration withdrawal writes one of these records, and so does a change to an event's registration settings (SPM-90): the organiser gets `event.registration_settings`, and registered attendees get `registration.closed` when registration is turned off. Mark-read is not implemented.
+The schema contains persisted notification records, and seed data inserts one example. `POST /notifications` is an email stub accepting `to`, `subject`, and `body`; it prints the message and returns `queued`. `POST /notifications/records` stores a row for the signed-in user, or for `userId` when the caller is staff (coordinator, venue, techsupport, safety); anyone else naming another user gets 403. `GET /notifications` returns only the caller's rows. Registration withdrawal writes one of these records, and so does a change to an event's registration settings (SPM-90): the organiser gets `event.registration_settings`, and registered attendees get `registration.closed` when registration is turned off. Mark-read is not implemented. `POST /notifications/clear-all` and `POST /notifications/{id}/clear` hide the caller's notifications from the bell (the `cleared_from_bell` column) and mark them read, without deleting them; `GET /notifications?bell=true` leaves cleared ones out.
 
 **Published triggers (SPM-93).** Event-service publishes these triggers through `POST /notifications/publish`, authenticated with the `X-Service-Key` header (the `INTERNAL_SERVICE_KEY` setting, the same value on every service) rather than a user token. The caller names the trigger, the event, one `occurrenceId`, and the recipients (`userId` and `role`) it has already worked out. Notification-service writes the title, body, and link from its trigger registry (`app/services/triggers.py`), so callers never supply the message. The person who performed the action (`actorId`), attendees on a trigger that is not attendee-visible, repeated recipients, and recipients already notified for that `occurrenceId` are skipped and counted in the response. A recipient whose role the trigger is not meant for is a 422 and nothing is saved. Recipients are the event's organiser and coordinator, or everyone in the user directory with a role (venue, techsupport, safety); nothing ties a venue or technical staff member to one event yet.
 
@@ -807,6 +807,7 @@ erDiagram
     string resource_type
     string resource_id
     string occurrence_id
+    boolean cleared_from_bell
   }
 
   organisations ||--o{ users : "has organisers"

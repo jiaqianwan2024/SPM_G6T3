@@ -366,7 +366,7 @@ onMounted(load)
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
   margin-top: 18px;
 }
@@ -395,24 +395,24 @@ textarea {
   box-sizing: border-box;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 0 12px;
   height: 42px;
   margin-bottom: 12px;
   font-size: 14px;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
 }
 textarea { height: auto; padding: 10px 12px; resize: vertical; line-height: 1.5; }
 input:focus, textarea:focus { outline: none; border-color: rgba(167, 139, 250, .6); box-shadow: 0 0 0 3px rgba(124, 77, 255, .16); }
 
-.raise-form { border: 1px solid var(--hairline); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+.raise-form { border: 1px solid var(--hairline); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
 .fields { border: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 12px; }
 .fields legend { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; padding: 0; }
 .pick { display: flex; align-items: center; gap: 8px; font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--body); margin: 0; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
-.request { border: 1px solid var(--hairline); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+.request { border: 1px solid var(--hairline); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; }
 .request-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .when { font-size: 12px; color: var(--muted); margin-left: auto; }
 .state { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; border-radius: 999px; padding: 2px 9px; }
@@ -432,7 +432,7 @@ input:focus, textarea:focus { outline: none; border-color: rgba(167, 139, 250, .
   color: #FFD9A8;
   background: rgba(255, 170, 80, .08);
   border: 1px solid rgba(255, 196, 120, .3);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 10px 14px;
   margin-bottom: 12px;
 }
@@ -447,7 +447,7 @@ input:focus, textarea:focus { outline: none; border-color: rgba(167, 139, 250, .
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 8px 0 0;
 }

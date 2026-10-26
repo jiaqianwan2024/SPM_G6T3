@@ -168,7 +168,7 @@ onMounted(() => {
 .queue-toolbar input {
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -197,7 +197,7 @@ onMounted(() => {
 .queue-row {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 16px 20px;
   cursor: pointer;
 }

@@ -489,7 +489,7 @@ onUnmounted(() => clearInterval(ticker))
   width: 100%;
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -538,7 +538,7 @@ onUnmounted(() => clearInterval(ticker))
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 18px 20px;
   cursor: pointer;
   transition: border-color .4s var(--ease-out), background .4s var(--ease-out);
@@ -547,7 +547,7 @@ onUnmounted(() => clearInterval(ticker))
 .event-card:hover { border-color: rgba(167, 139, 250, .3); background: var(--glass-strong); }
 .event-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .event-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.event-name { font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: var(--text); font-size: 16px; line-height: 1.35; }
+.event-name { font-family: var(--font); font-weight: 500; color: var(--text); font-size: 16px; line-height: 1.35; }
 .event-org { font-size: 13px; color: var(--body); }
 .event-when,
 .event-wait { font-size: 13px; color: var(--muted); line-height: 1.45; }
@@ -594,7 +594,7 @@ onUnmounted(() => clearInterval(ticker))
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 
@@ -609,7 +609,7 @@ onUnmounted(() => clearInterval(ticker))
   background: linear-gradient(160deg, #1A0C3B, #0D0524);
   border: 1px solid rgba(167, 139, 250, .28);
   box-shadow: 0 30px 90px rgba(4, 1, 12, .7), 0 0 60px rgba(124, 77, 255, .18);
-  border-radius: 18px;
+  border-radius: var(--radius);
   padding: 30px;
   width: 360px;
 }
@@ -623,11 +623,11 @@ onUnmounted(() => clearInterval(ticker))
   width: 100%;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 12px;
   font-size: 14px;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
   resize: vertical;
   line-height: 1.6;
 }

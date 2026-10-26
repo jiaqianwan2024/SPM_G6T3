@@ -363,7 +363,7 @@ function formatWhen(value) {
   width: 100%;
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -431,7 +431,7 @@ function formatWhen(value) {
   padding: 22px;
   background: #140828;
   border: 1px solid rgba(167, 139, 250, .35);
-  border-radius: 16px;
+  border-radius: var(--radius);
   box-shadow: 0 24px 70px rgba(4, 1, 12, .75);
 }
 .mark-form h3 { margin: 0; color: var(--text); font-size: 16px; }
@@ -463,7 +463,7 @@ function formatWhen(value) {
   padding: 18px 20px;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
 }
 .card header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .card header strong { color: var(--text); font-size: 16px; }

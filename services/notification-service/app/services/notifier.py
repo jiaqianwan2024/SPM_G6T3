@@ -63,8 +63,12 @@ def list_for_user(
     unread_only: bool = False,
     page: int = 1,
     page_size: int = DEFAULT_PAGE_SIZE,
+    bell: bool = False,
 ) -> list[Notification]:
     query = db.query(Notification).filter(Notification.userId == user_id)
+    if bell:
+        # The bell panel leaves out what the user cleared; the full history does not.
+        query = query.filter(Notification.clearedFromBell.is_(False))
     if unread_only:
         query = query.filter(Notification.isRead.is_(False))
     page = max(page, 1)
@@ -108,6 +112,31 @@ def mark_all_read(db: Session, user_id: str) -> int:
         .update({"isRead": True}, synchronize_session=False)
     )
     return updated
+
+
+def clear_all_from_bell(db: Session, user_id: str) -> int:
+    """Hides every notification the bell still shows, and marks them read (clearing means seen).
+    Nothing is deleted: the full history keeps them. Returns how many rows were cleared."""
+    return (
+        db.query(Notification)
+        .filter(Notification.userId == user_id, Notification.clearedFromBell.is_(False))
+        .update({"clearedFromBell": True, "isRead": True}, synchronize_session=False)
+    )
+
+
+def clear_one_from_bell(db: Session, user_id: str, notification_id: str) -> Notification | None:
+    """Hides one of the caller's own notifications from the bell and marks it read. None if it is not
+    theirs or does not exist (the router 404s either way)."""
+    row = (
+        db.query(Notification)
+        .filter(Notification.notificationId == notification_id, Notification.userId == user_id)
+        .first()
+    )
+    if row is None:
+        return None
+    row.clearedFromBell = True
+    row.isRead = True
+    return row
 
 
 class PublishError(ValueError):

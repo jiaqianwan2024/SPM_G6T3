@@ -169,7 +169,7 @@ function reset() {
 
 <style scoped>
 .venue-search {
-  margin: 0 0 22px; padding: 18px; border-radius: 12px;
+  margin: 0 0 22px; padding: 18px; border-radius: var(--radius);
   background: var(--glass); border: 1px solid var(--hairline);
 }
 .venue-search h3 { margin: 0 0 4px; font-size: 15px; color: var(--text); }
@@ -179,7 +179,7 @@ function reset() {
 /* Same look as the notes box on this page. */
 .fields input, .fields select {
   font: inherit; font-size: 13px; color: var(--text); color-scheme: dark;
-  background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: 9px; padding: 8px 10px;
+  background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: var(--radius); padding: 8px 10px;
 }
 .fields select option { background: #1A1030; color: #F3EEFF; }
 .check input { accent-color: var(--iris); }
@@ -190,7 +190,7 @@ legend { font-size: 13px; color: var(--text); margin-bottom: 6px; }
 .form-error {
   margin: 12px 0 0; color: #FF8A76; font-size: 13px;
   background: rgba(255, 138, 118, .08); border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px; padding: 11px 14px;
+  border-radius: var(--radius); padding: 11px 14px;
 }
 .venue-search > .hint:last-child { margin: 12px 0 0; }
 </style>

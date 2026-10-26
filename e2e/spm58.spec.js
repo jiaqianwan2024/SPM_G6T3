@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login } from './support/auth.js'
+import { login, logout } from './support/auth.js'
 import { account } from './support/test-data.js'
 
 test.describe('SPM-58 Technical Support Staff dashboard', () => {
@@ -69,7 +69,7 @@ test.describe('SPM-58 Technical Support Staff dashboard', () => {
   test('TC-SPM58-AC06 lists obey the same access rules as the work screens', async ({ page }) => {
     await login(page, account('TS-01'))
     await expect(page.getByTestId('tech-pending-eq-pending')).toBeVisible()
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await logout(page)
     await login(page, account('EO-01'))
     await expect(page.getByTestId('tech-pending-eq-pending')).toHaveCount(0)
     await expect(page.getByTestId('tech-section-pending')).toHaveCount(0)

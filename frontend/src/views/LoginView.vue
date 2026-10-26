@@ -172,7 +172,7 @@ async function submit() {
 .login-form {
   width: 100%;
   max-width: 380px;
-  border-radius: 20px;
+  border-radius: var(--radius);
   padding: 36px 34px 32px;
   box-shadow: 0 30px 90px rgba(4, 1, 12, .6);
   animation: fade-in 1s var(--ease-out) .12s both;
@@ -191,13 +191,13 @@ async function submit() {
   width: 100%;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 10px;
+  border-radius: var(--radius);
   height: 46px;
   padding: 0 14px;
   margin-bottom: 16px;
   font-size: 14px;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
   transition: border-color .35s var(--ease-out), box-shadow .35s var(--ease-out),
               background .35s var(--ease-out);
 }
@@ -227,13 +227,13 @@ async function submit() {
   border: none;
   border-radius: 8px;
   padding: 0;
-  color: #1A1A1A;
+  color: var(--icon);
   cursor: pointer;
   transition: background .2s var(--ease-out);
 }
 .password-toggle:hover,
 .password-toggle:focus-visible {
-  background: rgba(0, 0, 0, .08);
+  background: rgba(255, 255, 255, .1);
 }
 .password-toggle svg { width: 17px; height: 17px; }
 
@@ -246,7 +246,7 @@ async function submit() {
   margin: 4px 0 0;
   padding: 10px 12px;
   border: 1px solid rgba(255, 138, 118, .3);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: rgba(255, 138, 118, .07);
 }
 

@@ -224,7 +224,7 @@ FIRST principles and the Week 9 advice on flaky tests, through `e2e/support/venu
 | SPM-105 | TC-SPM105-AC01–AC06 | `e2e/spm105.spec.js` |
 | SPM-6 | TC-SPM06-AC01–AC04 | `e2e/spm06.spec.js` |
 | SPM-93 | TC-SPM93-AC01–AC11 | `e2e/spm93.spec.js` |
-| SPM-94 | TC-SPM94-AC01–AC08 | `e2e/spm94.spec.js` |
+| SPM-94 | TC-SPM94-AC01–AC12 | `e2e/spm94.spec.js` |
 | SPM-95 | TC-SPM95-AC01–AC08 | `e2e/spm95.spec.js` |
 | SPM-51 | TC-SPM51-AC01–AC04 | `e2e/spm51.spec.js` |
 

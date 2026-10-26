@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login } from './support/auth.js'
+import { login, logout } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { THEATRE_EVENT, approvedEvent } from './support/venue-request.js'
 import { assignCoordinator } from './support/event.js'
@@ -93,7 +93,7 @@ test.describe('SPM-46 Assigned Coordinator Event Permissions (UI)', () => {
     await expect(controls.requestEquipment).toHaveCount(0)
 
     await page.goto('/app')
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await logout(page)
     await openEvent(page, 'EC-02', event)
     await expect(controls.edit).toBeVisible()
     await expect(controls.chooseVenue).toBeVisible()

@@ -478,6 +478,10 @@
 | SPM-94 | Own notifications only, server enforced | TC-SPM94-AC06 | `e2e/spm94.spec.js` | Automated |
 | SPM-94 | Empty inbox state | TC-SPM94-AC07 | `e2e/spm94.spec.js` | Automated |
 | SPM-94 | List loads a page at a time | TC-SPM94-AC08 | `e2e/spm94.spec.js` | Automated |
+| SPM-94 | Clear all empties the bell and badge, keeps history | TC-SPM94-AC09 | `e2e/spm94.spec.js` | Automated |
+| SPM-94 | Remove one hides only that notification from the bell | TC-SPM94-AC10 | `e2e/spm94.spec.js` | Automated |
+| SPM-94 | Clearing is own-only, server enforced | TC-SPM94-AC11 | `e2e/spm94.spec.js` | Automated |
+| SPM-94 | Mark all read disabled when nothing is unread | TC-SPM94-AC12 | `e2e/spm94.spec.js` | Automated |
 | SPM-95 | Daily check selects in-lead-time events with outstanding work | TC-SPM95-AC01 | `e2e/spm95.spec.js` | Automated |
 | SPM-95 | Assigned coordinator notified with outstanding items | TC-SPM95-AC02 | `e2e/spm95.spec.js` | Automated |
 | SPM-95 | Venue and equipment outstanding notify those staff | TC-SPM95-AC03 | `e2e/spm95.spec.js` | Automated |

@@ -120,7 +120,7 @@ function submit(acknowledge = false) {
 .item-detail {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 26px;
 }
 .detail-header { margin-bottom: 16px; }
@@ -131,7 +131,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color:
 input, textarea, select {
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -144,7 +144,7 @@ select option {
 .warning {
   margin: 16px 0 0;
   padding: 12px;
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .3);
   color: var(--text);

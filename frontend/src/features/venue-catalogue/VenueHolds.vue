@@ -158,7 +158,7 @@ onMounted(load)
 .hint { margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: var(--muted); }
 ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
 li {
-  padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.6; color: var(--body);
+  padding: 12px 14px; border-radius: var(--radius); font-size: 13px; line-height: 1.6; color: var(--body);
   background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline);
 }
 .who strong { color: var(--text); font-weight: 500; }
@@ -166,7 +166,7 @@ li {
 .state label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 .state input {
   font: inherit; font-size: 13px; color: var(--text); color-scheme: dark;
-  background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: 9px; padding: 6px 8px;
+  background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: var(--radius); padding: 6px 8px;
 }
 .held { color: #FFC66D; }
 .expired { color: var(--muted); }

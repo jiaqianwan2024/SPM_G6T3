@@ -11,6 +11,25 @@ const LABELS = {
 
 export const eventStatusLabel = (status) => LABELS[status] || String(status || 'Unknown')
 
+// Colour tone for a status pill: success | warning | danger | info | neutral.
+const TONES = {
+  confirmed: 'success',
+  completed: 'success',
+  'safety approved': 'success',
+  'changes requested': 'warning',
+  reconsidering: 'warning',
+  'safety review': 'warning',
+  rejected: 'danger',
+  cancelled: 'danger',
+  'under review': 'info',
+  planning: 'info',
+  approved: 'info',
+  preparing: 'info',
+  prepared: 'info',
+}
+
+export const eventStatusTone = (status) => TONES[status] || 'neutral'
+
 // SPM-71 AC7: completed, cancelled and rejected events can't be edited. A draft
 // is the organiser's to edit, and a discarded draft is gone.
 export const LOCKED_EVENT_STATUSES = ['completed', 'cancelled', 'rejected', 'draft', 'discarded']

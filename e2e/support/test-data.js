@@ -44,10 +44,10 @@ export function account(id) {
 }
 
 export const expectedTabs = {
-  'EO-01': ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Profile'],
-  'EO-02': ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Profile'],
-  'EO-03': ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Profile'],
-  'EO-04': ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Profile'],
+  'EO-01': ['Dashboard', 'My Events', 'New Request', 'Drafts'],
+  'EO-02': ['Dashboard', 'My Events', 'New Request', 'Drafts'],
+  'EO-03': ['Dashboard', 'My Events', 'New Request', 'Drafts'],
+  'EO-04': ['Dashboard', 'My Events', 'New Request', 'Drafts'],
   'EC-01': [
     'Dashboard',
     'Assigned Events',
@@ -55,7 +55,6 @@ export const expectedTabs = {
     'Venue Catalogue',
     'Venue Requests',
     'Reports',
-    'Profile',
   ],
   'EC-02': [
     'Dashboard',
@@ -64,16 +63,14 @@ export const expectedTabs = {
     'Venue Catalogue',
     'Venue Requests',
     'Reports',
-    'Profile',
   ],
-  'ECL-01': ['Dashboard', 'Review Queue', 'Assignments', 'Profile'],
+  'ECL-01': ['Dashboard', 'Review Queue', 'Assignments'],
   'VS-01': [
     'Dashboard',
     'Venue Calendar',
     'Booking Requests',
     'Unavailability',
     'Venue Catalogue',
-    'Profile',
   ],
   'VS-02': [
     'Dashboard',
@@ -81,7 +78,6 @@ export const expectedTabs = {
     'Booking Requests',
     'Unavailability',
     'Venue Catalogue',
-    'Profile',
   ],
   'TS-01': [
     'Dashboard',
@@ -90,7 +86,6 @@ export const expectedTabs = {
     'Reservations',
     'My Assignments',
     'Maintenance Status',
-    'Profile',
   ],
   'TS-02': [
     'Dashboard',
@@ -99,9 +94,8 @@ export const expectedTabs = {
     'Reservations',
     'My Assignments',
     'Maintenance Status',
-    'Profile',
   ],
-  'SO-01': ['Dashboard', 'Safety Reviews', 'Profile'],
-  'ATT-01': ['Dashboard', 'Browse Events', 'My Registrations', 'Waiting List', 'Profile'],
-  'ATT-02': ['Dashboard', 'Browse Events', 'My Registrations', 'Waiting List', 'Profile'],
+  'SO-01': ['Dashboard', 'Safety Reviews'],
+  'ATT-01': ['Dashboard', 'Browse Events', 'My Registrations', 'Waiting List'],
+  'ATT-02': ['Dashboard', 'Browse Events', 'My Registrations', 'Waiting List'],
 }

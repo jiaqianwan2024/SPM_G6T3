@@ -255,7 +255,7 @@ onMounted(load)
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
   margin-top: 18px;
 }
@@ -285,13 +285,13 @@ textarea {
   box-sizing: border-box;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 0 12px;
   height: 42px;
   margin-bottom: 12px;
   font-size: 14px;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
 }
 textarea { height: auto; padding: 10px 12px; resize: vertical; line-height: 1.5; }
 select:focus, textarea:focus {
@@ -303,7 +303,7 @@ select option { background: #1A1030; color: #F3EEFF; }
 
 .raise-form {
   border: 1px solid var(--hairline);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 16px;
   margin-bottom: 16px;
 }
@@ -332,7 +332,7 @@ select option { background: #1A1030; color: #F3EEFF; }
 .entry {
   background: rgba(255, 255, 255, .03);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 10px 14px;
 }
 .entry.organiser { margin-left: 24px; }
@@ -347,7 +347,7 @@ select option { background: #1A1030; color: #F3EEFF; }
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 0 0 12px;
 }

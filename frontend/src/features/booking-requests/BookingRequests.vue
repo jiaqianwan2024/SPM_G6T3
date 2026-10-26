@@ -462,22 +462,22 @@ onMounted(() => {
 .venue-filter select {
   min-width: 220px; font: inherit; font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--text);
   color-scheme: dark; background: rgba(255, 255, 255, .04); border: 1px solid var(--hairline);
-  border-radius: 10px; padding: 8px 10px;
+  border-radius: var(--radius); padding: 8px 10px;
 }
 .hint, .empty-note { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.6; }
 .notice {
   margin: 0; font-size: 13px; color: #8EF0B5; background: rgba(142, 240, 181, .08);
-  border: 1px solid rgba(142, 240, 181, .25); border-radius: 9px; padding: 11px 14px;
+  border: 1px solid rgba(142, 240, 181, .25); border-radius: var(--radius); padding: 11px 14px;
 }
 
 .booking-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .booking-card {
   display: flex; flex-direction: column; gap: 8px; background: var(--glass); border: 1px solid var(--hairline);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-radius: 14px; padding: 18px 20px;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-radius: var(--radius); padding: 18px 20px;
 }
 .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .name-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
-.event-name { font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: var(--text); font-size: 16px; line-height: 1.35; }
+.event-name { font-family: var(--font); font-weight: 500; color: var(--text); font-size: 16px; line-height: 1.35; }
 .venue { font-size: 14px; color: var(--text); }
 .org { font-size: 13px; color: var(--body); }
 .tag {
@@ -502,27 +502,27 @@ dd { margin: 0; font-size: 13px; color: var(--body); line-height: 1.5; word-brea
 .actions { display: flex; gap: 10px; margin-top: auto; padding-top: 6px; }
 .actions input {
   flex: 1; min-width: 0; font: inherit; font-size: 13px; color: var(--text); color-scheme: dark;
-  background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: 9px; padding: 8px 10px;
+  background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: var(--radius); padding: 8px 10px;
 }
 .btn:disabled { opacity: .55; cursor: progress; }
 .link-btn {
   align-self: flex-start; padding: 0; border: 0; background: none; font: inherit; font-size: 13px;
   color: var(--halo); cursor: pointer; text-decoration: underline;
 }
-dl.detail { padding: 10px 12px; border-radius: 10px; background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); }
+dl.detail { padding: 10px 12px; border-radius: var(--radius); background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); }
 .rejected p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--body); }
 .reject-form { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
 .reject-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
 .reject-form textarea, .reject-form select {
   font: inherit; font-size: 13px; color: var(--text); color-scheme: dark; background: rgba(255, 255, 255, .03);
-  border: 1px solid var(--hairline); border-radius: 9px; padding: 8px 10px;
+  border: 1px solid var(--hairline); border-radius: var(--radius); padding: 8px 10px;
 }
 .reject-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .btn-danger { background: rgba(255, 138, 118, .16); color: #FFB4A6; border: 1px solid rgba(255, 138, 118, .45); }
 .row-error { margin: 0; font-size: 13px; color: #FF8A76; }
 .form-error {
   color: #FF8A76; font-size: 13px; background: rgba(255, 138, 118, .08);
-  border: 1px solid rgba(255, 138, 118, .25); border-radius: 9px; padding: 11px 14px;
+  border: 1px solid rgba(255, 138, 118, .25); border-radius: var(--radius); padding: 11px 14px;
 }
 
 @media (max-width: 900px) {

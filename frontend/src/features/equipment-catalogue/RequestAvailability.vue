@@ -223,7 +223,7 @@ onMounted(async () => {
 .event-card {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 18px 20px;
 }
 .event-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
@@ -243,7 +243,7 @@ th, td { text-align: left; padding: 8px 10px 8px 0; border-bottom: 1px solid var
 .unavailable-form input {
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;

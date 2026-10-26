@@ -54,6 +54,15 @@ export function formatSgt(value) {
   return `${formatSgtDate(date)}, ${formatSgtTime(date)} SGT`
 }
 
+// "19 Oct 2026, 10:00 AM": the Singapore time on a 12-hour clock, without the zone label.
+export function formatSgt12h(value) {
+  const date = parseServerTime(value)
+  if (!date) return ''
+  const p = sgtParts(date)
+  const hour12 = p.hours % 12 || 12
+  return `${formatSgtDate(date)}, ${hour12}:${pad(p.minutes)} ${p.hours < 12 ? 'AM' : 'PM'}`
+}
+
 // "19 Oct 2026, 10:00 to 12:00 SGT", or with both dates when it runs past midnight.
 export function formatSgtRange(start, end) {
   const from = parseServerTime(start)

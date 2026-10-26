@@ -60,6 +60,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `POST /events/{id}/change-requests/{crid}/withdraw` | the `organiser` who raised it |
 | `POST /events/{id}/change-requests/{crid}/accept` or `/decline` | `coordinator` assigned to the event |
 | `POST /notifications/records` with another user's `userId` | `coordinator`, `venue`, `techsupport` (anyone may name themselves) |
+| `POST /notifications/clear-all`, `POST /notifications/{id}/clear`; `GET /notifications?bell=true` | signed-in caller, their own notifications only; another user's id is 404 (SPM-94). Clearing hides from the bell and marks read; nothing is deleted |
 | `POST /notifications/publish` | another service, sending the `X-Service-Key` header (SPM-93). No user token is used; with no `INTERNAL_SERVICE_KEY` configured every call gets 403 |
 | `PATCH /events/{id}` | `coordinator` assigned to the event (SPM-71); not while it is completed, cancelled, rejected, a draft, or discarded |
 | `GET /events/{id}/internal-notes` | `coordinator` |
