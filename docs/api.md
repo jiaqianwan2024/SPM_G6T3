@@ -70,6 +70,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `GET /venues`, `GET /venues/{id}`, `GET /venues/{id}/activity-log` | `coordinator`, `venue`, `techsupport` |
 | `POST /venues`, `PATCH /venues/{id}`, `POST /venues/{id}/retire` | `venue` |
 | `POST /venues/{id}/unavailability` | `venue` (SPM-115). Saves a block and does not read or change the event. If the block overlaps an approved booking, `acknowledgeConflicts` must be true; that booking stays approved |
+| `GET /venues/{id}/calendar` | `coordinator`, `coordinatorlead`, `venue`, `techsupport`, `safety` (SPM-108). Every confirmed booking, pending request, active or expired hold, and unavailability period overlapping the optional `from`/`to` range, each with a `kind`. A booking's `startsAt`/`endsAt` is its occupied window; `eventStartsAt`/`eventEndsAt` are the advertised times. Rejected, withdrawn, and cancelled requests are left out. Includes the venue's opening hours (SGT). An empty range returns `entries: []` |
 | `GET /venues/search` | `coordinator`, `venue` (SPM-61); with `eventId`, each result also carries that event's suitability `verdict` (SPM-62 AC9) |
 | `POST /venues/suitability` | `coordinator`, `venue` |
 | `POST /venues/bookings` | `coordinator` assigned to the event (SPM-63) |

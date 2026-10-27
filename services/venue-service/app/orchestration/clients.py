@@ -1,6 +1,7 @@
 import logging
 
 import httpx
+from fastapi import HTTPException
 
 from app.core.config import settings
 from app.schemas.venue import EventFacts
@@ -25,6 +26,14 @@ def fetch_event_facts(event_id: str, authorization: str) -> EventFacts:
     if response.status_code != 200:
         raise service_unavailable(EVENT_UNREACHABLE)
     return EventFacts.model_validate(response.json())
+
+
+def find_event_facts(event_id: str, authorization: str) -> EventFacts | None:
+    """SPM-108: the calendar still shows a booking whose event cannot be read right now."""
+    try:
+        return fetch_event_facts(event_id, authorization)
+    except HTTPException:
+        return None
 
 
 logger = logging.getLogger("venue.notifications")

@@ -220,8 +220,7 @@ test.describe('SPM-63 Submit a venue booking request', () => {
     const loaded = page.waitForResponse(
       (response) =>
         response.request().method() === 'GET' &&
-        new URL(response.url()).pathname === '/venues/bookings' &&
-        new URL(response.url()).searchParams.get('venueId') === hall.venueId,
+        new URL(response.url()).pathname === `/venues/${hall.venueId}/calendar`,
     )
     await page.goto(calendar)
     await loaded

@@ -547,6 +547,41 @@ class BookingClashOut(BaseModel):
     overlapEndsAt: datetime = Field(description="When they stop overlapping (UTC).")
 
 
+class CalendarEntryOut(BaseModel):
+    """SPM-108: one entry on a venue's calendar."""
+
+    kind: Literal["confirmed", "pending", "hold", "expired-hold", "unavailable"] = Field(
+        description=(
+            "`confirmed` an approved booking; `pending` a request with no active or expired hold; `hold` a "
+            "request on an active tentative hold; `expired-hold` a still-pending request whose hold has lapsed; "
+            "`unavailable` an unavailability period."
+        )
+    )
+    id: str = Field(description="The booking id, or the unavailability id for `unavailable`.")
+    startsAt: datetime = Field(
+        description="A booking's occupied window starts at its setup (SPM-112); a block starts when it starts."
+    )
+    endsAt: datetime = Field(description="A booking's occupied window ends after its turnaround; a block's end.")
+    eventId: str | None = None
+    eventName: str | None = Field(default=None, description="From the request, else event-service, else the event id.")
+    clientOrganisation: str | None = None
+    eventStartsAt: datetime | None = Field(default=None, description="The event's advertised start.")
+    eventEndsAt: datetime | None = Field(default=None, description="The event's advertised end.")
+    booking: VenueBookingOut | None = None
+    unavailability: UnavailabilityOut | None = None
+
+
+class VenueCalendarOut(BaseModel):
+    """SPM-108: what holds a venue in a period, with its opening hours (Singapore time)."""
+
+    venueId: str
+    venueName: str
+    operatingHours: list[OperatingHours]
+    setupMinutes: int
+    turnaroundMinutes: int
+    entries: list[CalendarEntryOut] = Field(description="Earliest first. Empty when nothing holds the venue.")
+
+
 class SuitabilityReason(BaseModel):
     severity: Literal["failure", "warning"]
     check: str = Field(description="Which rule produced this point, e.g. `capacity` or `clash`.")

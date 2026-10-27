@@ -213,7 +213,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   approveVenueBooking,
@@ -236,7 +236,12 @@ const EMPTY = {
   rejected: 'No rejected requests.',
 }
 
-const status = ref(route.query.booking ? 'approved' : 'pending')
+// SPM-108: the venue calendar opens a held request with `status=pending`.
+const status = ref(
+  STATUSES.some((option) => option.value === route.query.status)
+    ? route.query.status
+    : route.query.booking ? 'approved' : 'pending'
+)
 const venueId = ref('')
 const venues = ref([])
 const bookings = ref([])
@@ -364,11 +369,23 @@ async function load() {
     if (mine !== latestLoad) return
     bookings.value = data
     loadError.value = ''
+    revealFocused()
   } catch {
     if (mine === latestLoad) loadError.value = 'Unable to load the booking requests. Please try again.'
   } finally {
     if (mine === latestLoad) loading.value = false
   }
+}
+
+// The request a link opened (`?booking=`) shows its full details, once.
+let focusPending = typeof route.query.booking === 'string'
+async function revealFocused() {
+  const id = route.query.booking
+  if (!focusPending || !bookings.value.some((booking) => booking.bookingId === id)) return
+  focusPending = false
+  expanded[id] = true
+  await nextTick()
+  document.querySelector(`[data-testid="booking-request-${id}"]`)?.scrollIntoView({ block: 'center' })
 }
 
 async function loadVenues() {

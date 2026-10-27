@@ -32,6 +32,7 @@ from app.schemas.venue import (
     VenueBookingRejection,
     VenueArrangementOut,
     VenueBookingOut,
+    VenueCalendarOut,
     VenueCreate,
     VenueOut,
     VenueSearchResult,
@@ -60,6 +61,8 @@ BOOKING_READER_ROLES = {"coordinator", "venue"}
 # SPM-61: coordinators shortlist venues for their events; Venue Staff can use the
 # same search to find an alternative to suggest when they reject a request (SPM-10).
 SEARCH_ROLES = {"coordinator", "venue"}
+# SPM-108 AC8: every internal role reads any venue's calendar; organisers and attendees are clients.
+CALENDAR_READER_ROLES = {"coordinator", "coordinatorlead", "venue", "techsupport", "safety"}
 
 
 def get_venue_service(db: Session = Depends(get_db)) -> VenueService:
@@ -335,6 +338,30 @@ def list_unavailability(
 ):
     resolve_caller(authorization, settings.user_service_url, allowed_roles=CATALOGUE_READER_ROLES)
     return service.list_unavailability(venue_id)
+
+
+@router.get(
+    "/{venue_id}/calendar",
+    response_model=VenueCalendarOut,
+    summary="A venue's calendar",
+    description=(
+        "SPM-108. Coordinators, the Coordinator Lead, Venue Staff, Technical Support and Safety Officers. "
+        "Every confirmed booking, pending request, active or expired tentative hold, and unavailability "
+        "period whose window overlaps the range, earliest first. A booking's window is its occupied window, "
+        "setup and turnaround included; `eventStartsAt` / `eventEndsAt` are the advertised times. Opening "
+        "hours are Singapore time. Leave out `from` and `to` for everything. An empty range returns no entries."
+    ),
+    responses=error_responses(403, 404, 503),
+)
+def venue_calendar(
+    venue_id: str = Path(..., description="Venue id, e.g. `v1`."),
+    starts_at: datetime | None = Query(None, alias="from", description="Range start (UTC unless an offset is given)."),
+    ends_at: datetime | None = Query(None, alias="to", description="Range end; must be after `from`."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    resolve_caller(authorization, settings.user_service_url, allowed_roles=CALENDAR_READER_ROLES)
+    return service.calendar(venue_id, starts_at, ends_at, authorization)
 
 
 @router.patch(
