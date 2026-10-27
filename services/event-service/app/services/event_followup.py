@@ -147,6 +147,10 @@ class EventFollowUp(BaseService):
             raise not_found("Event not found")
         return row
 
+    def event_record(self, event_id: str) -> Event:
+        """The event, or 404, so a route can check who may open it (SPM-47)."""
+        return self._event(event_id)
+
     def _derived(self, event: Event, authorization: str | None, now: datetime) -> list[ReadinessItemOut]:
         name, email, phone = _person(event.coordinatorId or "", authorization)
         if not name:

@@ -446,6 +446,24 @@ def _is_event_organiser(event: Event, caller: dict) -> bool:
     return caller.get("role") == "organiser" and (own or same_org)
 
 
+# SPM-47: an organiser opens only their own client organisation's events; staff open any.
+ORGANISATION_REFUSAL = "You can only open your own organisation's events."
+
+
+def require_organisation_access(event, caller: dict) -> None:
+    """403 for an organiser opening another client organisation's event. Other roles are
+    left to each route's own rule (staff open any event; SPM-127 handles attendees)."""
+    if caller.get("role") == "organiser" and not _is_event_organiser(event, caller):
+        raise forbidden(ORGANISATION_REFUSAL)
+
+
+def visible_to(caller: dict, events: list) -> list:
+    """An event list as the caller may see it: an organiser gets only their organisation's events."""
+    if caller.get("role") != "organiser":
+        return events
+    return [event for event in events if _is_event_organiser(event, caller)]
+
+
 def _require_organiser_or_staff(event: Event, caller: dict, subject: str) -> None:
     """Organisers see `subject` only for their own organisation's events, staff
     for any event, and attendees never (SPM-66 AC5, SPM-68 AC6, SPM-69 AC3)."""
@@ -704,8 +722,11 @@ class EventService(BaseService):
         )
         return _to_out_list(rows, authorization, "list_upcoming_events")
 
-    def get_event(self, event_id: str, authorization: str | None = None) -> EventOut:
-        return _to_out(self._require_event(event_id), authorization)
+    def get_event(self, event_id: str, authorization: str | None = None, caller: dict | None = None) -> EventOut:
+        event = self._require_event(event_id)
+        if caller is not None:
+            require_organisation_access(event, caller)
+        return _to_out(event, authorization)
 
     def registration_access(self, event_id: str, caller: dict) -> RegistrationAccessOut:
         """Facts the registration list is allowed to show.
@@ -1003,11 +1024,18 @@ class EventService(BaseService):
         rows = self.event_dao.list_drafts_by_organiser(organiser_id)
         return _to_out_list(rows, authorization, "list_my_drafts")
 
-    def list_my_events(self, organiser_id: str, authorization: str | None = None) -> list[EventOut]:
-        """Every event the caller organises, at any stage, other than one they discarded.
+    def list_my_events(
+        self, organiser_id: str, authorization: str | None = None, organisation_id: str | None = None
+    ) -> list[EventOut]:
+        """The organiser's overview: every event of their client organisation at any stage,
+        colleagues' included (SPM-47 AC1 and AC2), with only the caller's own drafts and
+        nothing discarded. An organiser with no organisation sees just their own events.
         SPM-121: each carries its latest safety review status, so the organiser can
         see an event waiting on the review or sent back for safety changes."""
-        rows = self.event_dao.list_by_organiser_excluding_statuses(organiser_id, ["discarded"])
+        if organisation_id:
+            rows = self.event_dao.list_organisation_overview(organisation_id, organiser_id)
+        else:
+            rows = self.event_dao.list_by_organiser_excluding_statuses(organiser_id, ["discarded"])
         events = _to_out_list(rows, authorization, "list_my_events")
         latest = self.safety_dao.latest_status_by_event([row.eventId for row in rows])
         for event in events:
@@ -1036,12 +1064,14 @@ class EventService(BaseService):
         return _to_out(event, authorization)
 
     def get_activity_log(
-        self, event_id: str, authorization: str | None = None
+        self, event_id: str, authorization: str | None = None, caller: dict | None = None
     ) -> list[EventActivityOut]:
         """Status changes, field edits, and coordinator assignments, oldest
         first. An edit or assignment and the status change it caused share a
         timestamp, so the cause is listed first."""
-        self._require_event(event_id)
+        event = self._require_event(event_id)
+        if caller is not None:
+            require_organisation_access(event, caller)
         assignments = []
         previous = None
         for row in self.assignment_dao.list_by_event(event_id):

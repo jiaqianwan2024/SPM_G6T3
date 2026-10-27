@@ -35,7 +35,7 @@ from app.schemas.equipment import (
     ReservationReverificationRequest,
     UpcomingEventOut,
 )
-from app.orchestration.clients import fetch_event_coordinator, fetch_upcoming_events, fetch_venue_name
+from app.orchestration.clients import check_event_access, fetch_event_coordinator, fetch_upcoming_events, fetch_venue_name
 from app.services.equipment_service import EquipmentService, require_assigned_coordinator
 from shared.auth.deps import forwarded_bearer
 from shared.auth.roles import resolve_caller
@@ -112,10 +112,12 @@ def upcoming_events_queue(
     return service.upcoming_queue(events, fetch_venue_name, state, dateFrom, dateTo)
 
 
-def _refuse_attendees(authorization: str | None) -> None:
+def _refuse_attendees(authorization: str | None) -> dict:
     """SPM-127: equipment and an event's arrangements are staff pages, 403 for an attendee."""
-    if resolve_caller(authorization, settings.user_service_url).get("role") == "attendee":
+    caller = resolve_caller(authorization, settings.user_service_url)
+    if caller.get("role") == "attendee":
         raise forbidden("Attendees can open only confirmed event pages and their own registrations.")
+    return caller
 
 
 def _technical_support(authorization: str | None) -> dict:
@@ -209,7 +211,9 @@ def reservation_summary(
     authorization: str | None = Depends(forwarded_bearer),
     service: EquipmentService = Depends(get_equipment_service),
 ):
-    _refuse_attendees(authorization)
+    caller = _refuse_attendees(authorization)
+    if caller.get("role") == "organiser":
+        check_event_access(eventId, authorization)  # SPM-47: their own organisation's event only
     return service.outcome_summary(eventId)
 
 

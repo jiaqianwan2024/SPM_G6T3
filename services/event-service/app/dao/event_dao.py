@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.event import Event
@@ -70,6 +70,20 @@ class EventDAO(BaseDAO):
         return (
             self.db.query(Event)
             .filter(Event.organiserId == organiser_id, Event.status == "draft")
+            .order_by(Event.updatedAt.desc())
+            .all()
+        )
+
+    def list_organisation_overview(self, organisation_id: str, organiser_id: str) -> list[Event]:
+        """SPM-47: a client organisation's events, newest change first, without discarded
+        drafts or a colleague's draft (a draft stays with the organiser writing it)."""
+        return (
+            self.db.query(Event)
+            .filter(
+                Event.organisationId == organisation_id,
+                Event.status != "discarded",
+                or_(Event.status != "draft", Event.organiserId == organiser_id),
+            )
             .order_by(Event.updatedAt.desc())
             .all()
         )
