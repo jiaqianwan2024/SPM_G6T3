@@ -16,9 +16,10 @@
 | SPM-46 | Assigned coordinator can act | TC-SPM46-AC01 | `e2e/spm46-api.spec.js`; `e2e/spm46-ui.contract.spec.js` | Automated (API and UI): edit, venue request, equipment request, and confirming (SPM-72), which only the assigned coordinator is offered and allowed |
 | SPM-46 | Unassigned staff read-only | TC-SPM46-AC02 | `e2e/spm46-api.spec.js`; `e2e/spm46-ui.contract.spec.js` | Automated (API and UI) |
 | SPM-46 | Reassignment swaps permissions | TC-SPM46-AC03 | `e2e/spm46-api.spec.js`; `e2e/spm46-ui.contract.spec.js` | Automated (API and UI) |
-| SPM-47 | Organiser list is org-scoped | TC-SPM47-AC01 | `e2e/spm47-api.spec.js`; `e2e/spm47-ui.contract.spec.js` | Automated |
-| SPM-47 | Cross-org event URL/API rejected | TC-SPM47-AC02 | `e2e/spm47-api.spec.js`; `e2e/spm47-ui.contract.spec.js` | Automated |
-| SPM-47 | Attendee public overview and own registrations | TC-SPM47-AC03 | `e2e/spm47-api.spec.js`; `e2e/spm47-ui.contract.spec.js` | Automated |
+| SPM-47 | Overview shows only the organisation's requests, drafts and past records | TC-SPM47-AC01 | `e2e/spm47-api.spec.js`; `e2e/spm47-ui.contract.spec.js` | Automated (API and UI) |
+| SPM-47 | Every organiser in the organisation sees its events | TC-SPM47-AC02 | `e2e/spm47-api.spec.js`; `e2e/spm47-ui.contract.spec.js` | Automated (API and UI) |
+| SPM-47 | Another organisation's event URL is 403 | TC-SPM47-AC03 | `e2e/spm47-api.spec.js`; `e2e/spm47-ui.contract.spec.js` | Automated (API and UI) |
+| SPM-47 | Own organisation's events still open to organisers; any event to staff | TC-SPM47-AC04 | `e2e/spm47-api.spec.js`; `e2e/spm47-ui.contract.spec.js` | Automated (API and UI) |
 | SPM-55 | Unassigned submitted requests with wait time | TC-SPM55-AC01 | `e2e/spm55.spec.js` | Automated |
 | SPM-55 | Assigned events with status and outstanding work | TC-SPM55-AC02 | `e2e/spm55.spec.js` | Automated |
 | SPM-55 | Pending change requests newest first | TC-SPM55-AC03 | `e2e/spm55.spec.js` | Automated |

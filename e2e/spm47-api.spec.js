@@ -1,113 +1,71 @@
 import { test, expect } from '@playwright/test'
-import { account } from './support/test-data.js'
-import { authedApi } from './support/auth.js'
-import { serviceUrls } from './support/api-data.js'
+import { eventApi, createDraftEvent } from './support/event.js'
 
-const ORG1_EVENTS = ['e1', 'e2', 'e3', 'e4']
-const FOREIGN_EVENT = 'e5'
-const FOREIGN_NAME = 'Beacon Q4 Showcase'
-const STAFF_FIELDS = [
-  'purpose',
-  'venueRequirements',
-  'accessibilityNeeds',
-  'equipmentRequirements',
-  'layoutPreference',
-  'coordinatorId',
-  'coordinatorName',
-  'organiserId',
-  'organisationId',
-]
+// SPM-47: an organiser sees and opens only their own client organisation's events.
+// Seeded events are read, never changed: org-1 (Apex Partners) has e1 by EO-01 (u1)
+// and e7 "Colleague Town Hall" by EO-03 (u8); org-2 (Beacon Media) has e5
+// "Beacon Q4 Showcase" by EO-02 (u7). The draft check makes, then discards, its own draft.
 
-function eventIds(body) {
-  return (Array.isArray(body) ? body : []).map((event) => event.eventId)
+const REFUSAL = "You can only open your own organisation's events."
+
+const ids = (response) => {
+  expect(response.status, JSON.stringify(response.body)).toBe(200)
+  return response.body.map((event) => event.eventId)
 }
 
-function expectHiddenEvent(result, eventId, leakedName) {
-  expect([403, 404], JSON.stringify(result.body)).toContain(result.status)
-  const payload = JSON.stringify(result.body ?? {})
-  expect(payload).not.toContain(leakedName)
-  expect(result.body?.eventId).not.toBe(eventId)
-  expect(result.body?.eventName).toBeFalsy()
-}
+test.describe('SPM-47 Multi-Tenant Event Access Restriction (API)', () => {
+  test('TC-SPM47-AC01 the overview lists only the organisation\'s requests, drafts and past records', async () => {
+    const draft = await createDraftEvent('EO-01', `AUTO-SPM47-DRAFT-${Date.now()}`)
+    try {
+      const mine = ids(await eventApi('GET', '/mine', 'EO-01'))
+      const colleague = ids(await eventApi('GET', '/mine', 'EO-03'))
+      const otherOrganisation = ids(await eventApi('GET', '/mine', 'EO-02'))
 
-test.describe('SPM-47 Multi-Tenant Event Access Restriction — API', () => {
-  test('TC-SPM47-AC01 organiser list is limited to their organisation', async () => {
-    const own = await authedApi('GET', `${serviceUrls.event}/events`, 'EO-01')
-    expect(own.status, JSON.stringify(own.body)).toBe(200)
-    const ownIds = eventIds(own.body)
-    for (const eventId of ORG1_EVENTS) {
-      expect(ownIds, `EO-01 missing ${eventId}`).toContain(eventId)
-    }
-    expect(ownIds).not.toContain(FOREIGN_EVENT)
-    expect(JSON.stringify(own.body)).not.toContain(FOREIGN_NAME)
-
-    const other = await authedApi('GET', `${serviceUrls.event}/events`, 'EO-02')
-    expect(other.status, JSON.stringify(other.body)).toBe(200)
-    const otherIds = eventIds(other.body)
-    expect(otherIds).toContain(FOREIGN_EVENT)
-    for (const eventId of ORG1_EVENTS) {
-      expect(otherIds, `EO-02 leaked ${eventId}`).not.toContain(eventId)
+      expect(mine).toEqual(expect.arrayContaining(['e1', 'e7', draft.eventId]))
+      expect(mine).not.toContain('e5')
+      // A draft stays with the organiser writing it, so a colleague's list leaves it out.
+      expect(colleague).not.toContain(draft.eventId)
+      expect(otherOrganisation).toContain('e5')
+      expect(otherOrganisation).not.toContain('e1')
+      expect(otherOrganisation).not.toContain(draft.eventId)
+    } finally {
+      await eventApi('DELETE', `/${draft.eventId}`, 'EO-01')
     }
   })
 
-  test('TC-SPM47-AC02 cross-organisation event GET is 403 or 404', async () => {
-    const denied = await authedApi('GET', `${serviceUrls.event}/events/${FOREIGN_EVENT}`, 'EO-01')
-    expectHiddenEvent(denied, FOREIGN_EVENT, FOREIGN_NAME)
+  test('TC-SPM47-AC02 every organiser in the organisation sees its events', async () => {
+    const colleague = ids(await eventApi('GET', '/mine', 'EO-03'))
+    const owner = ids(await eventApi('GET', '/mine', 'EO-01'))
 
-    const allowedForeign = await authedApi(
-      'GET',
-      `${serviceUrls.event}/events/${FOREIGN_EVENT}`,
-      'EO-02',
-    )
-    expect(allowedForeign.status, JSON.stringify(allowedForeign.body)).toBe(200)
-    expect(allowedForeign.body.eventId).toBe(FOREIGN_EVENT)
-
-    const allowedOwn = await authedApi('GET', `${serviceUrls.event}/events/e1`, 'EO-01')
-    expect(allowedOwn.status, JSON.stringify(allowedOwn.body)).toBe(200)
-    expect(allowedOwn.body.eventId).toBe('e1')
+    expect(colleague).toEqual(expect.arrayContaining(['e1', 'e7']))
+    expect(owner).toEqual(expect.arrayContaining(['e1', 'e7']))
   })
 
-  test('TC-SPM47-AC03 attendee sees public events and only their registrations', async () => {
-    const list = await authedApi('GET', `${serviceUrls.event}/events`, 'ATT-01')
-    expect(list.status, JSON.stringify(list.body)).toBe(200)
-    expect(eventIds(list.body)).not.toContain('e3')
-
-    const draft = await authedApi('GET', `${serviceUrls.event}/events/e3`, 'ATT-01')
-    expectHiddenEvent(draft, 'e3', 'Partner Networking Night')
-
-    const publicEvent = await authedApi('GET', `${serviceUrls.event}/events/e1`, 'ATT-01')
-    expect(publicEvent.status, JSON.stringify(publicEvent.body)).toBe(200)
-    expect(publicEvent.body.eventId).toBe('e1')
-    expect(publicEvent.body.eventName).toBeTruthy()
-    expect(publicEvent.body.status).toBeTruthy()
-    for (const field of STAFF_FIELDS) {
-      expect(publicEvent.body, field).not.toHaveProperty(field)
+  test('TC-SPM47-AC03 another organisation\'s event URL is rejected with 403', async () => {
+    for (const path of ['/e5', '/e5/activity-log', '/e5/readiness']) {
+      const refused = await eventApi('GET', path, 'EO-01')
+      expect([refused.status, refused.body.detail], path).toEqual([403, REFUSAL])
     }
+    const theirsForMe = await eventApi('GET', '/e1', 'EO-02')
+    const listed = ids(await eventApi('GET', '', 'EO-01'))
 
-    const attendee = account('ATT-01')
-    const registered = await authedApi('POST', `${serviceUrls.registration}/registrations`, 'ATT-01', {
-      eventId: 'e1',
-      name: attendee.displayName,
-      email: attendee.email,
-    })
-    expect([201, 409], JSON.stringify(registered.body)).toContain(registered.status)
+    expect([theirsForMe.status, theirsForMe.body.detail]).toEqual([403, REFUSAL])
+    expect(JSON.stringify(theirsForMe.body)).not.toContain('AI in Events Summit')
+    expect(listed).not.toContain('e5')
+  })
 
-    const registrations = await authedApi(
-      'GET',
-      `${serviceUrls.registration}/registrations?eventId=e1`,
-      'ATT-01',
-    )
-    expect(registrations.status, JSON.stringify(registrations.body)).toBe(200)
-    expect(Array.isArray(registrations.body)).toBe(true)
-    expect(registrations.body.some((row) => row.attendeeEmail === attendee.email)).toBe(true)
-    expect(registrations.body.some((row) => row.attendeeRegistrationId === 'r1')).toBe(false)
-    expect(registrations.body.some((row) => row.attendeeEmail === 'one@example.com')).toBe(false)
+  test('TC-SPM47-AC04 organisers open their own organisation\'s events and staff open any event', async () => {
+    const own = await eventApi('GET', '/e1', 'EO-01')
+    const colleagues = await eventApi('GET', '/e7', 'EO-01')
+    const theirs = await eventApi('GET', '/e5', 'EO-02')
 
-    const foreignRegistration = await authedApi(
-      'GET',
-      `${serviceUrls.registration}/registrations/r1`,
-      'ATT-01',
-    )
-    expect([403, 404], JSON.stringify(foreignRegistration.body)).toContain(foreignRegistration.status)
+    expect([own.status, own.body.eventName]).toEqual([200, 'AI in Events Summit'])
+    expect([colleagues.status, colleagues.body.eventName]).toEqual([200, 'Colleague Town Hall'])
+    expect([theirs.status, theirs.body.eventName]).toEqual([200, 'Beacon Q4 Showcase'])
+    for (const staff of ['EC-01', 'ECL-01', 'VS-01', 'TS-01', 'SO-01']) {
+      const opened = await eventApi('GET', '/e5', staff)
+      expect([opened.status, opened.body.eventId], staff).toEqual([200, 'e5'])
+    }
+    expect(ids(await eventApi('GET', '', 'ECL-01'))).toEqual(expect.arrayContaining(['e1', 'e5', 'e7']))
   })
 })

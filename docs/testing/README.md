@@ -5,7 +5,7 @@ Unit tests and the Coverage.py demo are in [unit-tests.md](unit-tests.md). Integ
 Before pushing, especially after a merge, run `npm run test:ci` for the fast suite, then `npm run test:e2e` for Playwright. `test:ci` is unit coverage plus the SQLite workflows; it needs no Docker or Firebase, and it skips the venue MySQL overlap file when Docker is down. GitHub Actions runs every passing automated suite: the `test` job starts MySQL, migrates, and runs unit plus all integration tests; the `e2e` job runs the Playwright specs that `npm run test:acceptance` selects, which also needs Docker and the Firebase secrets listed under Run. Specs for stories that are not built yet (the ones `test:acceptance` omits, such as SPM-04) stay out of the pipeline until those stories exist; `test:e2e` still runs them locally.
 
 Playwright covers SPM-43, the current SPM-45 API, the current SPM-46 API,
-the SPM-47 tenant-isolation contract, the role-home contracts for
+SPM-47 tenant isolation (API and UI), the role-home contracts for
 SPM-55 through SPM-59, the venue-catalogue contracts for SPM-8, SPM-9,
 SPM-10, SPM-17, SPM-60 through SPM-64, SPM-108, SPM-112, SPM-116, and SPM-122, and the
 planning-review contracts for SPM-5, SPM-15, and SPM-65 through SPM-73,
@@ -119,7 +119,7 @@ npm run test:spm95
 npm run test:spm51
 ```
 
-`test:acceptance` (what CI's e2e job runs) omits SPM-47, SPM-55 through SPM-59,
+`test:acceptance` (what CI's e2e job runs) omits SPM-55 through SPM-59,
 SPM-9, SPM-17, SPM-108, SPM-110, SPM-115, SPM-117 through SPM-119, the
 planning-review epic (SPM-5, SPM-15, SPM-65 through SPM-73), the equipment epic
 (SPM-2, SPM-3, SPM-4, SPM-75 through SPM-78), the request-and-change epic (SPM-14,
@@ -161,8 +161,8 @@ FIRST principles and the Week 9 advice on flaky tests, through `e2e/support/venu
 | SPM-45 UI | TC-SPM45-AC01–AC04 | `e2e/spm45-ui.contract.spec.js` (skipped until those screens exist) |
 | SPM-46 API | TC-SPM46-AC01–AC03 | `e2e/spm46-api.spec.js` |
 | SPM-46 UI | TC-SPM46-AC01–AC03 | `e2e/spm46-ui.contract.spec.js` (skipped until event details exists) |
-| SPM-47 API | TC-SPM47-AC01–AC03 | `e2e/spm47-api.spec.js` (fails until tenant isolation ships) |
-| SPM-47 UI | TC-SPM47-AC01–AC03 | `e2e/spm47-ui.contract.spec.js` (skipped until those screens exist) |
+| SPM-47 API | TC-SPM47-AC01 to AC04 | `e2e/spm47-api.spec.js` |
+| SPM-47 UI | TC-SPM47-AC01, AC03, AC04 | `e2e/spm47-ui.contract.spec.js` |
 | SPM-55 | TC-SPM55-AC01–AC07 | `e2e/spm55.spec.js` |
 | SPM-56 | TC-SPM56-AC01–AC07 | `e2e/spm56.spec.js` |
 | SPM-57 | TC-SPM57-AC01–AC06 | `e2e/spm57.spec.js` |

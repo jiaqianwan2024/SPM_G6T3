@@ -69,7 +69,7 @@ from app.schemas.event import (
 )
 from app.schemas.followup import OpenEventOut, ReadinessCreate, ReadinessItemOut, ReadinessPatch
 from app.services.event_followup import EventFollowUp
-from app.services.event_service import COORDINATOR_LEAD, EventService
+from app.services.event_service import COORDINATOR_LEAD, EventService, require_organisation_access, visible_to
 from app.services.reminders import EventReminders
 from shared.auth.deps import forwarded_bearer
 from shared.auth.roles import resolve_caller
@@ -89,10 +89,13 @@ router = APIRouter(
 ATTENDEE_REFUSAL = "Attendees can open only confirmed event pages and their own registrations."
 
 
-def _refuse_attendees(authorization: str | None) -> None:
-    """The full event record, event lists and the activity log are staff or organiser pages (403)."""
-    if resolve_caller(authorization, settings.user_service_url).get("role") == "attendee":
+def _refuse_attendees(authorization: str | None) -> dict:
+    """The full event record, event lists and the activity log are staff or organiser pages (403).
+    Returns the caller, so each route can also apply SPM-47's organisation rule."""
+    caller = resolve_caller(authorization, settings.user_service_url)
+    if caller.get("role") == "attendee":
         raise forbidden(ATTENDEE_REFUSAL)
+    return caller
 
 
 def get_followup(db: Session = Depends(get_db)) -> EventFollowUp:
@@ -123,8 +126,8 @@ def list_events(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
-    _refuse_attendees(authorization)
-    return service.list_events(authorization)
+    caller = _refuse_attendees(authorization)
+    return visible_to(caller, service.list_events(authorization))
 
 
 @router.post(
@@ -220,8 +223,8 @@ def list_all_events(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
-    _refuse_attendees(authorization)
-    return service.list_all_events(authorization)
+    caller = _refuse_attendees(authorization)
+    return visible_to(caller, service.list_all_events(authorization))
 
 
 @router.get(
@@ -234,8 +237,8 @@ def list_confirmed_events(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
-    _refuse_attendees(authorization)
-    return service.list_confirmed_events(authorization)
+    caller = _refuse_attendees(authorization)
+    return visible_to(caller, service.list_confirmed_events(authorization))
 
 
 @router.get(
@@ -269,7 +272,9 @@ def list_submission_queue(
     "/mine",
     response_model=list[EventOut],
     summary="My events",
-    description="Organiser only. Every event the caller organises, at any stage, except ones they discarded.",
+    description="Organiser only (SPM-47). Every event of the caller's client organisation at any stage, "
+    "colleagues' included, with only the caller's own drafts and nothing discarded. An organiser with no "
+    "organisation sees just their own events.",
     responses=error_responses(403),
 )
 def list_my_events(
@@ -277,7 +282,7 @@ def list_my_events(
     service: EventService = Depends(get_event_service),
 ):
     organiser = current_organiser(authorization)
-    return service.list_my_events(organiser["userId"], authorization)
+    return service.list_my_events(organiser["userId"], authorization, organiser.get("organisationId"))
 
 
 @router.get(
@@ -407,8 +412,8 @@ def get_event(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
-    _refuse_attendees(authorization)
-    return service.get_event(event_id, authorization)
+    caller = _refuse_attendees(authorization)
+    return service.get_event(event_id, authorization, caller)
 
 
 @router.get(
@@ -426,6 +431,9 @@ def attendee_card(
 ):
     caller = resolve_caller(authorization, settings.user_service_url)
     card = followup.attendee_card(event_id, authorization)
+    if caller.get("role") == "organiser" and card.status != "confirmed":
+        # SPM-47: before it is confirmed, the page is another organisation's planning data.
+        require_organisation_access(followup.event_record(event_id), caller)
     if (
         caller.get("role") == "attendee"
         and card.status != "confirmed"
@@ -442,9 +450,10 @@ def list_readiness(
     authorization: str | None = Depends(forwarded_bearer),
     followup: EventFollowUp = Depends(get_followup),
 ):
-    resolve_caller(
+    caller = resolve_caller(
         authorization, settings.user_service_url, allowed_roles={"coordinator", "organiser", "techsupport"}
     )
+    require_organisation_access(followup.event_record(event_id), caller)
     return followup.list_readiness(event_id, authorization, dueSoon)
 
 
@@ -466,9 +475,10 @@ def get_readiness_item(
     authorization: str | None = Depends(forwarded_bearer),
     followup: EventFollowUp = Depends(get_followup),
 ):
-    resolve_caller(
+    caller = resolve_caller(
         authorization, settings.user_service_url, allowed_roles={"coordinator", "organiser", "techsupport"}
     )
+    require_organisation_access(followup.event_record(event_id), caller)
     return followup.get_item(event_id, item_id)
 
 
@@ -1110,8 +1120,8 @@ def get_activity_log(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
-    _refuse_attendees(authorization)
-    return service.get_activity_log(event_id, authorization)
+    caller = _refuse_attendees(authorization)
+    return service.get_activity_log(event_id, authorization, caller)
 
 
 @router.post(
