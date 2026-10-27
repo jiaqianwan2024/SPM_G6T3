@@ -21,10 +21,8 @@
         v-else-if="activeTab === 'Dashboard' && session.role === 'attendee'"
         @open-tab="activeTab = $event"
       />
-      <template v-else-if="activeTab === 'Dashboard'">
-        <TechReverificationQueue v-if="session.role === 'techsupport'" />
-        <DashboardHome :cards="currentData.cards" />
-      </template>
+      <TechDashboard v-else-if="activeTab === 'Dashboard' && session.role === 'techsupport'" />
+      <DashboardHome v-else-if="activeTab === 'Dashboard'" :cards="currentData.cards" />
       <VenueCatalogue v-else-if="activeTab === 'Venue Catalogue'" />
       <VenueCalendar
         v-else-if="activeTab === 'Venue Calendar'"
@@ -61,7 +59,7 @@ import AppShell from '../components/layout/AppShell.vue'
 import DashboardHome from '../features/dashboard/DashboardHome.vue'
 import OrganiserDashboard from '../features/dashboard/OrganiserDashboard.vue'
 import AttendeeHome from '../features/dashboard/AttendeeHome.vue'
-import TechReverificationQueue from '../features/dashboard/TechReverificationQueue.vue'
+import TechDashboard from '../features/dashboard/TechDashboard.vue'
 import VenueCatalogue from '../features/venue-catalogue/VenueCatalogue.vue'
 import VenueCalendar from '../features/venue-calendar/VenueCalendar.vue'
 import UnavailabilityList from '../features/unavailability/UnavailabilityList.vue'

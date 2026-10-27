@@ -35,6 +35,9 @@ from app.schemas.equipment import (
     RescheduledReservationOut,
     ReservationReschedule,
     ReservationReschedulePreview,
+    SuppliedEventOut,
+    TechDashboardOut,
+    TechWorkItemOut,
     UpcomingEventOut,
 )
 from shared.exceptions.http import conflict, forbidden
@@ -856,6 +859,78 @@ class EquipmentService(BaseService):
     def reverification_queue(self) -> list[EquipmentReservationOut]:
         """SPM-86 AC02 and AC07: held reservations technical support still have to re-check."""
         return [_reservation_to_out(row) for row in self.reservation_dao.list_needing_reverification()]
+
+    def technical_dashboard(self, events: list[dict]) -> TechDashboardOut:
+        """SPM-58: what is waiting on technical support, for the events that are still ahead.
+
+        `events` are the upcoming live events, soonest first (SPM-4's source), so work for an
+        event that has ended or was cancelled drops off. Every list follows the event's start.
+        """
+        order = {event["eventId"]: index for index, event in enumerate(events)}
+        by_id = {event["eventId"]: event for event in events}
+        requests = [row for row in self.request_dao.list_all() if row.eventId in by_id]
+
+        def item(item_id: str, row, note: str, shortfall: int = 0) -> TechWorkItemOut:
+            """`row` is a request, or a reservation for re-verification; both name their request."""
+            event = by_id[row.eventId]
+            return TechWorkItemOut(
+                id=item_id,
+                requestId=row.requestId,
+                eventId=row.eventId,
+                eventName=event.get("eventName") or row.eventId,
+                eventStartsAt=event.get("proposedStartAt"),
+                eventEndsAt=event.get("proposedEndAt"),
+                equipmentId=row.equipmentId,
+                equipmentName=self._equipment_label(row.equipmentId),
+                quantity=row.quantity,
+                status=row.status,
+                shortfall=shortfall,
+                note=note,
+            )
+
+        def soonest(items):
+            return sorted(items, key=lambda entry: (order[entry.eventId], entry.id))
+
+        pending = [item(row.requestId, row, row.technicalRequirements) for row in requests if row.status == "pending"]
+        # AC3: a coordinator who accepts the shortfall resolves it (SPM-77), so only partial and unavailable remain.
+        shortfalls = [
+            item(
+                row.requestId,
+                row,
+                row.decisionReason or row.reviewNote,
+                row.shortfall if row.status == "partial" else row.quantity,
+            )
+            for row in requests
+            if row.status in ("partial", "unavailable")
+        ]
+        reverification = [
+            item(row.reservationId, row, row.reverificationNote or "")
+            for row in self.reservation_dao.list_needing_reverification()
+            if row.eventId in by_id
+        ]
+        held: dict[str, list[EquipmentReservation]] = {}
+        for row in self.reservation_dao.list_supplying():
+            if row.eventId in by_id:
+                held.setdefault(row.eventId, []).append(row)
+        upcoming = [
+            SuppliedEventOut(
+                eventId=event["eventId"],
+                eventName=event.get("eventName") or event["eventId"],
+                eventStartsAt=event.get("proposedStartAt"),
+                eventEndsAt=event.get("proposedEndAt"),
+                equipmentSummary=", ".join(
+                    f"{row.quantity} × {self._equipment_label(row.equipmentId)}" for row in held[event["eventId"]]
+                ),
+            )
+            for event in events
+            if event["eventId"] in held
+        ]
+        return TechDashboardOut(
+            pending=soonest(pending),
+            reverification=soonest(reverification),
+            shortfalls=soonest(shortfalls),
+            upcoming=upcoming,
+        )
 
     def reconfirm_reservation(
         self, reservation_id: str, authorization: str | None = None

@@ -33,6 +33,7 @@ from app.schemas.equipment import (
     ReservationReschedule,
     ReservationReschedulePreview,
     ReservationReverificationRequest,
+    TechDashboardOut,
     UpcomingEventOut,
 )
 from app.orchestration.clients import check_event_access, fetch_event_coordinator, fetch_upcoming_events, fetch_venue_name
@@ -110,6 +111,24 @@ def upcoming_events_queue(
     _technical_support(authorization)
     events = fetch_upcoming_events(authorization)
     return service.upcoming_queue(events, fetch_venue_name, state, dateFrom, dateTo)
+
+
+@router.get(
+    "/dashboard",
+    response_model=TechDashboardOut,
+    summary="Technical support's home screen",
+    description="SPM-58. Technical support only, the same as the screens each item opens. Requests awaiting "
+    "review, reservations flagged for re-verification, unresolved unavailable or partly fulfilled lines, and "
+    "upcoming events with equipment held for them, each soonest first. Only events that have not ended and "
+    "are still live are included.",
+    responses=error_responses(403, 503),
+)
+def technical_dashboard(
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EquipmentService = Depends(get_equipment_service),
+):
+    _technical_support(authorization)
+    return service.technical_dashboard(fetch_upcoming_events(authorization))
 
 
 def _refuse_attendees(authorization: str | None) -> dict:

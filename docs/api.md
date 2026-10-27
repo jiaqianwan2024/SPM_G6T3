@@ -96,6 +96,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `POST /equipment/reservations/reverification` | `coordinator`, `safety` (event-service calls it on a confirmed significant edit, or when a Safety Officer requests changes) |
 | `POST /equipment/reservations/reschedule/preview`, `POST /equipment/reservations/reschedule` | `coordinator` assigned to the event (SPM-87) |
 | `GET /equipment/queue` | `techsupport` (SPM-86). Held reservations still waiting for re-verification |
+| `GET /equipment/dashboard` | `techsupport` (SPM-58). Technical support's home screen in one reply: `pending` requests awaiting review, reservations flagged for `reverification`, unresolved `shortfalls` (requests `partial` or `unavailable`; an accepted shortfall is `resolved` and left out), and `upcoming` events with equipment held for them. Each item carries its event's name and dates. Only events that have not ended and are not cancelled, completed, rejected, or a draft are included; every list is soonest first. The lists are the whole team's |
 | `POST /equipment/reservations/{id}/reconfirm` | `techsupport` (SPM-86). Clears the flag and does not raise the reserved quantity |
 | `POST /events/{id}/reverification/settle` | `venue`, `techsupport`, `coordinator` (SPM-86). Returns a `reconsidering` event to `confirmed` only when every flag is clear |
 | `POST /events/{id}/attendee-notice` | `venue`, `coordinator` (SPM-86). Tells registered attendees the date, time, or venue changed |

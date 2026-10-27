@@ -41,12 +41,8 @@ export const roles = {
   techsupport: {
     label: 'Technical Support Staff',
     tabs: ['Dashboard', 'Upcoming Events', 'Venue Catalogue', 'Venue Calendar', 'Equipment Catalogue', 'Reservations', 'My Assignments', 'Maintenance Status'],
-    cards: [
-      { title: 'Equipment requests', sub: '2 requests pending review' },
-      { title: 'Damaged / under maintenance', sub: '1 projector flagged unavailable' },
-      { title: 'Upcoming on-site assignments', sub: "You're assigned to 2 events this week" },
-      { title: 'Low availability alert', sub: 'Wireless mics fully booked Thu' }
-    ]
+    // The Dashboard tab is TechDashboard (live requests, re-verification, shortfalls, supplied events), not cards.
+    cards: []
   },
   safety: {
     label: 'Safety Officer',
