@@ -111,7 +111,12 @@ const router = createRouter({
         query: {
           tab: 'Venue Calendar',
           venue: String(to.params.id),
-          ...(typeof to.query.at === 'string' ? { at: to.query.at } : {})
+          // `at` opens on a moment; `from` and `to` on a range (SPM-108).
+          ...Object.fromEntries(
+            ['at', 'from', 'to']
+              .filter((key) => typeof to.query[key] === 'string')
+              .map((key) => [key, to.query[key]])
+          )
         }
       })
     }

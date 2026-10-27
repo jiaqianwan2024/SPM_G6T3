@@ -30,6 +30,8 @@
         v-else-if="activeTab === 'Venue Calendar'"
         :focus-venue="calendarFocus.venueId"
         :focus-at="calendarFocus.at"
+        :focus-from="calendarFocus.from"
+        :focus-to="calendarFocus.to"
       />
       <UnavailabilityList v-else-if="activeTab === 'Unavailability'" />
       <BookingRequests v-else-if="activeTab === 'Booking Requests'" />
@@ -93,7 +95,9 @@ const currentData = computed(() => roles[session.role] ?? { tabs: [], cards: [],
 function focusFromRoute() {
   return {
     venueId: typeof route.query.venue === 'string' ? route.query.venue : '',
-    at: typeof route.query.at === 'string' ? route.query.at : ''
+    at: typeof route.query.at === 'string' ? route.query.at : '',
+    from: typeof route.query.from === 'string' ? route.query.from : '',
+    to: typeof route.query.to === 'string' ? route.query.to : ''
   }
 }
 
@@ -139,7 +143,7 @@ function selectTab(tab) {
   if (draftEditor.isDirty && !window.confirm('You have unsaved changes. Leave without saving?')) {
     return
   }
-  calendarFocus.value = { venueId: '', at: '' }
+  calendarFocus.value = { venueId: '', at: '', from: '', to: '' }
   activeTab.value = tab
   router.replace({ name: 'dashboard', query: { tab } })
 }

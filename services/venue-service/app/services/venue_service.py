@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -19,6 +19,7 @@ from app.schemas.venue import (
     BookingRecheckOut,
     BookingReschedule,
     BookingReschedulePreview,
+    CalendarEntryOut,
     ClashingBooking,
     EventFacts,
     HoldOut,
@@ -32,12 +33,19 @@ from app.schemas.venue import (
     VenueActivityLogOut,
     VenueBookingCreate,
     VenueBookingOut,
+    VenueCalendarOut,
     VenueCreate,
     VenueOut,
     VenueSearchResult,
     VenueUpdate,
 )
-from app.orchestration.clients import notify_attendees, notify_coordinator, notify_role, settle_reverification
+from app.orchestration.clients import (
+    find_event_facts,
+    notify_attendees,
+    notify_coordinator,
+    notify_role,
+    settle_reverification,
+)
 from app.services import occupancy, suitability, venue_search
 from shared.exceptions.http import conflict, forbidden
 from shared.services.base import BaseService
@@ -49,6 +57,9 @@ PLANNING_STATUSES = ("approved", "planning", "reconsidering")
 SIGNALLED_ERROR = 1644
 # SPM-87: the suitability points that mean the venue is taken at a time, rather than unsuited to the event.
 TAKEN_CHECKS = frozenset({"clash", "hold", "unavailable"})
+# SPM-108: a calendar asked for no range reads every booking and block the venue has.
+CALENDAR_START = datetime(1970, 1, 1)
+CALENDAR_END = datetime(9000, 1, 1)
 APPROVED_ELSEWHERE = (
     "Another request for this venue at an overlapping time, including setup and turnaround, "
     "was approved first, so this request cannot be approved."
@@ -109,6 +120,19 @@ def _hold_out(row: VenueBooking) -> HoldOut | None:
     if state is None:
         return None
     return HoldOut(expiresAt=row.holdExpiresAt, placedBy=row.holdPlacedBy, placedAt=row.holdPlacedAt, state=state)
+
+
+def _calendar_kind(row: VenueBooking, now: datetime) -> str:
+    """SPM-108 AC1: an approved booking is confirmed; a pending request shows its hold, if any.
+    A released hold reserved nothing and has nothing left to show, so that request is just pending."""
+    if row.status == "approved":
+        return "confirmed"
+    state = occupancy.hold_state(row, now)
+    if state == "active":
+        return "hold"
+    if state == "expired":
+        return "expired-hold"
+    return "pending"
 
 
 def _end_hold(row: VenueBooking, reason: str) -> None:
@@ -705,6 +729,67 @@ class VenueService(BaseService):
     def list_unavailability(self, venue_id: str) -> list[UnavailabilityOut]:
         self._require_venue(venue_id)
         return [_block_out(row) for row in self.unavailability_dao.list_for_venue(venue_id)]
+
+    def calendar(
+        self, venue_id: str, starts_at: datetime | None, ends_at: datetime | None, authorization: str | None
+    ) -> VenueCalendarOut:
+        """SPM-108: confirmed bookings, pending requests, active and expired holds, and
+        unavailability whose window overlaps the range. Rejected, withdrawn and cancelled
+        requests hold nothing, so they are left out. No range means all of them."""
+        venue = self._require_venue(venue_id)
+        starts_at, ends_at = self._period(starts_at or CALENDAR_START, ends_at or CALENDAR_END)
+        # A booking occupies its venue from setup before its event to turnaround after it (SPM-112).
+        bookings = self.booking_dao.find_event_times_overlapping(
+            venue_id,
+            starts_at - timedelta(minutes=venue.turnaroundMinutes),
+            ends_at + timedelta(minutes=venue.setupMinutes),
+        )
+        now = datetime.utcnow()
+        facts = {}
+        for row in bookings:
+            if not (row.eventSnapshot or {}).get("eventName") and row.eventId not in facts:
+                facts[row.eventId] = find_event_facts(row.eventId, authorization)
+        entries = [self._calendar_booking(row, now, facts.get(row.eventId)) for row in bookings]
+        entries += [
+            CalendarEntryOut(
+                kind="unavailable",
+                id=row.unavailabilityId,
+                startsAt=row.startsAt,
+                endsAt=row.endsAt,
+                unavailability=_block_out(row),
+            )
+            for row in self.unavailability_dao.find_overlapping(venue_id, starts_at, ends_at)
+        ]
+        return VenueCalendarOut(
+            venueId=venue.venueId,
+            venueName=venue.name,
+            operatingHours=_as_list(venue.operatingHours),
+            setupMinutes=venue.setupMinutes,
+            turnaroundMinutes=venue.turnaroundMinutes,
+            entries=sorted(entries, key=lambda entry: (entry.startsAt, entry.id)),
+        )
+
+    def _calendar_booking(self, row: VenueBooking, now: datetime, event: EventFacts | None) -> CalendarEntryOut:
+        """A booking shows its occupied window and the event's advertised times. The name and client
+        come from the request; older requests carry none, so they are read from the event."""
+        booking = self._present(row)
+        snapshot = row.eventSnapshot or {}
+        name = snapshot.get("eventName") or (event.eventName if event else "")
+        client = snapshot.get("clientOrganisation") or (
+            (event.organisationName or event.organisationId or "") if event else ""
+        )
+        return CalendarEntryOut(
+            kind=_calendar_kind(row, now),
+            id=row.bookingId,
+            startsAt=booking.setupStartsAt,
+            endsAt=booking.teardownEndsAt,
+            eventId=row.eventId,
+            eventName=name or row.eventId,
+            clientOrganisation=client,
+            eventStartsAt=row.startsAt,
+            eventEndsAt=row.endsAt,
+            booking=booking,
+        )
 
     def record_unavailability(self, venue_id: str, data: UnavailabilityCreate, caller: dict) -> UnavailabilityOut:
         """Save a block. Overlapping bookings and holds stay as they are, and no event is read or changed."""

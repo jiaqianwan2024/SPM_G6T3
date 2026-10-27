@@ -30,6 +30,16 @@ export async function notificationRequest(path, accountId) {
   return { status: response.status, body: await response.json().catch(() => null) }
 }
 
+// Frees a booking a test made: an approved one is cancelled, a pending one withdrawn.
+export async function releaseBooking(bookingId) {
+  const current = await venueRequest('GET', `/venues/bookings/${bookingId}`, 'VS-01')
+  if (current.body?.status === 'approved') {
+    await venueRequest('POST', `/venues/bookings/${bookingId}/cancel`, 'VS-01')
+  } else if (current.body?.status === 'pending') {
+    await venueRequest('POST', `/venues/bookings/${bookingId}/withdraw`, 'EC-01')
+  }
+}
+
 export async function createPendingBooking(accountId, sequence, extras = {}) {
   const result = await venueRequest(
     'POST',

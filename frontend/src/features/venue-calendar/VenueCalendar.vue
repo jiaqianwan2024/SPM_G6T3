@@ -1,5 +1,6 @@
 <template>
-  <div class="venue-calendar" data-testid="venue-calendar">
+  <!-- SPM-108: a venue's calendar, so internal staff can tell at a glance when it could be requested. -->
+  <div class="venue-calendar" data-testid="venue-calendar" :data-view="view">
     <router-link v-if="!embedded" class="back" to="/app?tab=Venue%20Calendar">All venues</router-link>
 
     <header class="heading">
@@ -9,12 +10,9 @@
           <option v-for="item in venues" :key="item.venueId" :value="item.venueId">{{ item.name }}</option>
         </select>
       </label>
-      <h1 v-else>{{ venue?.name || 'Venue' }}</h1>
+      <h1 v-else>{{ venueName || 'Venue' }}</h1>
     </header>
 
-    <p v-if="!canSeeBookings" class="note" data-testid="calendar-bookings-hidden">
-      Bookings are visible to coordinators and venue staff. This calendar shows the times the venue is unavailable.
-    </p>
     <p v-if="loadError" class="error">{{ loadError }}</p>
 
     <div v-else class="layout">
@@ -23,51 +21,109 @@
           <p v-if="needsRecheck" class="reverify-banner" data-testid="calendar-reverify">
             A booking on this calendar needs re-verification.
           </p>
+          <div class="calendar-toolbar">
+            <div class="nav">
+              <button type="button" class="tool-btn" data-testid="calendar-today" @click="calendarApi()?.today()">Today</button>
+              <button type="button" class="tool-btn icon" data-testid="calendar-prev" aria-label="Previous" @click="calendarApi()?.prev()">‹</button>
+              <button type="button" class="tool-btn icon" data-testid="calendar-next" aria-label="Next" @click="calendarApi()?.next()">›</button>
+              <h2 class="range-title" data-testid="calendar-title">{{ title }}</h2>
+            </div>
+            <div class="views" role="group" aria-label="Calendar view">
+              <button
+                v-for="option in VIEWS"
+                :key="option.view"
+                type="button"
+                class="tool-btn"
+                :class="{ active: view === option.view }"
+                :aria-pressed="view === option.view"
+                :data-testid="`calendar-view-${option.view}`"
+                @click="changeView(option.view)"
+              >
+                {{ option.label }}
+              </button>
+            </div>
+          </div>
           <div class="calendar-bar">
             <ul class="legend">
-              <li v-if="canSeeBookings"><span class="swatch pending"></span>Pending <span class="count">{{ counts.pending }}</span></li>
-              <li v-if="canSeeBookings"><span class="swatch approved"></span>Approved <span class="count">{{ counts.approved }}</span></li>
-              <li><span class="swatch unavailable"></span>Unavailable <span class="count">{{ counts.unavailable }}</span></li>
+              <li v-for="item in KINDS" :key="item.kind">
+                <span class="swatch" :class="`kind-${item.kind}`"></span>{{ item.label }}
+                <span class="count">{{ counts[item.kind] }}</span>
+              </li>
+              <li><span class="swatch outside"></span>Outside opening hours</li>
             </ul>
             <button v-if="canWrite" type="button" class="mark-btn" data-testid="mark-unavailable" @click="startCreate">
               Mark unavailable
             </button>
           </div>
+          <p v-if="loaded" class="hours" data-testid="calendar-opening-hours">
+            Opening hours (SGT): {{ hoursSummary }}. Times outside them are unavailable.
+          </p>
+          <p v-if="loaded && !visibleCount" class="empty" data-testid="venue-calendar-empty">
+            Nothing is booked, requested, held or blocked at {{ venueName || 'this venue' }} in this {{ view }}.
+          </p>
           <FullCalendar ref="calendarRef" :options="calendarOptions">
-        <template #eventContent="arg">
-          <div
-            v-if="arg.event.extendedProps.kind === 'unavailable'"
-            class="event-body"
-            :data-testid="`calendar-unavailable-${arg.event.extendedProps.id}`"
-            data-kind="unavailable"
-            @mouseenter="openDetail($event, arg.event.extendedProps, false)"
-            @mouseleave="scheduleClose"
-            @click.stop="selectBlock(arg.event.extendedProps.id, $event)"
-          >
-            <strong>Unavailable</strong>
-            <span class="kind">{{ arg.event.extendedProps.reason }}</span>
-          </div>
-          <div
-            v-else-if="arg.event.extendedProps.kind === 'draft'"
-            class="event-body"
-            data-kind="draft"
-          >
-            <strong>Selected</strong>
-          </div>
-          <div
-            v-else
-            class="event-body"
-            data-kind="booking"
-            :data-status="arg.event.extendedProps.status"
-            @mouseenter="openDetail($event, arg.event.extendedProps, false)"
-            @mouseleave="scheduleClose"
-            @click.stop="openDetail($event, arg.event.extendedProps, true)"
-          >
-            <strong>{{ arg.event.title }}</strong>
-            <span class="kind">{{ arg.event.extendedProps.status }}</span>
-          </div>
-        </template>
-      </FullCalendar>
+            <template #dayCellTopContent="arg">
+              <span class="day-top">
+                <span
+                  v-if="closedOn(arg.date)"
+                  class="hours-tag"
+                  data-testid="calendar-outside-hours"
+                  title="The venue is closed all day"
+                >Closed</span>
+                <span class="day-number">{{ arg.dayNumberText }}</span>
+              </span>
+            </template>
+            <template #eventContent="arg">
+              <div
+                v-if="arg.event.extendedProps.kind === 'unavailable'"
+                class="event-body kind-unavailable"
+                :data-testid="`calendar-unavailable-${arg.event.extendedProps.id}`"
+                data-kind="unavailable"
+                @mouseenter="openDetail($event, arg.event.extendedProps, false)"
+                @mouseleave="scheduleClose"
+                @click.stop="selectBlock(arg.event.extendedProps.id, $event)"
+              >
+                <span class="kind-tag" data-testid="calendar-kind-unavailable" data-kind="unavailable">Unavailable</span>
+                <span class="line">{{ arg.event.extendedProps.reason }}</span>
+              </div>
+              <div
+                v-else-if="arg.event.extendedProps.kind === 'draft'"
+                class="event-body"
+                data-kind="draft"
+              >
+                <strong>Selected</strong>
+              </div>
+              <div
+                v-else
+                class="event-body"
+                :class="[`kind-${arg.event.extendedProps.kind}`, { 'in-time-grid': inTimeGrid(arg) }]"
+                data-kind="booking"
+                :data-status="arg.event.extendedProps.status"
+                @mouseenter="openDetail($event, arg.event.extendedProps, false)"
+                @mouseleave="scheduleClose"
+                @click.stop="openEntry(arg.event.extendedProps)"
+              >
+                <template v-if="inTimeGrid(arg)">
+                  <span class="band setup" :style="{ height: bandShare(arg.event.extendedProps, 'setup') }" title="Setup"></span>
+                  <span class="band turnaround" :style="{ height: bandShare(arg.event.extendedProps, 'turnaround') }" title="Turnaround"></span>
+                </template>
+                <div
+                  class="entry"
+                  :data-testid="`calendar-booking-${arg.event.extendedProps.id}`"
+                  :data-kind="arg.event.extendedProps.kind"
+                >
+                  <span
+                    class="kind-tag"
+                    :data-testid="`calendar-kind-${arg.event.extendedProps.kind}`"
+                    :data-kind="arg.event.extendedProps.kind"
+                  >{{ kindLabel(arg.event.extendedProps.kind) }}</span>
+                  <strong>{{ arg.event.extendedProps.title }}</strong>
+                  <span v-if="arg.event.extendedProps.client" class="line">{{ arg.event.extendedProps.client }}</span>
+                  <span class="line time">{{ eventTimes(arg.event.extendedProps) }}</span>
+                </div>
+              </div>
+            </template>
+          </FullCalendar>
         </div>
       </div>
 
@@ -129,6 +185,11 @@
           <button type="button" @click="startEdit(detail.entry.id)">Edit</button>
           <button type="button" class="danger" @click="cancelBlock(detail.entry.id)">Cancel block</button>
         </div>
+        <div v-else-if="detail.entry.kind !== 'unavailable'" class="detail-actions">
+          <button type="button" data-testid="calendar-open-entry" @click="openEntry(detail.entry)">
+            {{ opensRequest(detail.entry) ? 'Open request' : 'Open event' }}
+          </button>
+        </div>
       </aside>
     </Teleport>
   </div>
@@ -136,13 +197,12 @@
 
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import FullCalendar from '@fullcalendar/vue3'
 import themePlugin from '@fullcalendar/vue3/themes/monarch'
 import interactionPlugin from '@fullcalendar/vue3/interaction'
 import dayGridPlugin from '@fullcalendar/vue3/daygrid'
 import timeGridPlugin from '@fullcalendar/vue3/timegrid'
-import listPlugin from '@fullcalendar/vue3/list'
 
 import '@fullcalendar/vue3/skeleton.css'
 import '@fullcalendar/vue3/themes/monarch/theme.css'
@@ -151,44 +211,70 @@ import '@fullcalendar/vue3/themes/monarch/palettes/purple.css'
 import {
   cancelVenueUnavailability,
   createVenueUnavailability,
-  getVenue,
-  getVenueBookings,
-  getVenueUnavailability,
+  getVenueCalendar,
   getVenues,
   updateVenueUnavailability
 } from '../../api/venueService.js'
 import { session } from '../../store/session.js'
-import { SGT_ZONE, formatSgt, fromSgtInput, sgtDay, toSgtInput } from '../../utils/datetime.js'
+import {
+  SGT_ZONE,
+  formatSgt,
+  formatSgtRange,
+  formatSgtTime,
+  fromSgtInput,
+  parseServerTime,
+  sgtDay,
+  toSgtInput
+} from '../../utils/datetime.js'
 
 const props = defineProps({
   focusVenue: { type: String, default: '' },
-  focusAt: { type: String, default: '' }
+  focusAt: { type: String, default: '' },
+  focusFrom: { type: String, default: '' },
+  focusTo: { type: String, default: '' }
 })
 const reasons = ['maintenance', 'renovation', 'safety issue', 'internal activity', 'other']
+// SPM-108 AC2: each kind has its own colour and its own label, so none is told apart by colour alone.
+const KINDS = [
+  { kind: 'confirmed', label: 'Confirmed' },
+  { kind: 'pending', label: 'Pending request' },
+  { kind: 'hold', label: 'On hold' },
+  { kind: 'expired-hold', label: 'Hold expired' },
+  { kind: 'unavailable', label: 'Unavailable' }
+]
+const VIEWS = [
+  { view: 'week', label: 'Week', type: 'timeGridWeek' },
+  { view: 'month', label: 'Month', type: 'dayGridMonth' }
+]
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const DAY_MS = 24 * 60 * 60 * 1000
+
 const route = useRoute()
+const router = useRouter()
 const embedded = computed(() => route.name !== 'venue-calendar')
 const venueId = ref(props.focusVenue || (typeof route.params.id === 'string' ? route.params.id : ''))
 const venues = ref([])
-const venue = ref(null)
+const venueName = ref('')
+const openingHours = ref([])
 const entries = ref([])
+const loaded = ref(false)
 const needsRecheck = computed(() => entries.value.some((entry) => entry.reverificationNote))
 const visibleRange = ref(null)
+const view = ref(startView())
+const title = ref('')
 const loadError = ref('')
 const calendarRef = ref(null)
 const detail = reactive({ entry: null, pinned: false, overCard: false, top: 0, left: 0 })
 let hideTimer = 0
 const canWrite = computed(() => session.role === 'venue')
-// Technical support may read a venue's unavailability but not its bookings (the server refuses them).
-const canSeeBookings = computed(() => session.role !== 'techsupport')
-const counts = computed(() => {
-  const tally = { pending: 0, approved: 0, unavailable: 0 }
+const visibleEntries = computed(() => {
   const range = visibleRange.value
-  for (const entry of entries.value) {
-    if (range && !overlapsRange(entry, range)) continue
-    if (entry.kind === 'unavailable') tally.unavailable += 1
-    else if (entry.status === 'approved') tally.approved += 1
-    else tally.pending += 1
-  }
+  return range ? entries.value.filter((entry) => overlapsRange(entry, range)) : entries.value
+})
+const visibleCount = computed(() => visibleEntries.value.length)
+const counts = computed(() => {
+  const tally = Object.fromEntries(KINDS.map((item) => [item.kind, 0]))
+  for (const entry of visibleEntries.value) tally[entry.kind] += 1
   return tally
 })
 const form = reactive({
@@ -207,15 +293,16 @@ const form = reactive({
 const calendarOptions = reactive({
   colorScheme: 'light',
   timeZone: SGT_ZONE,
-  plugins: [themePlugin, interactionPlugin, dayGridPlugin, timeGridPlugin, listPlugin],
-  headerToolbar: {
-    start: 'today prev,next title',
-    end: 'dayGridMonth,timeGridWeek,listWeek'
-  },
-  initialView: 'dayGridMonth',
+  plugins: [themePlugin, interactionPlugin, dayGridPlugin, timeGridPlugin],
+  headerToolbar: false,
+  initialView: VIEWS.find((option) => option.view === view.value).type,
+  initialDate: startDate(),
   height: 'auto',
   dayMaxEvents: false,
   eventDisplay: 'block',
+  // SPM-108 AC5: the week view shades every time outside the venue's opening hours.
+  businessHours: false,
+  nonBusinessHoursClass: 'outside-hours',
   selectable: session.role === 'venue',
   selectMirror: true,
   unselectAuto: true,
@@ -223,9 +310,14 @@ const calendarOptions = reactive({
   events: [],
   datesSet(arg) {
     visibleRange.value = { start: arg.start.getTime(), end: arg.end.getTime() }
+    view.value = arg.view.type === 'timeGridWeek' ? 'week' : 'month'
+    title.value = arg.view.title
   },
-  eventClassNames(arg) {
-    return [arg.event.extendedProps.kind]
+  eventClass(arg) {
+    return [`kind-${arg.event.extendedProps.kind}`]
+  },
+  dayCellClass(arg) {
+    return closedOn(arg.date) ? ['closed-day'] : []
   },
   eventClick(arg) {
     const entry = arg.event.extendedProps
@@ -234,7 +326,7 @@ const calendarOptions = reactive({
       openDetailAt(arg.el.getBoundingClientRect(), entry, true)
       return
     }
-    openDetailAt(arg.el.getBoundingClientRect(), entry, true)
+    openEntry(entry)
   },
   eventMouseEnter(arg) {
     if (arg.event.extendedProps.kind === 'draft') return
@@ -283,60 +375,162 @@ onMounted(async () => {
   if (venueId.value) await load()
 })
 
+// A link may open the calendar on a moment (`at`) or a range (`from`, `to`). A range of
+// a week or less opens in the week view; otherwise the calendar opens on this month.
+function startView() {
+  const from = focusMoment(props.focusFrom)
+  const to = focusMoment(props.focusTo)
+  return from && to && to - from <= 7 * DAY_MS ? 'week' : 'month'
+}
+
+function startDate() {
+  const value = props.focusFrom || props.focusAt
+  return focusMoment(value) ? focusMoment(value).toISOString() : undefined
+}
+
+// A link's date: "YYYY-MM-DD" is a Singapore date; anything else is a server time.
+function focusMoment(value) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value || '')) {
+    const date = new Date(`${value}T00:00:00+08:00`)
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+  return parseServerTime(value)
+}
+
+// SPM-108 AC7: every open reads the calendar afresh, so decisions, holds and blocks made since show.
 async function load() {
   if (!venueId.value) return
   loadError.value = ''
   closeDetail()
   try {
-    const [venueRes, blockRes, bookingRes] = await Promise.all([
-      getVenue(venueId.value),
-      getVenueUnavailability(venueId.value),
-      canSeeBookings.value ? getVenueBookings({ venueId: venueId.value }) : Promise.resolve({ data: [] })
-    ])
-    venue.value = venueRes.data
-    const blocks = blockRes.data.map((block) => ({
-      id: block.unavailabilityId,
-      kind: 'unavailable',
-      reason: block.reason,
-      note: block.note,
-      startsAt: block.startsAt,
-      endsAt: block.endsAt,
-      createdAt: block.createdAt
-    }))
-    const bookings = bookingRes.data
-      .filter((booking) => booking.status === 'approved' || booking.status === 'pending')
-      .map((booking) => {
-        const snapshot = booking.eventSnapshot || {}
-        return {
-          id: booking.bookingId,
-          kind: 'booking',
-          title: snapshot.eventName || booking.eventId,
-          eventId: booking.eventId,
-          status: booking.status,
-          startsAt: booking.startsAt,
-          endsAt: booking.endsAt,
-          setupStartsAt: booking.setupStartsAt,
-          teardownEndsAt: booking.teardownEndsAt,
-          client: snapshot.clientOrganisation || '',
-          attendance: snapshot.expectedAttendance,
-          layout: snapshot.layout || '',
-          requirements: booking.requirementsSnapshot || snapshot.requiredFacilities || '',
-          notes: booking.coordinatorNotes || '',
-          hold: booking.hold,
-          reverificationNote: booking.needsReverification ? booking.reverificationNote || '' : '',
-          createdAt: booking.createdAt
-        }
-      })
-    entries.value = [...blocks, ...bookings]
+    const { data } = await getVenueCalendar(venueId.value)
+    venueName.value = data.venueName
+    openingHours.value = data.operatingHours || []
+    entries.value = data.entries.map(toEntry)
+    calendarOptions.businessHours = businessHours(openingHours.value)
     paintEvents()
+    loaded.value = true
   } catch {
     loadError.value = 'Could not load this venue calendar.'
     return
   }
   await nextTick()
-  if (!form.open) showNearbyMonth()
-  await nextTick()
   revealFocusedBlock()
+}
+
+function toEntry(item) {
+  if (item.kind === 'unavailable') {
+    const block = item.unavailability || {}
+    return {
+      id: item.id,
+      kind: 'unavailable',
+      reason: block.reason,
+      note: block.note,
+      startsAt: item.startsAt,
+      endsAt: item.endsAt,
+      createdAt: block.createdAt
+    }
+  }
+  const booking = item.booking || {}
+  const snapshot = booking.eventSnapshot || {}
+  return {
+    id: item.id,
+    kind: item.kind,
+    title: item.eventName || item.eventId,
+    eventId: item.eventId,
+    status: booking.status,
+    // SPM-108 AC3: the entry spans the occupied window; the event's advertised times sit inside it.
+    startsAt: item.startsAt,
+    endsAt: item.endsAt,
+    eventStartsAt: item.eventStartsAt,
+    eventEndsAt: item.eventEndsAt,
+    client: item.clientOrganisation || '',
+    attendance: snapshot.expectedAttendance,
+    layout: snapshot.layout || '',
+    requirements: booking.requirementsSnapshot || snapshot.requiredFacilities || '',
+    notes: booking.coordinatorNotes || '',
+    hold: booking.hold,
+    reverificationNote: booking.needsReverification ? booking.reverificationNote || 'Needs another check' : ''
+  }
+}
+
+// Opening hours are Singapore wall-clock times, the calendar's own time zone.
+function businessHours(hours) {
+  return hours
+    .filter((item) => DAYS.includes(item.day))
+    .map((item) => ({ daysOfWeek: [DAYS.indexOf(item.day)], startTime: item.opens, endTime: item.closes }))
+}
+
+// FullCalendar's day dates carry the calendar's wall-clock date in their UTC fields.
+function hoursFor(date) {
+  return openingHours.value.filter((item) => item.day === DAYS[date.getUTCDay()])
+}
+
+function closedOn(date) {
+  return loaded.value && !hoursFor(date).length
+}
+
+// "Mon–Fri 08:00–18:00 · Sat–Sun closed": days in a row with the same hours share one part.
+const hoursSummary = computed(() => {
+  const groups = []
+  for (const day of [...DAYS.slice(1), DAYS[0]]) {
+    const hours = openingHours.value
+      .filter((item) => item.day === day)
+      .map((item) => `${item.opens}–${item.closes}`)
+      .join(', ') || 'closed'
+    const last = groups[groups.length - 1]
+    if (last?.hours === hours) last.days.push(day)
+    else groups.push({ days: [day], hours })
+  }
+  return groups
+    .map(({ days, hours }) => `${days.length > 1 ? `${days[0]}–${days[days.length - 1]}` : days[0]} ${hours}`)
+    .join(' · ')
+})
+
+function calendarApi() {
+  return calendarRef.value?.getApi?.()
+}
+
+function changeView(next) {
+  calendarApi()?.changeView(VIEWS.find((option) => option.view === next).type)
+}
+
+function inTimeGrid(arg) {
+  return arg.view.type.startsWith('timeGrid')
+}
+
+// The share of the block that setup (before the event) or turnaround (after it) takes.
+function bandShare(entry, part) {
+  const start = parseServerTime(entry.startsAt)?.getTime()
+  const end = parseServerTime(entry.endsAt)?.getTime()
+  const eventStart = parseServerTime(entry.eventStartsAt)?.getTime()
+  const eventEnd = parseServerTime(entry.eventEndsAt)?.getTime()
+  if ([start, end, eventStart, eventEnd].some((value) => value === undefined) || end <= start) return '0%'
+  const span = part === 'setup' ? eventStart - start : end - eventEnd
+  return `${Math.max(0, Math.min(100, (span / (end - start)) * 100))}%`
+}
+
+function kindLabel(kind) {
+  return KINDS.find((item) => item.kind === kind)?.label || kind
+}
+
+function eventTimes(entry) {
+  return `${formatSgtTime(entry.eventStartsAt)}–${formatSgtTime(entry.eventEndsAt)}`
+}
+
+// SPM-108 AC4: an entry opens its record. Venue Staff work holds from the pending requests;
+// everyone else, and every other booking, opens the event.
+function opensRequest(entry) {
+  return session.role === 'venue' && (entry.kind === 'hold' || entry.kind === 'expired-hold')
+}
+
+function openEntry(entry) {
+  closeDetail()
+  if (opensRequest(entry)) {
+    router.push({ name: 'dashboard', query: { tab: 'Booking Requests', status: 'pending', booking: entry.id } })
+    return
+  }
+  router.push({ name: 'event-detail', params: { id: entry.eventId } })
 }
 
 function currentDraft() {
@@ -384,12 +578,19 @@ function toDraftEvent(range) {
   return event
 }
 
+const TONES = {
+  confirmed: '#15803d',
+  pending: '#5b21b6',
+  hold: '#b45309',
+  'expired-hold': '#6b7280',
+  unavailable: '#b91c1c'
+}
+
 function toCalendarEvent(entry) {
-  const blocked = entry.kind === 'unavailable'
-  const tone = blocked ? '#b91c1c' : entry.status === 'approved' ? '#15803d' : '#5b21b6'
+  const tone = TONES[entry.kind]
   return {
     id: `${entry.kind}-${entry.id}`,
-    title: blocked ? 'Unavailable' : entry.title,
+    title: entry.kind === 'unavailable' ? 'Unavailable' : entry.title,
     start: ensureZ(entry.startsAt),
     end: ensureZ(entry.endsAt),
     backgroundColor: tone,
@@ -405,27 +606,8 @@ function overlapsRange(entry, range) {
   return start < range.end && end > range.start
 }
 
-function showNearbyMonth() {
-  const api = calendarRef.value?.getApi?.()
-  if (!api) return
-  const at = props.focusAt || (typeof route.query.at === 'string' ? route.query.at : '')
-  if (at && !Number.isNaN(new Date(ensureZ(at)).getTime())) {
-    api.gotoDate(ensureZ(at))
-    return
-  }
-  const now = Date.now()
-  const horizon = now + 400 * 24 * 60 * 60 * 1000
-  const nearby = entries.value
-    .filter((entry) => entry.kind === 'unavailable')
-    .map((entry) => ({ entry, time: new Date(ensureZ(entry.startsAt)).getTime() }))
-    .filter((item) => item.time >= now - 24 * 60 * 60 * 1000 && item.time <= horizon)
-    .sort((a, b) => String(b.entry.createdAt).localeCompare(String(a.entry.createdAt)))
-  if (nearby.length) api.gotoDate(ensureZ(nearby[0].entry.startsAt))
-  else api.today()
-}
-
 function revealFocusedBlock() {
-  const at = props.focusAt || (typeof route.query.at === 'string' ? route.query.at : '')
+  const at = props.focusAt
   if (!at) return
   const moment = new Date(ensureZ(at)).getTime()
   if (Number.isNaN(moment)) return
@@ -453,22 +635,19 @@ const detailRows = computed(() => {
     ].filter(Boolean).map(([label, value]) => ({ label, value }))
   }
   const rows = [
-    ['Event', entry.eventId],
-    ['Status', entry.status],
-    ['Start', formatWhen(entry.startsAt)],
-    ['End', formatWhen(entry.endsAt)]
+    ['Status', kindLabel(entry.kind)],
+    ['Client', entry.client || 'Not given'],
+    ['Event time', formatSgtRange(entry.eventStartsAt, entry.eventEndsAt)],
+    ['Occupied, with setup and turnaround', formatSgtRange(entry.startsAt, entry.endsAt)]
   ]
-  if (entry.setupStartsAt) rows.push(['Setup from', formatWhen(entry.setupStartsAt)])
-  if (entry.teardownEndsAt) rows.push(['Clear by', formatWhen(entry.teardownEndsAt)])
-  if (entry.client) rows.push(['Client', entry.client])
+  if (entry.hold?.state === 'active') rows.push(['Hold', `Active until ${formatWhen(entry.hold.expiresAt)}`])
+  else if (entry.hold?.state === 'expired') rows.push(['Hold', `Expired ${formatWhen(entry.hold.expiresAt)}`])
   if (entry.attendance !== undefined && entry.attendance !== null && entry.attendance !== '') {
     rows.push(['Attendance', String(entry.attendance)])
   }
   if (entry.layout) rows.push(['Layout', entry.layout])
   if (entry.requirements) rows.push(['Requirements', entry.requirements])
   if (entry.notes) rows.push(['Notes', entry.notes])
-  if (entry.hold?.state === 'active') rows.push(['Hold', `Active until ${formatWhen(entry.hold.expiresAt)}`])
-  else if (entry.hold?.state) rows.push(['Hold', entry.hold.state])
   if (entry.reverificationNote) rows.push(['Needs another check', entry.reverificationNote])
   return rows.map(([label, value]) => ({ label, value }))
 })
@@ -477,11 +656,20 @@ function openDetailAt(rect, entry, pin) {
   if (detail.pinned && !pin && detail.entry?.id !== entry.id) return
   clearTimeout(hideTimer)
   const cardWidth = 300
+  const cardHeight = 360
   let left = rect.left
+  let top = rect.bottom + 8
+  // Below the entry, else above it, else beside it: the card never covers the entry it describes.
+  if (top + cardHeight > window.innerHeight - 16) {
+    if (rect.top - cardHeight - 8 >= 16) {
+      top = rect.top - cardHeight - 8
+    } else {
+      top = Math.max(16, Math.min(rect.top, window.innerHeight - cardHeight - 16))
+      left = rect.right + 8 + cardWidth <= window.innerWidth - 16 ? rect.right + 8 : rect.left - cardWidth - 8
+    }
+  }
   if (left + cardWidth > window.innerWidth - 16) left = window.innerWidth - cardWidth - 16
   if (left < 16) left = 16
-  let top = rect.bottom + 8
-  if (top + 260 > window.innerHeight - 16) top = Math.max(16, rect.top - 268)
   detail.entry = entry
   detail.top = top
   detail.left = left
@@ -566,12 +754,12 @@ function changeVenue() {
 }
 
 function revealDraft(range) {
-  const api = calendarRef.value?.getApi?.()
-  const view = visibleRange.value
-  if (!api || !view) return
+  const api = calendarApi()
+  const visible = visibleRange.value
+  if (!api || !visible) return
   const start = new Date(ensureZ(range.startsAt)).getTime()
   const end = new Date(ensureZ(range.endsAt)).getTime()
-  if (start < view.end && end > view.start) return
+  if (start < visible.end && end > visible.start) return
   api.gotoDate(ensureZ(range.startsAt))
 }
 
@@ -692,10 +880,32 @@ h1 { margin: 0; font-size: 28px; line-height: 1.15; }
   color: #92400e;
   font-size: 0.9rem;
 }
+.calendar-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+.nav, .views { display: flex; align-items: center; gap: 8px; }
+.range-title { margin: 0 0 0 6px; font-size: 18px; color: #1c1233; }
+.tool-btn {
+  padding: 6px 12px;
+  color: #1c1233;
+  background: #f4f0fb;
+  border: 1px solid #d9d0ea;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.tool-btn.icon { padding: 6px 10px; font-size: 16px; line-height: 1; }
+.tool-btn.active { color: #fff; background: #5b21b6; border-color: #5b21b6; }
 .calendar-bar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 16px;
   margin: 0 0 12px;
   padding-bottom: 12px;
@@ -703,8 +913,9 @@ h1 { margin: 0; font-size: 28px; line-height: 1.15; }
 }
 .legend {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
+  gap: 8px 14px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -729,9 +940,34 @@ h1 { margin: 0; font-size: 28px; line-height: 1.15; }
   border-radius: 4px;
   flex-shrink: 0;
 }
-.swatch.pending { background: #5b21b6; }
-.swatch.approved { background: #15803d; }
-.swatch.unavailable { background: #b91c1c; }
+.swatch.kind-confirmed { background: #15803d; }
+.swatch.kind-pending { background: #5b21b6; }
+.swatch.kind-hold { background: #b45309; }
+.swatch.kind-expired-hold { background: #f3f4f6; border: 2px dashed #6b7280; }
+.swatch.kind-unavailable { background: #b91c1c; }
+.swatch.outside { background: repeating-linear-gradient(135deg, #e5e7eb 0 3px, #f9fafb 3px 6px); border: 1px solid #d1d5db; }
+.empty {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: #f4f0fb;
+  color: #1c1233;
+  font-size: 13px;
+}
+.day-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; }
+.hours-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #374151;
+  font-size: 11px;
+  font-weight: 600;
+}
+.hours { margin: 0 0 12px; color: #4b5563; font-size: 13px; }
+.calendar-shell :deep(.closed-day),
+.calendar-shell :deep(.outside-hours) {
+  background: repeating-linear-gradient(135deg, #e5e7eb 0 3px, #f9fafb 3px 6px);
+}
 .event-body {
   cursor: pointer;
   position: relative;
@@ -748,8 +984,14 @@ h1 { margin: 0; font-size: 28px; line-height: 1.15; }
   font-weight: 650;
   line-height: 1.25;
   white-space: normal;
+  overflow: hidden;
 }
-.event-body[data-kind='unavailable'] { background: #b91c1c; }
+.event-body.in-time-grid { height: 100%; }
+.event-body.kind-confirmed { background: #15803d; }
+.event-body.kind-pending { background: #5b21b6; }
+.event-body.kind-hold { background: #b45309; }
+.event-body.kind-expired-hold { background: #f3f4f6; color: #374151; border: 2px dashed #6b7280; }
+.event-body.kind-unavailable { background: #b91c1c; }
 .event-body[data-kind='draft'] {
   color: #7f1d1d;
   background: #fee2e2;
@@ -762,9 +1004,31 @@ h1 { margin: 0; font-size: 28px; line-height: 1.15; }
   border: 2px dashed #b91c1c !important;
   box-shadow: none !important;
 }
-.event-body[data-kind='booking'] { background: #5b21b6; }
-.event-body[data-kind='booking'][data-status='approved'] { background: #15803d; }
-.kind { text-transform: capitalize; color: #fff7ed; }
+.calendar-shell :deep(.kind-expired-hold) { background: #f3f4f6 !important; border-color: #6b7280 !important; }
+.entry { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kind-tag {
+  align-self: flex-start;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.kind-expired-hold .kind-tag { background: #e5e7eb; }
+.line { font-weight: 600; opacity: 0.95; }
+.time { font-variant-numeric: tabular-nums; }
+/* SPM-108 AC3: setup and turnaround are the hatched ends of a booking's occupied window. */
+.band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0 3px, transparent 3px 7px);
+  pointer-events: none;
+}
+.band.setup { top: 0; border-bottom: 1px dashed rgba(255, 255, 255, 0.7); }
+.band.turnaround { bottom: 0; border-top: 1px dashed rgba(255, 255, 255, 0.7); }
 .panel {
   display: flex;
   flex-direction: column;
@@ -811,7 +1075,6 @@ select option { background: #1a1030; color: #f3eeff; }
 .mark-btn:disabled { opacity: 0.55; cursor: default; }
 .form-actions { display: flex; gap: 8px; }
 .error { color: #ffb4b4; margin: 8px 0 0; white-space: pre-wrap; }
-.note { color: var(--body); font-size: 13px; margin: 0 0 14px; }
 .calendar-shell {
   min-width: 0;
   background: #fff;
@@ -819,30 +1082,6 @@ select option { background: #1a1030; color: #f3eeff; }
   border-radius: var(--radius);
   padding: 12px 16px 16px;
   overflow: auto;
-}
-.calendar-shell :deep(button),
-.calendar-shell :deep([role='tab']) {
-  color: #1c1233;
-  background: #f4f0fb;
-  border: 1px solid #d9d0ea;
-  border-radius: var(--radius);
-  font-weight: 650;
-}
-.calendar-shell :deep([role='tab']) {
-  margin: 0 0 0 10px !important;
-}
-.calendar-shell :deep([role='tab']:first-child) {
-  margin-left: 0 !important;
-}
-.calendar-shell :deep([aria-selected='true']) {
-  color: #fff;
-  background: #5b21b6;
-  border-color: #5b21b6;
-}
-.calendar-shell .mark-btn {
-  color: #fff;
-  background: #6d28d9;
-  border-color: #6d28d9;
 }
 .calendar-shell :deep(a),
 .calendar-shell :deep(h2) {

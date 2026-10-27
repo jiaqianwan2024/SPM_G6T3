@@ -60,6 +60,10 @@ export const requestVenueReplacement = (bookingId, body) =>
 // SPM-9: a block keeps the venue out of search and approval for its period.
 export const getVenueUnavailability = (venueId) => axiosClient.get(`/venues/${venueId}/unavailability`);
 
+// SPM-108: bookings, requests, holds and unavailability on one venue. `from` / `to` are optional.
+export const getVenueCalendar = (venueId, params = {}) =>
+  axiosClient.get(`/venues/${venueId}/calendar`, { params });
+
 export const createVenueUnavailability = (venueId, body) =>
   axiosClient.post(`/venues/${venueId}/unavailability`, body);
 

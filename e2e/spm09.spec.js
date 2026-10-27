@@ -106,7 +106,8 @@ test.describe('SPM-09 Mark a Venue as Unavailable', () => {
     })
     expect(block.status).toBe(201)
     await login(page, account('VS-01'))
-    await page.goto(`/app/venues/v2/calendar`)
+    // SPM-108: the calendar opens on today, so the link names the block's date.
+    await page.goto(`/app/venues/v2/calendar?at=${encodeURIComponent(block.body.startsAt)}`)
     const entry = page.getByTestId(`calendar-unavailable-${block.body.unavailabilityId}`)
     await expect(entry).toBeVisible()
     await expect(entry).toContainText(/unavailable/i)
