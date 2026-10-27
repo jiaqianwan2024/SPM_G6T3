@@ -8,6 +8,9 @@ export const getEquipmentQueue = () => axiosClient.get("/equipment/queue");
 
 export const getUpcomingEquipmentQueue = (params) => axiosClient.get("/equipment/upcoming", { params });
 
+// SPM-58: Technical Support's home screen, every section in one reply.
+export const getTechDashboard = () => axiosClient.get("/equipment/dashboard");
+
 export const getEquipment = (equipmentId) => axiosClient.get(`/equipment/${equipmentId}`);
 
 export const createEquipment = (body) => axiosClient.post("/equipment", body);
