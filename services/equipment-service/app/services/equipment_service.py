@@ -32,9 +32,11 @@ from app.schemas.equipment import (
     EquipmentReservationOut,
     EquipmentUpdate,
     OutOfServiceCounts,
+    ReleasedReservationOut,
     RescheduledReservationOut,
     ReservationReschedule,
     ReservationReschedulePreview,
+    RestoredReservation,
     SuppliedEventOut,
     TechDashboardOut,
     TechWorkItemOut,
@@ -615,20 +617,51 @@ class EquipmentService(BaseService):
     def get_reservation(self, reservation_id: str) -> EquipmentReservationOut:
         return _reservation_to_out(self._require(self.reservation_dao.get_by_id(reservation_id), "Reservation not found"))
 
-    def release_holds_for_event(self, event_id: str, caller: dict, reason: str) -> list[EquipmentReservationOut]:
-        """Rejecting, cancelling, or completing an event returns its held stock (SPM-3)."""
+    def release_holds_for_event(self, event_id: str, caller: dict, reason: str) -> list[ReleasedReservationOut]:
+        """Rejecting, cancelling, or completing an event returns its held stock (SPM-3). Each reply
+        names the reservation's previous status, so the release can be undone (SPM-88 AC9), and the
+        technical support member who handled its line, who is told of a cancellation (AC8)."""
         rows = self.reservation_dao.list_active_for_event(event_id)
+        previous = {row.reservationId: row.status for row in rows}
         for row in rows:
-            previous = row.quantity
             row.status = "released"
             self._log_change(
                 row.equipmentId,
                 "release",
                 caller,
-                {"eventId": event_id, "previousQuantity": previous, "newQuantity": 0, "reason": reason},
+                {"eventId": event_id, "previousQuantity": row.quantity, "newQuantity": 0, "reason": reason},
             )
         self.db.commit()
-        return [_reservation_to_out(row) for row in rows]
+        return [
+            ReleasedReservationOut(
+                **_reservation_to_out(row).model_dump(),
+                previousStatus=previous[row.reservationId],
+                handledBy=row.request.reviewedBy,
+            )
+            for row in rows
+        ]
+
+    def restore_holds_for_event(
+        self, event_id: str, reservations: list[RestoredReservation], caller: dict
+    ) -> list[EquipmentReservationOut]:
+        """SPM-88 AC9: the cancellation failed after its equipment release, so each reservation it
+        released holds its stock again. One of another event, or no longer released, is left alone,
+        so repeating the undo changes nothing."""
+        restored = []
+        for item in reservations:
+            row = self.reservation_dao.get_by_id(item.reservationId)
+            if row is None or row.eventId != event_id or row.status != "released":
+                continue
+            row.status = item.status
+            self._log_change(
+                row.equipmentId,
+                "restore",
+                caller,
+                {"eventId": event_id, "quantity": row.quantity, "reason": "The event's cancellation did not take effect"},
+            )
+            restored.append(row)
+        self.db.commit()
+        return [_reservation_to_out(row) for row in restored]
 
     def outcome_summary(self, event_id: str) -> list[dict]:
         requests = {row.requestId: row for row in self.request_dao.list_all() if row.eventId == event_id}

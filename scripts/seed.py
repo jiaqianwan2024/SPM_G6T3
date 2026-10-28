@@ -400,6 +400,15 @@ def seed_event() -> None:
                 },
                 now,
             )
+        # SPM-88 AC10: a cancelled event keeps why, by whom and when. Filled only while blank.
+        conn.execute(
+            text(
+                "UPDATE events SET cancellation_reason = 'The briefing was merged into the quarterly review.', "
+                "cancelled_by = 'u1', cancelled_at = :cancelled_at "
+                "WHERE event_id = 'e8' AND status = 'cancelled' AND cancellation_reason IS NULL"
+            ),
+            {"cancelled_at": now - 2 * day},
+        )
         if not conn.execute(text("SELECT review_id FROM event_reviews WHERE review_id = 'rv-clarify-e3'")).first():
             conn.execute(
                 text(

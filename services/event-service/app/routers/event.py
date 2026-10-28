@@ -1,7 +1,7 @@
 import logging
 from typing import Literal
 
-from fastapi import APIRouter, Body, Depends, Path, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -35,6 +35,7 @@ from app.schemas.event import (
     EventAssignmentCreate,
     EventAssignmentOut,
     EventCoordinatorOut,
+    EventCancellation,
     EventRejection,
     EventRejectionOut,
     EventIntake,
@@ -1264,6 +1265,30 @@ def complete_event(
 ):
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
     return service.complete_event(event_id, caller["userId"], authorization)
+
+
+@router.post(
+    "/{event_id}/cancel",
+    response_model=EventOut,
+    summary="Cancel an event",
+    description="SPM-88. The organiser (any of their organisation's events) or the assigned coordinator. Takes "
+    "effect at once, with no approval step, from any live status (not draft, discarded, rejected, completed or "
+    "already cancelled: 409). A reason is required (422). Every venue booking and request, and every equipment "
+    "reservation, is released first; if any release fails, what was released is given back, the event is left "
+    "as it was, and 503 says so. Cancelled is terminal. The reason is kept, the change is logged, a pending "
+    "change request is closed, and attendees and staff are notified.",
+    responses=error_responses(403, 404, 409, 422, 503),
+)
+def cancel_event(
+    body: EventCancellation,
+    background: BackgroundTasks,
+    event_id: str = Path(..., description="Event id, e.g. `e1`."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"organiser", "coordinator"})
+    # Attendees and staff are told just after the reply, so the organiser does not wait on it.
+    return service.cancel_event(event_id, body.reason, caller, authorization, background.add_task)
 
 
 @router.post(

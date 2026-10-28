@@ -562,6 +562,74 @@ def release_event_venue_bookings(event_id: str, authorization: str | None) -> No
         logger.info("release_event_venue_bookings(%s) raised %r", event_id, exc)
 
 
+class ReleaseFailed(Exception):
+    """SPM-88 AC9: a cancellation's release did not go through, so the cancellation must not either."""
+
+
+def _release_call(url: str, body: dict, authorization: str | None, what: str) -> list[dict]:
+    """POST with the caller's token; the reply on success. Anything else raises ReleaseFailed."""
+    try:
+        response = httpx.post(url, json=body, headers={"Authorization": authorization or ""}, timeout=10.0)
+    except httpx.HTTPError as exc:
+        logger.warning("%s for %s raised %r", what, body.get("eventId"), exc)
+        raise ReleaseFailed(what) from exc
+    if response.status_code != 200:
+        logger.warning("%s for %s got status %s", what, body.get("eventId"), response.status_code)
+        raise ReleaseFailed(what)
+    return response.json()
+
+
+def release_venue_for_cancellation(event_id: str, authorization: str | None) -> list[dict]:
+    """SPM-88 AC5: free every pending request and approved booking. Raises ReleaseFailed."""
+    return _release_call(
+        f"{settings.venue_service_url}/venues/bookings/release", {"eventId": event_id}, authorization, "venue release"
+    )
+
+
+def release_equipment_for_cancellation(event_id: str, reason: str, authorization: str | None) -> list[dict]:
+    """SPM-88 AC6: free every reservation's stock. Raises ReleaseFailed."""
+    return _release_call(
+        f"{settings.equipment_service_url}/equipment/reservations/release-for-event",
+        {"eventId": event_id, "reason": f"The event was cancelled: {reason}"},
+        authorization,
+        "equipment release",
+    )
+
+
+def restore_venue_after_failed_cancellation(event_id: str, released: list[dict], authorization: str | None) -> bool:
+    """SPM-88 AC9: give back what the venue release freed. False when that did not work either."""
+    if not released:
+        return True
+    bookings = [{"bookingId": row["bookingId"], "status": row["previousStatus"]} for row in released]
+    try:
+        _release_call(
+            f"{settings.venue_service_url}/venues/bookings/restore",
+            {"eventId": event_id, "bookings": bookings},
+            authorization,
+            "venue restore",
+        )
+    except ReleaseFailed:
+        return False
+    return True
+
+
+def restore_equipment_after_failed_cancellation(event_id: str, released: list[dict], authorization: str | None) -> bool:
+    """SPM-88 AC9: hold again what the equipment release freed. False when that did not work either."""
+    if not released:
+        return True
+    reservations = [{"reservationId": row["reservationId"], "status": row["previousStatus"]} for row in released]
+    try:
+        _release_call(
+            f"{settings.equipment_service_url}/equipment/reservations/restore-for-event",
+            {"eventId": event_id, "reservations": reservations},
+            authorization,
+            "equipment restore",
+        )
+    except ReleaseFailed:
+        return False
+    return True
+
+
 def send_notification(to: str, subject: str, body: str, authorization: str | None) -> bool:
     """Queue an email through notification-service. Best effort: callers have
     already saved their change, so a failure is logged rather than raised."""
