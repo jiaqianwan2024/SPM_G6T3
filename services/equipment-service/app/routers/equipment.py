@@ -437,7 +437,7 @@ def create_request(
     require_assigned_coordinator(
         fetch_event_coordinator(body.eventId, authorization), caller["userId"], "request equipment for it"
     )
-    return service.create_request(body, caller["userId"])
+    return service.create_request(body, caller["userId"], authorization)
 
 
 @router.get(
@@ -493,7 +493,7 @@ def accept_shortfall(
     service: EquipmentService = Depends(get_equipment_service),
 ):
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
-    return service.accept_shortfall(request_id, caller)
+    return service.accept_shortfall(request_id, caller, authorization)
 
 
 @router.post("/requests/{request_id}/complete-review", response_model=EquipmentRequestOut)
@@ -536,7 +536,9 @@ def refine_request(
     require_assigned_coordinator(
         fetch_event_coordinator(event_id, authorization), caller["userId"], "change its equipment requests"
     )
-    return service.refine_request(request_id, body.quantity, body.technicalRequirements)
+    return service.refine_request(
+        request_id, body.quantity, body.technicalRequirements, caller["userId"], authorization
+    )
 
 
 @router.patch(
@@ -552,8 +554,8 @@ def patch_request_status(
     service: EquipmentService = Depends(get_equipment_service),
 ):
     if body.resubmit:
-        resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
-        return service.amend_request(request_id, body.quantity)
+        caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+        return service.amend_request(request_id, body.quantity, caller["userId"], authorization)
     _technical_support(authorization)
     raise forbidden(f"Request {request_id} cannot be set to {body.status} directly")
 
