@@ -141,6 +141,34 @@ class TestEquipmentRequests(EquipmentCase):
             "u-coord",
         )
 
+    def test_each_review_outcome_and_the_reservation_reach_the_coordinators_inbox(self):
+        created = self.service.create_equipment(equipment_create(code="OUTCOME"), CALLER)
+        rejected = self._request(created, "e-no")
+        approved = self._request(created, "e-yes")
+
+        record = {"eventName": "Summit", "coordinatorId": "u-coord", "organiserId": "u-org"}
+        with patch("app.services.equipment_service._event_record", return_value=record), patch(
+            "app.services.equipment_service.publish_notification"
+        ) as publish:
+            self.service.review_request(rejected.requestId, "u-tech", False, " Under repair ", "Bearer token")
+            self.service.review_request(approved.requestId, "u-tech", True, "", "Bearer token")
+            self.service.reserve_request(approved.requestId, "u-tech", "Bearer token")
+
+        calls = [call.args for call in publish.call_args_list]
+        self.assertEqual(
+            [(trigger, occurrence) for trigger, _, occurrence, *_ in calls],
+            [
+                ("equipment.rejected", f"e-no:equipment.rejected:{rejected.requestId}"),
+                ("equipment.approved", f"e-yes:equipment.approved:{approved.requestId}"),
+                ("equipment.reserved", f"e-yes:equipment.reserved:{approved.requestId}"),
+            ],
+        )
+        for _, _, _, recipients, context in calls:
+            self.assertEqual(recipients, [{"userId": "u-coord", "role": "coordinator"}])
+            self.assertEqual((context["eventName"], context["equipmentName"], context["quantity"]), ("Summit", created.name, "2"))
+        self.assertEqual(calls[0][4]["reason"], "Under repair")
+        self.assertEqual({call.kwargs["actor_id"] for call in publish.call_args_list}, {"u-tech"})
+
     def test_unavailable_records_who_and_when_and_queues_email(self):
         created = self.service.create_equipment(equipment_create(code="UNAV"), CALLER)
         request = self._request(created, "e-unav")

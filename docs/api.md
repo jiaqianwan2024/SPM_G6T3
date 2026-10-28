@@ -37,6 +37,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `GET /events/coordinators` | `coordinatorlead` |
 | `GET /events/assignments` | `coordinatorlead` only (SPM-119); an Event Coordinator gets 403 |
 | `GET /events/queue` | `coordinatorlead` sees every request; a `coordinator` sees only the requests assigned to them |
+| `GET /events/assigned` | `coordinator` only: the caller's own assigned events at any stage except draft and discarded, soonest first. Filtered in the database, so `registeredCount` is only fetched for those rows. Every other role gets 403 |
 | `POST /events/{id}/reject` | `coordinator` assigned to the event (SPM-70) |
 | `POST /events/{id}/cancel` | `organiser` of the event's organisation, or the `coordinator` assigned to it (SPM-88). Any live status (409 for draft, discarded, rejected, completed, or already cancelled); a `reason` is required (422). Venue bookings and equipment reservations are released first, side by side; if either fails, what was released is given back, the event is unchanged, and 503 says so. Then the event is `cancelled` (terminal), with `cancellationReason`, `cancelledBy`, `cancelledAt`; the change is in the activity log and a pending change request becomes `closed`. Attendees, the coordinator, the organiser, the approving Venue Staff, and the technical support members who handled its lines get `event.cancelled` just after the reply |
 | `POST`, `PATCH`, `DELETE /events/{id}/readiness-items…` | `coordinator` assigned to the event |

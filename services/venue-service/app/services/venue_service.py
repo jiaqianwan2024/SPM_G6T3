@@ -1381,6 +1381,21 @@ class VenueService(BaseService):
             "expires and the venue becomes available to other requests.",
         )
 
+    def decision_notice(self, booking: VenueBookingOut, event: EventFacts) -> tuple[str, str, str]:
+        """SPM-8 and SPM-10: the coordinator learns Venue Staff approved or rejected the request,
+        with the reason and any suggested venue. (title, body, notice type)."""
+        name = event.eventName or booking.eventId
+        venue = booking.venueName or booking.venueId
+        if booking.status == "approved":
+            body = f'{venue} is confirmed for "{name}".'
+            if booking.decisionReason:
+                body += f" Note: {booking.decisionReason}"
+            return "Venue booking approved", body, "venue.booking_approved"
+        body = f'Venue Staff rejected the request for {venue} for "{name}". Reason: {booking.decisionReason}'
+        if booking.suggestedVenueName:
+            body += f" They suggest {booking.suggestedVenueName} instead."
+        return "Venue booking rejected", f"{body} Choose another venue for the event.", "venue.booking_rejected"
+
     def approve_booking(
         self, booking_id: str, reviewer_id: str, reason: str | None, reviewer_name: str | None = None
     ) -> VenueBookingOut:

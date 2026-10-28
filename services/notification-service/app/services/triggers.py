@@ -86,6 +86,58 @@ TRIGGERS: dict[str, Trigger] = {
             recipient_roles=_SAFETY_RECIPIENTS,
             required_context=("eventName", "reason"),
         ),
+        # A significant change sent the event back to planning, so the officer's review or approval no
+        # longer stands. `what` is "review" or "approval"; `reason` is what changed.
+        Trigger(
+            key="safety.withdrawn",
+            title="Safety {what} withdrawn for {eventName}",
+            body=(
+                "{eventName} changed, so its safety {what} was withdrawn and it is back in planning. "
+                "It will be sent for a safety review again once it is resubmitted. What changed: {reason}"
+            ),
+            recipient_roles=frozenset({"safety"}),
+            required_context=("eventName", "what", "reason"),
+        ),
+        # SPM-106: the organiser asked to change an event, or took the request back.
+        Trigger(
+            key="change_request.raised",
+            title="Change requested for {eventName}",
+            body=(
+                "{requesterName} asked to change {fields} on {eventName}. Reason: {reason} "
+                "Open the event to accept or decline it."
+            ),
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "requesterName", "fields", "reason"),
+        ),
+        Trigger(
+            key="change_request.withdrawn",
+            title="Change request withdrawn for {eventName}",
+            body="{requesterName} withdrew their request to change {fields} on {eventName}. Nothing needs deciding.",
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "requesterName", "fields"),
+        ),
+        # Technical support decided on an equipment request, or reserved it.
+        Trigger(
+            key="equipment.approved",
+            title="Equipment approved for {eventName}",
+            body="{quantity} × {equipmentName} for {eventName} was approved by technical support. It is reserved next.",
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "equipmentName", "quantity"),
+        ),
+        Trigger(
+            key="equipment.rejected",
+            title="Equipment request rejected for {eventName}",
+            body="Technical support rejected {quantity} × {equipmentName} for {eventName}. Reason: {reason}",
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "equipmentName", "quantity", "reason"),
+        ),
+        Trigger(
+            key="equipment.reserved",
+            title="Equipment reserved for {eventName}",
+            body="{quantity} × {equipmentName} is reserved for {eventName}.",
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "equipmentName", "quantity"),
+        ),
         # SPM-70 AC4: the coordinator rejected the request. The organiser reads the reason and explanation.
         Trigger(
             key="event.rejected",

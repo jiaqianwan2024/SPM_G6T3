@@ -381,6 +381,42 @@ class TestHoldRoutes(HoldCase):
         self.assertEqual(held.status_code, 200)
         notify.assert_not_called()
 
+    def test_an_approval_tells_the_coordinator_in_the_app(self):
+        approved, notify = self.post("/approve", json={"reason": "Bring a floor plan."})
+
+        self.assertEqual(approved.status_code, 200)
+        notify.assert_called_once_with(
+            "u-coord",
+            "e-a",
+            "Venue booking approved",
+            'Harbour Hall is confirmed for "AI Summit". Note: Bring a floor plan.',
+            HEADERS["Authorization"],
+            "venue.booking_approved",
+        )
+
+    def test_a_rejection_tells_the_coordinator_the_reason_and_the_suggested_venue(self):
+        other = self.service.create_venue(venue_create(code="RC-1", name="River Court"), CALLER)
+
+        rejected, notify = self.post(
+            "/reject", json={"reason": "Closed for repairs.", "suggestedVenueId": other.venueId}
+        )
+
+        self.assertEqual(rejected.status_code, 200)
+        user_id, event_id, title, body, _, notice_type = notify.call_args.args
+        self.assertEqual((user_id, event_id, title, notice_type), ("u-coord", "e-a", "Venue booking rejected", "venue.booking_rejected"))
+        self.assertIn('rejected the request for Harbour Hall for "AI Summit". Reason: Closed for repairs.', body)
+        self.assertIn("They suggest River Court instead.", body)
+        self.assertTrue(body.endswith("Choose another venue for the event."))
+
+    def test_a_decision_stands_when_the_event_cannot_be_read_for_the_notice(self):
+        with signed_in_as("venue"), patch(
+            "app.routers.venue.fetch_event_facts", side_effect=httpx.ConnectError("down")
+        ), patch("app.routers.venue.notify_coordinator", return_value=True) as notify:
+            approved = self.client.post(f"/venues/bookings/{self.a}/approve", headers=HEADERS, json={})
+
+        self.assertEqual((approved.status_code, approved.json()["status"]), (200, "approved"))
+        notify.assert_not_called()
+
     def test_a_refused_hold_tells_nobody(self):
         refused, notify = self.post("/hold", json={"expiresAt": "2020-01-04T08:00:00Z"})
 

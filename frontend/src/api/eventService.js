@@ -16,6 +16,9 @@ export const getConfirmedEvents = () => axiosClient.get("/events/confirmed");
 export const getSubmissionQueue = ({ sort, assignedTo, includeCompleted } = {}) =>
   axiosClient.get("/events/queue", { params: { sort, assignedTo, includeCompleted: includeCompleted || undefined } });
 
+// Coordinator only: every event assigned to the caller except drafts, soonest first.
+export const getAssignedEvents = () => axiosClient.get("/events/assigned");
+
 export const getEvent = (eventId) => axiosClient.get(`/events/${eventId}`);
 
 // organiserId is not sent — the backend takes it from the bearer token.

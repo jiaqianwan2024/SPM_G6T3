@@ -283,6 +283,24 @@ class TestWithdrawing(ChangeRequestCase):
         self.assertEqual((to, subject), ("ben@connectsphere.com", "Change request withdrawn for Summit"))
         self.assertIn("Amy has withdrawn their request to change description", body)
 
+    def test_raising_and_withdrawing_reach_the_coordinators_inbox(self):
+        self.event()
+        raised = self.raise_(reason="Client asked", description="temp")
+        self.withdraw(raised.changeRequestId)
+
+        calls = [call for call in self.published.call_args_list if call.args[0].startswith("change_request.")]
+        self.assertEqual([call.args[0] for call in calls], ["change_request.raised", "change_request.withdrawn"])
+        for call in calls:
+            trigger, event_id, occurrence, recipients, context = call.args
+            self.assertEqual((event_id, occurrence), ("e1", f"e1:{trigger}:{raised.changeRequestId}"))
+            # Published with the service key: an organiser cannot write to a staff inbox.
+            self.assertEqual(recipients, [{"userId": "coord-1", "role": "coordinator"}])
+            self.assertEqual(
+                (context["eventName"], context["requesterName"], context["fields"]), ("Summit", "Amy", "description")
+            )
+            self.assertEqual(call.kwargs["actor_id"], "org-1")
+        self.assertEqual(calls[0].args[4]["reason"], "Client asked")
+
     def test_only_the_organiser_who_asked_and_only_while_pending(self):
         self.event()
         raised = self.raise_()

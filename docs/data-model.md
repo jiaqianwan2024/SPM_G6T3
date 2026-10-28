@@ -522,6 +522,11 @@ The schema contains persisted notification records, and seed data inserts one ex
 | `clarification.replied` | the organiser replies to a clarification (SPM-6). When the event is no longer under review, the body also names its current status | the assigned coordinator |
 | `safety.submitted` | the arrangements are submitted for a safety review | all safety officers |
 | `safety.approved`, `safety.changes_requested`, `safety.rejected` | the Safety Officer decides | the coordinator, the organiser, and all venue and technical staff |
+| `safety.withdrawn` | a significant change (an edit, an accepted change request, or a reschedule) withdraws a pending safety review or an approval, sent after the change is saved | the Safety Officer who claimed the event, or every Safety Officer when nobody had |
+| `change_request.raised`, `change_request.withdrawn` | the organiser asks to change an event, or takes the request back (SPM-106) | the assigned coordinator |
+| `equipment.approved`, `equipment.rejected`, `equipment.reserved` | technical support approve, reject (with the reason), or reserve an equipment request; published by equipment-service | the assigned coordinator |
+
+Venue-service writes its coordinator notices through `POST /notifications/records` with the Venue Staff member's token instead: `venue.hold` (a hold is placed), `venue.unavailability`, `venue.reverification` (a booking released after re-checking), and `venue.booking_approved` / `venue.booking_rejected` (Venue Staff decide on a request; the rejection names the reason and any suggested venue). A notice that cannot be sent never undoes the decision.
 
 ### notifications
 

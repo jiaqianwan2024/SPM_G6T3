@@ -763,7 +763,7 @@ def reconfirm_booking(
         "its occupied window (event start minus setup time to event end plus turnaround time), and records who "
         "approved it and when. Refused with 409, leaving the request pending, when the booking is no longer "
         "`pending` or the window overlaps a confirmed booking, an active tentative hold, or an unavailability "
-        "period. An expired hold does not block approval."
+        "period. An expired hold does not block approval. The event's assigned coordinator is told in the app."
     ),
     responses=error_responses(403, 404, 409, 503),
 )
@@ -774,7 +774,9 @@ def approve_booking(
     service: VenueService = Depends(get_venue_service),
 ):
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"venue"})
-    return service.approve_booking(booking_id, caller["userId"], body.reason, caller.get("userName"))
+    booking = service.approve_booking(booking_id, caller["userId"], body.reason, caller.get("userName"))
+    _tell_coordinator_of_decision(service, booking, authorization)
+    return booking
 
 
 @router.post(
@@ -786,7 +788,8 @@ def approve_booking(
         "names another active venue (422 when it is unknown, retired, or the same venue). The request becomes "
         "`rejected`, leaves the pending queue, ends any tentative hold so it reserves nothing, and records who "
         "rejected it, why, and when. Fails with 409 if the booking is no longer `pending`, so a rejected request "
-        "can no longer be approved or changed."
+        "can no longer be approved or changed. The event's assigned coordinator is told in the app, with the reason and "
+        "any suggested venue."
     ),
     responses=error_responses(403, 404, 409, 422, 503),
 )
@@ -797,6 +800,20 @@ def reject_booking(
     service: VenueService = Depends(get_venue_service),
 ):
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"venue"})
-    return service.reject_booking(
+    booking = service.reject_booking(
         booking_id, caller["userId"], body.reason, caller.get("userName"), body.suggestedVenueId
     )
+    _tell_coordinator_of_decision(service, booking, authorization)
+    return booking
+
+
+def _tell_coordinator_of_decision(service: VenueService, booking: VenueBookingOut, authorization: str | None) -> None:
+    """Best effort, after the decision is saved: the event's assigned coordinator is told in the app.
+    An unreachable event-service only skips the notice."""
+    try:
+        event = fetch_event_facts(booking.eventId, authorization)
+    except Exception:
+        return
+    if event.coordinatorId:
+        title, body, notice_type = service.decision_notice(booking, event)
+        notify_coordinator(event.coordinatorId, booking.eventId, title, body, authorization or "", notice_type)
