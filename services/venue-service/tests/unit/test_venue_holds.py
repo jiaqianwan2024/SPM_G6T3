@@ -394,13 +394,18 @@ class TestHoldRoutes(HoldCase):
             "venue.booking_approved",
         )
 
-    def test_a_rejection_tells_the_coordinator_the_reason(self):
-        rejected, notify = self.post("/reject", json={"reason": "Closed for repairs."})
+    def test_a_rejection_tells_the_coordinator_the_reason_and_the_suggested_venue(self):
+        other = self.service.create_venue(venue_create(code="RC-1", name="River Court"), CALLER)
+
+        rejected, notify = self.post(
+            "/reject", json={"reason": "Closed for repairs.", "suggestedVenueId": other.venueId}
+        )
 
         self.assertEqual(rejected.status_code, 200)
         user_id, event_id, title, body, _, notice_type = notify.call_args.args
         self.assertEqual((user_id, event_id, title, notice_type), ("u-coord", "e-a", "Venue booking rejected", "venue.booking_rejected"))
         self.assertIn('rejected the request for Harbour Hall for "AI Summit". Reason: Closed for repairs.', body)
+        self.assertIn("They suggest River Court instead.", body)
         self.assertTrue(body.endswith("Choose another venue for the event."))
 
     def test_a_decision_stands_when_the_event_cannot_be_read_for_the_notice(self):
