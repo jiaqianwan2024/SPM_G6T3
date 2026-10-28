@@ -556,6 +556,43 @@ class TestChangesDuringReview(SafetyCase):
         self.assertEqual(history.toStatus, "planning")
         self.assertTrue(history.note.startswith("Safety approval withdrawn. "))
 
+    def withdrawn_notices(self):
+        return [call for call in self.published.call_args_list if call.args[0] == "safety.withdrawn"]
+
+    def test_an_unclaimed_review_withdrawn_by_an_edit_tells_every_officer(self):
+        self.event()
+        review = self.submit()
+
+        self.service.update_event("e1", EventUpdate(expectedAttendance=400, confirmSignificantChange=True), "coord-1")
+
+        [notice] = self.withdrawn_notices()
+        _, event_id, occurrence, recipients, context = notice.args
+        self.assertEqual((event_id, occurrence), ("e1", f"e1:safety.withdrawn:{review.reviewId}"))
+        self.assertEqual(recipients, [{"userId": "safety-1", "role": "safety"}, {"userId": "safety-2", "role": "safety"}])
+        self.assertEqual((context["what"], context["eventName"]), ("review", "Summit"))
+        self.assertIn("Expected attendance: 250 -> 400", context["reason"])
+        self.assertEqual(notice.kwargs["actor_id"], "coord-1")
+
+    def test_a_withdrawn_approval_tells_only_the_officer_who_gave_it(self):
+        self.event()
+        review = self.approve(self.submit().reviewId)
+
+        self.service.update_event("e1", EventUpdate(expectedAttendance=400, confirmSignificantChange=True), "coord-1")
+
+        [notice] = self.withdrawn_notices()
+        self.assertEqual(notice.args[2], f"e1:safety.withdrawn:{review.reviewId}")
+        self.assertEqual(notice.args[3], [{"userId": "safety-1", "role": "safety"}])
+        self.assertEqual(notice.args[4]["what"], "approval")
+
+    def test_an_edit_refused_for_confirmation_tells_no_officer(self):
+        self.event()
+        self.submit()
+
+        with self.assertRaises(HTTPException):
+            self.service.update_event("e1", EventUpdate(expectedAttendance=400), "coord-1")
+
+        self.assertEqual(self.withdrawn_notices(), [])
+
     def test_a_quiet_edit_leaves_the_review_alone(self):
         self.event()
         self.submit()

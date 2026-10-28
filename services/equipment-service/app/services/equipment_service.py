@@ -1097,7 +1097,9 @@ class EquipmentService(BaseService):
         self.db.refresh(row)
         return _request_to_out(row)
 
-    def review_request(self, request_id: str, reviewer_id: str, approve: bool, review_note: str) -> EquipmentRequestOut:
+    def review_request(
+        self, request_id: str, reviewer_id: str, approve: bool, review_note: str, authorization: str | None = None
+    ) -> EquipmentRequestOut:
         row = self._require_request(request_id)
         if row.status != "pending":
             raise conflict(f"Request is already {row.status}")
@@ -1109,9 +1111,36 @@ class EquipmentService(BaseService):
         row.reviewNote = review_note
         self.db.commit()
         self.db.refresh(row)
+        if approve:
+            self._publish_request_outcome(row, "equipment.approved", reviewer_id, authorization)
+        else:
+            self._publish_request_outcome(row, "equipment.rejected", reviewer_id, authorization, reason=review_note.strip())
         return _request_to_out(row)
 
-    def reserve_request(self, request_id: str) -> EquipmentReservationOut:
+    def _publish_request_outcome(
+        self, row: EquipmentRequest, trigger: str, actor_id: str | None, authorization: str | None, **context: str
+    ) -> None:
+        """The assigned coordinator's in-app notice that technical support approved,
+        rejected, or reserved a request. Best effort: the decision is already saved."""
+        record = _event_record(row.eventId, authorization) or {}
+        publish_notification(
+            trigger,
+            row.eventId,
+            f"{row.eventId}:{trigger}:{row.requestId}",
+            event_recipients(record, ("coordinator",)),
+            {
+                "eventName": record.get("eventName") or row.eventId,
+                "equipmentName": self._equipment_label(row.equipmentId),
+                "quantity": str(row.quantity),
+                **context,
+            },
+            actor_id=actor_id,
+            resource={"type": "equipment_request", "id": row.requestId},
+        )
+
+    def reserve_request(
+        self, request_id: str, actor_id: str | None = None, authorization: str | None = None
+    ) -> EquipmentReservationOut:
         request_row = self._require_request(request_id)
         if request_row.status != "approved":
             raise conflict("Only approved requests can be reserved")
@@ -1132,4 +1161,5 @@ class EquipmentService(BaseService):
         request_row.status = "reserved"
         self.db.commit()
         self.db.refresh(row)
+        self._publish_request_outcome(request_row, "equipment.reserved", actor_id, authorization)
         return _reservation_to_out(row)

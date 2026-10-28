@@ -286,6 +286,22 @@ def list_my_events(
 
 
 @router.get(
+    "/assigned",
+    response_model=list[EventOut],
+    summary="My assigned events",
+    description="Event Coordinators only. Every event assigned to the caller, at any stage except draft and "
+    "discarded, ordered by `proposedStartAt`. Unassigned requests are on the Lead's queue, not here.",
+    responses=error_responses(403, 503),
+)
+def list_assigned_events(
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    return service.list_assigned_events(caller["userId"], authorization)
+
+
+@router.get(
     "/significant-fields",
     response_model=SignificantFieldsOut,
     summary="Significant event fields",

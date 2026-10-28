@@ -37,6 +37,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `GET /events/coordinators` | `coordinatorlead` |
 | `GET /events/assignments` | `coordinatorlead` only (SPM-119); an Event Coordinator gets 403 |
 | `GET /events/queue` | `coordinatorlead` sees every request; a `coordinator` sees only the requests assigned to them |
+| `GET /events/assigned` | `coordinator` only: the caller's own assigned events at any stage except draft and discarded, soonest first. Filtered in the database, so `registeredCount` is only fetched for those rows. Every other role gets 403 |
 | `POST /events/{id}/reject` | `coordinator` assigned to the event (SPM-70) |
 | `POST`, `PATCH`, `DELETE /events/{id}/readiness-items…` | `coordinator` assigned to the event |
 | `GET /events/{id}/coordinator` | `organiser` of that event's organisation, `coordinator`, `venue`, `techsupport` |

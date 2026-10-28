@@ -74,6 +74,19 @@ export function formatSgtRange(start, end) {
   return `${formatSgtDate(from)}, ${formatSgtTime(from)} to ${formatSgtDate(to)}, ${formatSgtTime(to)} SGT`
 }
 
+// How long ago a time was: "just now", "45 minutes ago", "3 hours ago", "2 days ago".
+export function formatTimeSince(value, now = new Date()) {
+  const date = parseServerTime(value)
+  if (!date) return ''
+  const minutes = Math.floor((now.getTime() - date.getTime()) / 60000)
+  if (minutes < 1) return 'just now'
+  const ago = (n, unit) => `${n} ${unit}${n === 1 ? '' : 's'} ago`
+  if (minutes < 60) return ago(minutes, 'minute')
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return ago(hours, 'hour')
+  return ago(Math.floor(hours / 24), 'day')
+}
+
 // The Singapore date of a time, as "YYYY-MM-DD" (what a date input holds).
 export function sgtDay(value) {
   const date = parseServerTime(value)

@@ -13,12 +13,8 @@ export const roles = {
   coordinator: {
     label: 'Event Coordinator',
     tabs: ['Dashboard', 'Assigned Events', 'Review Queue', 'Venue Catalogue', 'Venue Calendar', 'Venue Requests', 'Reports'],
-    cards: [
-      { title: 'Review queue', sub: '4 requests need clarification' },
-      { title: 'Venue requests in progress', sub: '2 awaiting Venue Staff decision' },
-      { title: 'Outstanding arrangements', sub: '1 event missing equipment sign-off' },
-      { title: 'Recently confirmed', sub: 'Q3 Partner Summit confirmed' }
-    ]
+    // The Dashboard tab is CoordinatorHome (own events, change requests, re-verification), not cards.
+    cards: []
   },
   // Oversees incoming requests: each new request waits, unassigned, until the
   // Lead assigns it to an Event Coordinator. The Lead does not manage events.

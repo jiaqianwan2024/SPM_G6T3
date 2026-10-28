@@ -543,7 +543,8 @@ def patch_request_status(
     "/requests/{request_id}/review",
     response_model=EquipmentRequestOut,
     summary="Review an equipment request",
-    description="Technical support only. Sets status to `approved` or `rejected`. Fails with 409 if the request is no longer `pending`.",
+    description="Technical support only. Sets status to `approved` or `rejected`, and the event's assigned coordinator "
+    "is told in the app. Fails with 409 if the request is no longer `pending`.",
     responses=error_responses(403, 404, 409, 503),
 )
 def review_request(
@@ -553,7 +554,7 @@ def review_request(
     service: EquipmentService = Depends(get_equipment_service),
 ):
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"techsupport"})
-    return service.review_request(request_id, caller["userId"], body.approve, body.reviewNote)
+    return service.review_request(request_id, caller["userId"], body.approve, body.reviewNote, authorization)
 
 
 @router.post(
@@ -561,7 +562,8 @@ def review_request(
     response_model=EquipmentReservationOut,
     status_code=201,
     summary="Reserve approved equipment",
-    description="Technical support only. Request must already be `approved`. Fails with 409 otherwise.",
+    description="Technical support only. Request must already be `approved`. Fails with 409 otherwise. The event's "
+    "assigned coordinator is told in the app.",
     responses=error_responses(403, 404, 409, 503),
 )
 def reserve_request(
@@ -569,5 +571,5 @@ def reserve_request(
     authorization: str | None = Depends(forwarded_bearer),
     service: EquipmentService = Depends(get_equipment_service),
 ):
-    resolve_caller(authorization, settings.user_service_url, allowed_roles={"techsupport"})
-    return service.reserve_request(request_id)
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"techsupport"})
+    return service.reserve_request(request_id, caller["userId"], authorization)

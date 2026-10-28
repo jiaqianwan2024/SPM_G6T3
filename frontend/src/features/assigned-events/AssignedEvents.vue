@@ -77,8 +77,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getEvents } from '../../api/eventService.js'
-import { session } from '../../store/session.js'
+import { getAssignedEvents } from '../../api/eventService.js'
 import { formatSgtRange, sgtDay } from '../../utils/datetime.js'
 
 const STATUS_ORDER = [
@@ -182,11 +181,9 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const { data } = await getEvents()
-    events.value = data
-      .filter((event) => event.coordinatorId && event.coordinatorId === session.userId)
-      .filter((event) => event.status !== 'draft' && event.status !== 'discarded')
-      .sort((a, b) => new Date(a.proposedStartAt || 0) - new Date(b.proposedStartAt || 0))
+    // Only the caller's own events, drafts left out, filtered by the server.
+    const { data } = await getAssignedEvents()
+    events.value = data.sort((a, b) => new Date(a.proposedStartAt || 0) - new Date(b.proposedStartAt || 0))
   } catch (err) {
     error.value = err.response?.data?.detail || 'Could not load assigned events. Please try again.'
   } finally {

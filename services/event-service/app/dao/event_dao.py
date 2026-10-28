@@ -115,6 +115,15 @@ class EventDAO(BaseDAO):
             .all()
         )
 
+    def list_by_coordinator_excluding_statuses(self, coordinator_id: str, statuses: list[str]) -> list[Event]:
+        """One coordinator's assigned events not in `statuses`, soonest first."""
+        return (
+            self.db.query(Event)
+            .filter(Event.coordinatorId == coordinator_id, Event.status.notin_(statuses))
+            .order_by(Event.proposedStartAt.asc())
+            .all()
+        )
+
     def safety_officers(self, event_ids: list[str]) -> dict[str, str | None]:
         """SPM-120: eventId -> the Safety Officer who claimed it, in one query."""
         if not event_ids:

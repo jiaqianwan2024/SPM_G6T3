@@ -673,6 +673,8 @@ class EventService(BaseService):
         self.safety_dao = safety_dao or EventSafetyReviewDAO(db)
         self.handoff_dao = handoff_dao or EventSafetyHandoffDAO(db)
         self.reschedule_dao = reschedule_dao or EventRescheduleDAO(db)
+        # Safety reviews withdrawn in this request, told to their officer once the change is committed.
+        self._withdrawn_reviews: list[tuple[Event, EventSafetyReview, str, str]] = []
 
     def _require_event(self, event_id: str) -> Event:
         return self._require(self.event_dao.get_by_id(event_id), "Event not found")
@@ -746,6 +748,20 @@ class EventService(BaseService):
             registrationClosesAt=event.registrationClosesAt,
             capacity=event.capacity,
         )
+
+    def list_assigned_events(self, coordinator_id: str, authorization: str | None = None) -> list[EventOut]:
+        """The coordinator's own assigned events at any stage except draft and
+        discarded, soonest first. Filtered in the database rather than from
+        list_events, so registeredCount is fetched for these rows only, not for
+        every event in the system."""
+        query_start = time.perf_counter()
+        rows = self.event_dao.list_by_coordinator_excluding_statuses(coordinator_id, ["draft", "discarded"])
+        logger.info(
+            "list_assigned_events DB query took %.3fs, %d rows",
+            time.perf_counter() - query_start,
+            len(rows),
+        )
+        return _to_out_list(rows, authorization, "list_assigned_events")
 
     def list_submission_queue(
         self,
@@ -1164,6 +1180,7 @@ class EventService(BaseService):
         flagged, schedule_changed = self._apply_changes(event, data, coordinator_id, authorization)
         self.db.commit()
         self.db.refresh(event)
+        self._publish_withdrawn_reviews(coordinator_id, authorization)
         if schedule_changed:
             self._tell_registered_attendees(event, "schedule", authorization)
         return _to_out(
@@ -1433,6 +1450,7 @@ class EventService(BaseService):
         self.db.commit()
         self.db.refresh(event)
 
+        self._publish_withdrawn_reviews(coordinator_id, authorization)
         self._publish_reschedule(event, old_period, new_period, reason, coordinator_id, now)
         told = self._tell_registered_attendees(event, "schedule", authorization)
         messages = _reschedule_messages(venues, equipment, old_closes if adjusted else None, start, applied=True)
@@ -1683,7 +1701,29 @@ class EventService(BaseService):
                 f"{event.eventName}. Reason: {data.reason} Review it on the event in ConnectSphere.",
                 authorization,
             )
+        # In-app too. The organiser can't write to a staff inbox, so it is published with the service key.
+        self._publish_change_request(event, change_request, "change_request.raised", users, reason=data.reason)
         return _change_request_out(change_request)
+
+    @staticmethod
+    def _publish_change_request(
+        event: Event, change_request: EventChangeRequest, trigger: str, users: dict[str, dict], **context: str
+    ) -> None:
+        """The assigned coordinator's in-app notice of a raised or withdrawn change request. Best effort."""
+        publish_notification(
+            trigger,
+            event.eventId,
+            f"{event.eventId}:{trigger}:{change_request.changeRequestId}",
+            people(event, ["coordinator"], users),
+            {
+                "eventName": event.eventName,
+                "requesterName": _name_of(users, change_request.requestedBy),
+                "fields": _field_list(change_request.proposedChanges),
+                **context,
+            },
+            actor_id=change_request.requestedBy,
+            resource={"type": "change_request", "id": change_request.changeRequestId},
+        )
 
     def withdraw_change_request(
         self, event_id: str, change_request_id: str, caller: dict, authorization: str | None = None
@@ -1707,6 +1747,7 @@ class EventService(BaseService):
                 f"{_field_list(change_request.proposedChanges)} on {event.eventName}. Nothing needs deciding.",
                 authorization,
             )
+        self._publish_change_request(event, change_request, "change_request.withdrawn", users)
         return _change_request_out(change_request)
 
     def accept_change_request(
@@ -1740,6 +1781,7 @@ class EventService(BaseService):
         self._close_change_request(change_request, "accepted", coordinator_id, data.reason.strip() or None)
         self.db.commit()
         self.db.refresh(change_request)
+        self._publish_withdrawn_reviews(coordinator_id, authorization)
         if schedule_changed:
             self._tell_registered_attendees(event, "schedule", authorization)
         self._notify_decision(event, change_request, authorization)
@@ -2786,9 +2828,32 @@ class EventService(BaseService):
         review = self.safety_dao.pending_for_event(event.eventId)
         if review is not None:
             self._close_safety_review(review, "superseded", changed_by, summary, now)
-        withdrawn = "Safety approval withdrawn" if event.status == SAFETY_APPROVED else "Safety review withdrawn"
-        self._record_status_change(event, "planning", changed_by, f"{withdrawn}. {summary}", now)
+        what = "approval" if event.status == SAFETY_APPROVED else "review"
+        self._record_status_change(event, "planning", changed_by, f"Safety {what} withdrawn. {summary}", now)
         event.status = "planning"
+        # A withdrawn approval has no pending review; the approved one is the event's latest.
+        decided = review or next(iter(self.safety_dao.list_by_event(event.eventId)), None)
+        if decided is not None:
+            self._withdrawn_reviews.append((event, decided, what, summary))
+
+    def _publish_withdrawn_reviews(self, changed_by: str, authorization: str | None) -> None:
+        """Best effort, after the commit: the officer who claimed the event learns their review or
+        approval no longer stands. An unclaimed review was offered to every officer, so all are told."""
+        withdrawn, self._withdrawn_reviews = self._withdrawn_reviews, []
+        for event, review, what, summary in withdrawn:
+            if event.safetyOfficerId:
+                recipients = [{"userId": event.safetyOfficerId, "role": "safety"}]
+            else:
+                recipients = people(event, ["safety"], self._directory(authorization))
+            publish_notification(
+                "safety.withdrawn",
+                event.eventId,
+                f"{event.eventId}:safety.withdrawn:{review.reviewId}",
+                recipients,
+                {"eventName": event.eventName, "what": what, "reason": summary},
+                actor_id=changed_by,
+                resource={"type": "safety_review", "id": review.reviewId},
+            )
 
     def _notify_safety_officers(self, event: Event, review: EventSafetyReview, authorization: str | None) -> None:
         """Best effort: the submission is already saved. Officers are emailed here;

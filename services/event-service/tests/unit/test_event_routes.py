@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from shared.auth.deps import require_authenticated_user
+from shared.exceptions.http import forbidden
 from shared.testing.cases import ServiceTestCase
 from tests.unit.support import COORDINATOR, ORGANISER, TECH, insert_event
 
@@ -120,6 +121,30 @@ class TestEventRoutes(ServiceTestCase):
         completed = self.client.post(f"/events/{done.eventId}/complete", headers=headers)
         self.assertEqual(completed.status_code, 200)
         self.assertEqual(completed.json()["status"], "completed")
+
+    def test_assigned_events_route_lists_only_the_callers_own_events(self):
+        headers = {"Authorization": "Bearer token"}
+        insert_event(self.db, eventId="e-mine", status="planning", coordinatorId=COORDINATOR["userId"])
+        insert_event(self.db, eventId="e-theirs", status="planning", coordinatorId="coord-2")
+        insert_event(self.db, eventId="e-unassigned", status="submitted")
+
+        response = self.client.get("/events/assigned", headers=headers)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([row["eventId"] for row in response.json()], ["e-mine"])
+
+    def test_assigned_events_route_refuses_every_other_role(self):
+        headers = {"Authorization": "Bearer token"}
+        for caller in (ORGANISER, TECH, {"userId": "lead-1", "role": "coordinatorlead"}):
+            # The real resolve_caller's role gate, applied to this caller.
+            def resolve(authorization, url, allowed_roles=None, caller=caller):
+                if allowed_roles is not None and caller["role"] not in allowed_roles:
+                    raise forbidden("You do not have permission to perform this action")
+                return caller
+
+            with patch("app.routers.event.resolve_caller", side_effect=resolve):
+                response = self.client.get("/events/assigned", headers=headers)
+            self.assertEqual(response.status_code, 403, caller["role"])
 
     def test_registration_access_route_returns_capacity_for_the_organiser(self):
         self.caller.stop()

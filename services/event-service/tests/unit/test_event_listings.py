@@ -108,6 +108,22 @@ class TestEventListings(EventCase):
         self.assertEqual(default, ["e-open"])
         self.assertEqual(included, ["e-open", "e-done"])
 
+    def test_assigned_events_are_the_coordinators_own_soonest_first_without_drafts(self):
+        insert_event(self.db, eventId="e-late", status="planning", coordinatorId="coord-1",
+                     proposedStartAt=datetime(2026, 12, 1, 9))
+        insert_event(self.db, eventId="e-soon", status="confirmed", coordinatorId="coord-1",
+                     proposedStartAt=datetime(2026, 11, 1, 9))
+        insert_event(self.db, eventId="e-done", status="completed", coordinatorId="coord-1",
+                     proposedStartAt=datetime(2026, 11, 15, 9))
+        insert_event(self.db, eventId="e-gone", status="discarded", coordinatorId="coord-1")
+        insert_event(self.db, eventId="e-other", status="planning", coordinatorId="coord-2")
+        insert_event(self.db, eventId="e-unassigned", status="submitted")
+
+        assigned = [row.eventId for row in self.service.list_assigned_events("coord-1")]
+
+        self.assertEqual(assigned, ["e-soon", "e-done", "e-late"])
+        self.assertEqual(self.service.list_assigned_events("nobody"), [])
+
     def test_a_proposed_date_is_near_on_the_threshold_and_not_one_second_later(self):
         now = datetime(2026, 10, 3, 12, 0)
         limit = timedelta(days=settings.event_proposed_date_near_days)
