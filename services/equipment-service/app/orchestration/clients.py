@@ -93,6 +93,25 @@ def event_recipients(event: dict, roles: tuple[str, ...]) -> list[dict]:
     return [{"userId": ids[role], "role": role} for role in roles if ids.get(role)]
 
 
+def technical_support_recipients() -> list[dict]:
+    """Everyone in technical support, as notification recipients. Read from user-service with
+    the service key; an empty list when it cannot be read, since notifying is best effort."""
+    try:
+        response = httpx.get(
+            f"{settings.user_service_url}/internal/users",
+            params={"roles": "techsupport"},
+            headers=service_key_headers(settings.internal_service_key),
+            timeout=5.0,
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("listing technical support raised %r", exc)
+        return []
+    if response.status_code != 200:
+        logger.warning("listing technical support got status %s", response.status_code)
+        return []
+    return [{"userId": user["userId"], "role": "techsupport"} for user in response.json()]
+
+
 def publish_notification(
     trigger: str,
     event_id: str,

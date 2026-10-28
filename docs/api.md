@@ -86,8 +86,8 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `POST /venues/bookings/{id}/recheck` | `coordinator`, `venue` (SPM-86). Reports the new window and does not move the booking |
 | `POST /venues/bookings/reschedule/preview`, `POST /venues/bookings/reschedule` | `coordinator` assigned to the event (SPM-87) |
 | `POST /venues/bookings/{id}/reconfirm` | `venue` (SPM-86). Moves an approved flagged booking onto the event's current times, or releases that booking |
-| `POST /equipment/requests` | `coordinator` assigned to the event (SPM-46) |
-| `PATCH /equipment/requests/{id}/details` | `coordinator` assigned to the event (SPM-46), and only while the request is still pending |
+| `POST /equipment/requests` | `coordinator` assigned to the event (SPM-46). Every technical support member is told a request is waiting (`equipment.requested`) |
+| `PATCH /equipment/requests/{id}/details` | `coordinator` assigned to the event (SPM-46), and only while the request is still pending. A change to the quantity or requirements tells technical support (`equipment.request_changed`); resubmitting a request and accepting a shortfall do too. Both notices open the event's equipment page and are best effort, so a failed notice never undoes the change |
 | `POST /equipment/requests/{id}/review`, `/reserve`, or `/unavailable` | `techsupport` |
 | `PATCH /equipment/requests/{id}` | refused |
 | `POST /equipment/availability` with `eventId` | signed-in caller |

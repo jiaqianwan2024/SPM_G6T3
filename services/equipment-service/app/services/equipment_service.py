@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from typing import Callable
 
-from app.orchestration.clients import event_recipients, publish_notification
+from app.orchestration.clients import event_recipients, publish_notification, technical_support_recipients
 
 from app.dao.equipment_activity_log_dao import EquipmentActivityLogDAO
 from app.dao.equipment_dao import EquipmentDAO
@@ -1006,16 +1006,23 @@ class EquipmentService(BaseService):
         request_id: str,
         quantity: int | None,
         technical_requirements: str | None,
+        actor_id: str | None = None,
+        authorization: str | None = None,
     ) -> EquipmentRequestOut:
         row = self._require_request(request_id)
         if row.status != "pending":
             raise conflict(f"Request is already {row.status}")
-        if quantity is not None:
+        changes = []
+        if quantity is not None and quantity != row.quantity:
+            changes.append(f"quantity {row.quantity} to {quantity}")
             row.quantity = quantity
-        if technical_requirements is not None:
+        if technical_requirements is not None and technical_requirements != row.technicalRequirements:
+            changes.append("technical requirements updated")
             row.technicalRequirements = technical_requirements
         self.db.commit()
         self.db.refresh(row)
+        if changes:
+            self._tell_technical_support(row, actor_id, authorization, "; ".join(changes))
         return _request_to_out(row)
 
     def mark_unavailable(
@@ -1119,20 +1126,56 @@ class EquipmentService(BaseService):
             resource={"type": "equipment_request", "id": row.requestId},
         )
 
+    def _tell_technical_support(
+        self, row: EquipmentRequest, actor_id: str | None, authorization: str | None, change: str | None = None
+    ) -> None:
+        """Tell technical support a coordinator asked for equipment (no `change`) or changed a request.
+        Only an action made through a route carries a user token, so a direct call sends nothing.
+        Best effort: the coordinator's change is already saved."""
+        if not authorization:
+            return
+        recipients = technical_support_recipients()
+        if not recipients:
+            return
+        record = _event_record(row.eventId, authorization) or {}
+        context = {
+            "eventName": record.get("eventName") or row.eventId,
+            "equipment": f"{row.quantity} × {self._equipment_label(row.equipmentId)}",
+        }
+        if change is None:
+            trigger, occurrence = "equipment.requested", f"{row.eventId}:equipment.requested:{row.requestId}"
+        else:
+            # Every change is news, so each one is its own occurrence.
+            context["change"] = change
+            trigger, occurrence = "equipment.request_changed", f"{row.eventId}:equipment.request_changed:{uuid4()}"
+        publish_notification(
+            trigger,
+            row.eventId,
+            occurrence,
+            recipients,
+            context,
+            actor_id=actor_id,
+            resource={"type": "equipment_request", "id": row.requestId},
+        )
+
     def _equipment_label(self, equipment_id: str) -> str:
         row = self.equipment_dao.get_by_id(equipment_id)
         return row.name if row is not None and row.name else equipment_id
 
-    def accept_shortfall(self, request_id: str, caller: dict) -> EquipmentRequestOut:
+    def accept_shortfall(self, request_id: str, caller: dict, authorization: str | None = None) -> EquipmentRequestOut:
         row = self._require_request(request_id)
         if row.status not in ("partial", "unavailable"):
             raise conflict("There is no shortfall to accept")
+        shortfall = row.shortfall if row.status == "partial" else row.quantity
         row.status = "resolved"
         row.reviewedBy = caller.get("userId", "")
         row.reviewedAt = datetime.utcnow()
         self._log_change(row.equipmentId, "accept-shortfall", caller, {"status": "resolved"})
         self.db.commit()
         self.db.refresh(row)
+        self._tell_technical_support(
+            row, caller.get("userId"), authorization, f"the coordinator accepted the shortfall of {shortfall}, so it is resolved"
+        )
         return _request_to_out(row)
 
     def complete_review(self, request_id: str, caller: dict) -> EquipmentRequestOut:
@@ -1145,16 +1188,24 @@ class EquipmentService(BaseService):
         self.db.refresh(row)
         return _request_to_out(row)
 
-    def amend_request(self, request_id: str, quantity: int | None) -> EquipmentRequestOut:
+    def amend_request(
+        self, request_id: str, quantity: int | None, actor_id: str | None = None, authorization: str | None = None
+    ) -> EquipmentRequestOut:
         row = self._require_request(request_id)
+        change = "sent back for review"
+        if quantity is not None and quantity != row.quantity:
+            change += f" with quantity {row.quantity} to {quantity}"
         if quantity is not None:
             row.quantity = quantity
         row.status = "pending"
         self.db.commit()
         self.db.refresh(row)
+        self._tell_technical_support(row, actor_id, authorization, change)
         return _request_to_out(row)
 
-    def create_request(self, data: EquipmentRequestCreate, requested_by: str) -> EquipmentRequestOut:
+    def create_request(
+        self, data: EquipmentRequestCreate, requested_by: str, authorization: str | None = None
+    ) -> EquipmentRequestOut:
         row = EquipmentRequest(
             requestId=str(uuid4()),
             eventId=data.eventId,
@@ -1170,6 +1221,7 @@ class EquipmentService(BaseService):
         self.request_dao.add(row)
         self.db.commit()
         self.db.refresh(row)
+        self._tell_technical_support(row, requested_by, authorization)
         return _request_to_out(row)
 
     def review_request(self, request_id: str, reviewer_id: str, approve: bool, review_note: str) -> EquipmentRequestOut:
