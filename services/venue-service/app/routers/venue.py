@@ -16,6 +16,8 @@ from app.schemas.venue import (
     BookingRecheckOut,
     BookingReleaseRequest,
     BookingReschedule,
+    BookingRestoreRequest,
+    ReleasedBookingOut,
     BookingReschedulePreview,
     BookingReverificationRequest,
     RescheduledBookingOut,
@@ -517,7 +519,7 @@ def flag_bookings_for_reverification(
 
 @router.post(
     "/bookings/release",
-    response_model=list[VenueBookingOut],
+    response_model=list[ReleasedBookingOut],
     summary="Release every open venue booking for an event",
     description=(
         "The event's assigned coordinator, or an organiser from the event's own client organisation. For event "
@@ -534,6 +536,28 @@ def release_event_bookings(
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"organiser", "coordinator"})
     service.check_release_allowed(caller, fetch_event_facts(body.eventId, authorization))
     return service.release_event_bookings(body.eventId)
+
+
+@router.post(
+    "/bookings/restore",
+    response_model=list[VenueBookingOut],
+    summary="Undo a cancellation's venue release",
+    description=(
+        "SPM-88 AC9. The same people as the release. Event-service calls it when a cancellation fails after its "
+        "venue release, so the event and its bookings never disagree. Each named booking of the event that is "
+        "still `cancelled` gets back the status it had, and any tentative hold the release ended. 409 when a "
+        "booking's venue was approved for someone else in the meantime."
+    ),
+    responses=error_responses(403, 404, 409, 503),
+)
+def restore_event_bookings(
+    body: BookingRestoreRequest,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"organiser", "coordinator"})
+    service.check_release_allowed(caller, fetch_event_facts(body.eventId, authorization))
+    return service.restore_event_bookings(body.eventId, body.bookings)
 
 
 @router.post(

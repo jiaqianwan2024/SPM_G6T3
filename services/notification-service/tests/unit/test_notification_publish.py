@@ -57,7 +57,49 @@ class TestPublish(ServiceTestCase):
             with self.subTest(trigger=key):
                 _, body, link = notifier.render(trigger, "e9", context)
                 self.assertIn("AI in Events Summit", body)
-                self.assertEqual(link, "/app/events/e9")
+                self.assertIn(link, ("/app/events/e9", "/app/events/e9/equipment"))
+
+    def test_a_cancellation_reaches_attendees_and_staff_with_the_reason(self):
+        people = [
+            ATTENDEE,
+            {"userId": "u-coord", "role": "coordinator"},
+            {"userId": "u-vinod", "role": "venue"},
+            {"userId": "u-tia", "role": "techsupport"},
+        ]
+
+        result = self.publish(
+            trigger="event.cancelled", recipients=people, context={**CONTEXT, "reason": "Speaker withdrew"}, actor_id="u-org"
+        )
+
+        self.assertEqual(result.created, 4)
+        row = self.rows()[0]
+        self.assertEqual(row.title, "AI in Events Summit has been cancelled")
+        self.assertEqual(row.body, "AI in Events Summit has been cancelled. Reason: Speaker withdrew")
+
+    def test_technical_support_are_told_of_a_new_or_changed_equipment_request_on_its_equipment_page(self):
+        tech = {"userId": "u-tech", "role": "techsupport"}
+        equipment = {**CONTEXT, "equipment": "2 × Projector PX-200"}
+
+        self.publish(trigger="equipment.requested", recipients=[tech], context=equipment, actor_id="u-coord")
+        self.publish(
+            trigger="equipment.request_changed",
+            recipients=[tech],
+            context={**equipment, "change": "quantity 2 to 3"},
+            occurrence="occ-2",
+            actor_id="u-coord",
+        )
+
+        requested, changed = sorted(self.rows(), key=lambda row: row.occurrenceId)
+        self.assertEqual((requested.userId, requested.title), ("u-tech", "New equipment request"))
+        self.assertEqual(
+            requested.body, "AI in Events Summit needs 2 × Projector PX-200. The request is waiting for review."
+        )
+        self.assertEqual(
+            changed.body, "The 2 × Projector PX-200 request for AI in Events Summit changed: quantity 2 to 3."
+        )
+        self.assertEqual({requested.link, changed.link}, {"/app/events/e1/equipment"})
+        with self.assertRaisesRegex(PublishError, "coordinator cannot receive equipment.requested"):
+            self.publish(trigger="equipment.requested", recipients=[COORD], context=equipment, occurrence="occ-3")
 
     def test_a_submitted_request_goes_to_the_coordinator_lead_and_no_one_else(self):
         lead = {"userId": "u-lead", "role": "coordinatorlead"}

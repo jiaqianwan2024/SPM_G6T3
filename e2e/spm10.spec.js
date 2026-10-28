@@ -211,6 +211,7 @@ test.describe('SPM-10 Reject a Venue Booking Request', () => {
   })
 
   test('TC-SPM10-AC06 who rejected the request, the reason, and when are recorded', async ({ page }) => {
+    test.slow() // makes an approved event and a request through the API, then checks the Booking Requests page
     const { booking } = await pending(period(7))
     const before = Date.now()
     const rejected = await reject(booking, { reason: 'The stage is being rebuilt.' })

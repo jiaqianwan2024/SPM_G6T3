@@ -96,8 +96,21 @@
             >
               Mark completed
             </button>
+            <button
+              v-if="canCancel"
+              class="btn btn-outline danger"
+              data-testid="event-cancel"
+              @click="openCancel"
+            >
+              Cancel event
+            </button>
           </div>
         </header>
+
+        <p v-if="event.status === 'cancelled'" class="notice" data-testid="event-cancelled-reason">
+          This event was cancelled<template v-if="event.cancelledAt"> on {{ formatSgt(event.cancelledAt) }}</template>.
+          <template v-if="event.cancellationReason">Reason: {{ event.cancellationReason }}</template>
+        </p>
 
         <p v-if="event.status === 'reconsidering'" class="notice attention" data-testid="event-reconsidering">
           <span data-testid="reverify-flag">
@@ -365,6 +378,14 @@
       @rejected="onRejected"
     />
 
+    <CancelEventDialog
+      v-if="cancelling"
+      :event="event"
+      :venue-name="venue.venueName"
+      @close="cancelling = false"
+      @cancelled="onCancelled"
+    />
+
     <EventEditForm
       v-if="editing"
       :event="event"
@@ -439,6 +460,7 @@ import { session } from '../../store/session.js'
 import { formatSgt, formatSgtDate, formatSgtRange, formatSgtTime, parseServerTime } from '../../utils/datetime.js'
 import ApproveEventDialog from './ApproveEventDialog.vue'
 import RejectEventDialog from './RejectEventDialog.vue'
+import CancelEventDialog from './CancelEventDialog.vue'
 import AssignCoordinatorDialog from './AssignCoordinatorDialog.vue'
 import EventChangeRequests from './EventChangeRequests.vue'
 import EventSafetyHandoff from './EventSafetyHandoff.vue'
@@ -478,9 +500,38 @@ function onRequirementsSaved(updated) {
   savedNote.value = 'Requirements saved.'
 }
 
+const cancelling = ref(false)
 const dialogOpen = computed(
-  () => assigning.value || approving.value || rejecting.value || editing.value || confirming.value || completing.value,
+  () =>
+    assigning.value ||
+    approving.value ||
+    rejecting.value ||
+    editing.value ||
+    confirming.value ||
+    completing.value ||
+    cancelling.value,
 )
+
+// SPM-88 AC1: the organiser, or the assigned coordinator, while the event is still live.
+// The server applies the same rule, including the organiser's own organisation.
+const canCancel = computed(
+  () =>
+    !!event.value &&
+    !LOCKED_EVENT_STATUSES.includes(event.value.status) &&
+    (session.role === 'organiser' ||
+      (session.role === 'coordinator' && event.value.coordinatorId === session.userId)),
+)
+
+function openCancel() {
+  savedNote.value = ''
+  cancelling.value = true
+}
+
+function onCancelled(cancelled) {
+  cancelling.value = false
+  event.value = cancelled
+  savedNote.value = 'The event was cancelled. Its venue and equipment were released, and everyone involved was told.'
+}
 
 // SPM-69 AC1/AC5: only the assigned coordinator, and only once the request is
 // under review — so never while it is unassigned. The server enforces the same.
@@ -917,6 +968,8 @@ div.notice p + p { margin-top: 6px; }
   background: rgba(255, 170, 80, .08);
   border-color: rgba(255, 196, 120, .3);
 }
+/* SPM-88: cancelling is final, so its button reads as a warning. */
+.btn-outline.danger { color: #ffb4b4; border-color: rgba(255, 180, 180, .5); }
 
 .layout { display: grid; gap: 18px; }
 .layout.split { grid-template-columns: minmax(280px, 0.9fr) minmax(340px, 1.1fr); align-items: start; }

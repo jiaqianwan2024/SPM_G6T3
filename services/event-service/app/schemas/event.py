@@ -120,6 +120,9 @@ class EventOut(BaseModel):
     )
     confirmedBy: str | None = Field(default=None, description="SPM-72: the coordinator who confirmed the event.")
     confirmedAt: datetime | None = Field(default=None, description="SPM-72: when the event was confirmed.")
+    cancellationReason: str | None = Field(default=None, description="SPM-88: why the event was cancelled.")
+    cancelledBy: str | None = Field(default=None, description="SPM-88: who cancelled it.")
+    cancelledAt: datetime | None = Field(default=None, description="SPM-88: when it was cancelled.")
     safetyReviewStatus: str | None = Field(
         default=None,
         description="SPM-121: the latest safety review's status (`pending`, `approved`, `rejected`, "
@@ -178,6 +181,19 @@ class EventRejection(BaseModel):
             "example": {"reason": "no suitable venue available", "explanation": "No hall fits those dates."}
         }
     )
+
+
+class EventCancellation(BaseModel):
+    """SPM-88 AC2: a cancellation needs a reason. Attendees and staff are told it."""
+
+    reason: str = Field(max_length=2000, description="Why the event is cancelled. Required.")
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_given(cls, value: str) -> str:
+        return _required_text(value)
+
+    model_config = ConfigDict(json_schema_extra={"example": {"reason": "The keynote speaker withdrew."}})
 
 
 class EventRejectionOut(EventOut):
@@ -695,7 +711,10 @@ class ChangeRequestDecline(BaseModel):
 class ChangeRequestOut(BaseModel):
     changeRequestId: str
     eventId: str
-    status: str = Field(description="`pending`, `withdrawn`, `accepted`, or `declined`; older rows may read `applied`.")
+    status: str = Field(
+        description="`pending`, `withdrawn`, `accepted`, `declined`, or `closed` when the event was cancelled "
+        "(SPM-88); older rows may read `applied`."
+    )
     reason: str
     proposedChanges: dict[str, Any]
     currentValues: dict[str, Any] | None = Field(default=None, description="Each field's value when the request was raised.")

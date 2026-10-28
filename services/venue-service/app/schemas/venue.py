@@ -257,6 +257,20 @@ class BookingReleaseRequest(BaseModel):
     model_config = ConfigDict(json_schema_extra={"example": {"eventId": "e1"}})
 
 
+class RestoredBooking(BaseModel):
+    """SPM-88 AC9: one booking a cancellation released, and the status to give back."""
+
+    bookingId: str = Field(min_length=1)
+    status: Literal["pending", "approved"]
+
+
+class BookingRestoreRequest(BaseModel):
+    """SPM-88 AC9: the cancellation failed further on, so its venue release is undone."""
+
+    eventId: str = Field(min_length=1)
+    bookings: list[RestoredBooking]
+
+
 class UnavailabilityCreate(BaseModel):
     """SPM-9: Venue Staff record a block. This does not change any event or booking."""
 
@@ -460,6 +474,12 @@ class VenueBookingOut(BaseModel):
             }
         }
     )
+
+
+class ReleasedBookingOut(VenueBookingOut):
+    """SPM-88: a booking an event cancellation released, with what it was, so the release can be undone."""
+
+    previousStatus: str = Field(description="`pending` or `approved`: the booking's status before the release.")
 
 
 class SuitabilityRequest(BaseModel):

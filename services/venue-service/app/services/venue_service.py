@@ -23,7 +23,9 @@ from app.schemas.venue import (
     ClashingBooking,
     EventFacts,
     HoldOut,
+    ReleasedBookingOut,
     ReplacementRequest,
+    RestoredBooking,
     RescheduledBookingOut,
     SuitabilityOut,
     SuitabilityRequest,
@@ -1253,17 +1255,43 @@ class VenueService(BaseService):
             return
         raise forbidden("Only the coordinator assigned to this event, or its organiser, can release its venue bookings.")
 
-    def release_event_bookings(self, event_id: str) -> list[VenueBookingOut]:
+    def release_event_bookings(self, event_id: str) -> list[ReleasedBookingOut]:
         """SPM-114: cancelling the event frees every pending request and approved booking.
 
-        Rejected, withdrawn, and already cancelled rows are left as they are.
+        Rejected, withdrawn, and already cancelled rows are left as they are. Each reply
+        names the booking's previous status, so the release can be undone (SPM-88 AC9).
         """
         rows = self.booking_dao.list_open_for_event(event_id)
+        previous = {row.bookingId: row.status for row in rows}
         for row in rows:
             _end_hold(row, "cancelled")
             row.status = "cancelled"
         self.db.commit()
-        return [_booking_to_out(row) for row in rows]
+        return [
+            ReleasedBookingOut(**_booking_to_out(row).model_dump(), previousStatus=previous[row.bookingId])
+            for row in rows
+        ]
+
+    def restore_event_bookings(self, event_id: str, bookings: list[RestoredBooking]) -> list[VenueBookingOut]:
+        """SPM-88 AC9: the cancellation failed after its venue release, so each booking it released gets
+        its status back, with any tentative hold the release ended. A booking of another event, or one
+        no longer cancelled, is left alone, so repeating the undo changes nothing."""
+        restored = []
+        for item in bookings:
+            row = self.booking_dao.get_by_id(item.bookingId)
+            if row is None or row.eventId != event_id or row.status != "cancelled":
+                continue
+            row.status = item.status
+            if row.holdEndReason == "cancelled":
+                row.holdEndedAt, row.holdEndReason = None, None
+            restored.append(row)
+        try:
+            self.db.commit()
+        except DBAPIError as exc:
+            # SPM-64's trigger: another booking took the venue in the meantime.
+            self.db.rollback()
+            raise conflict("A released booking could not be given back: its venue was booked in the meantime.") from exc
+        return [_booking_to_out(row) for row in restored]
 
     def arrangements_complete(self, event_id: str) -> bool:
         """True only when the event has requested venues and every one of them is approved.
