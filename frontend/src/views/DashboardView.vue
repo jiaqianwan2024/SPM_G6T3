@@ -67,7 +67,6 @@ import OrganiserDashboard from '../features/dashboard/OrganiserDashboard.vue'
 import AttendeeHome from '../features/dashboard/AttendeeHome.vue'
 import CoordinatorHome from '../features/dashboard/CoordinatorHome.vue'
 import TechDashboard from '../features/dashboard/TechDashboard.vue'
-import VenueCatalogue from '../
 import VenueCatalogue from '../features/venue-catalogue/VenueCatalogue.vue'
 import VenueCalendar from '../features/venue-calendar/VenueCalendar.vue'
 import UnavailabilityList from '../features/unavailability/UnavailabilityList.vue'
