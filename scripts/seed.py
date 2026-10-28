@@ -400,6 +400,15 @@ def seed_event() -> None:
                 },
                 now,
             )
+        # SPM-88 AC10: a cancelled event keeps why, by whom and when. Filled only while blank.
+        conn.execute(
+            text(
+                "UPDATE events SET cancellation_reason = 'The briefing was merged into the quarterly review.', "
+                "cancelled_by = 'u1', cancelled_at = :cancelled_at "
+                "WHERE event_id = 'e8' AND status = 'cancelled' AND cancellation_reason IS NULL"
+            ),
+            {"cancelled_at": now - 2 * day},
+        )
         if not conn.execute(text("SELECT review_id FROM event_reviews WHERE review_id = 'rv-clarify-e3'")).first():
             conn.execute(
                 text(
@@ -870,7 +879,8 @@ def _ensure_equipment_requests(conn, now: datetime, day: timedelta) -> None:
             "quantity": 2,
             "technical_requirements": "LED wall — one unit still unavailable",
             "requested_by": "u2",
-            "status": "approved",
+            # SPM-77: a partly fulfilled line, as recording one leaves it: one of two reserved, one short.
+            "status": "partial",
             "starts_at": now + 30 * day,
             "ends_at": now + 30 * day + timedelta(hours=3),
             "reviewed_by": "u4",
@@ -963,6 +973,15 @@ def _ensure_equipment_requests(conn, now: datetime, day: timedelta) -> None:
         text(
             "UPDATE equipment_requests SET status = 'reserved', review_note = 'Reserved for the workshop' "
             "WHERE request_id = 'eq-reverify' AND status = 'approved'"
+        )
+    )
+    # SPM-58: the insert above does not set the shortfall, and databases seeded before this
+    # stored the line as `approved`. Either way it becomes one of two reserved, one short.
+    # A shortfall someone already resolved is left alone.
+    conn.execute(
+        text(
+            "UPDATE equipment_requests SET status = 'partial', shortfall = 1, reserved_quantity = 1 "
+            "WHERE request_id = 'eq-shortfall' AND status IN ('approved', 'partial') AND COALESCE(shortfall, 0) = 0"
         )
     )
 

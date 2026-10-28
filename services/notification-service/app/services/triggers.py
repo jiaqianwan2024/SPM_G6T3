@@ -14,6 +14,8 @@ that each recipient's role is one this trigger is meant for.
 from dataclasses import dataclass
 
 EVENT_LINK = "/app/events/{eventId}"
+# Technical support review and reserve an event's equipment on its equipment page.
+EQUIPMENT_LINK = "/app/events/{eventId}/equipment"
 
 
 @dataclass(frozen=True)
@@ -185,6 +187,35 @@ TRIGGERS: dict[str, Trigger] = {
             recipient_roles=frozenset({"coordinator"}),
             required_context=("eventName", "equipmentName", "shortfall", "reason"),
             extras=(("alternative", "Suggested alternative: {alternative}"),),
+        ),
+        # SPM-88 AC7 and AC8: the event was cancelled. Registered attendees, the coordinator, the
+        # organiser, the Venue Staff who approved its bookings and the technical support members who
+        # handled its equipment are told, with the reason.
+        Trigger(
+            key="event.cancelled",
+            title="{eventName} has been cancelled",
+            body="{eventName} has been cancelled. Reason: {reason}",
+            recipient_roles=frozenset({"attendee", "coordinator", "organiser", "venue", "techsupport"}),
+            required_context=("eventName", "reason"),
+            attendee_visible=True,
+        ),
+        # A coordinator asked for equipment, so technical support know a request is waiting for review.
+        Trigger(
+            key="equipment.requested",
+            title="New equipment request",
+            body="{eventName} needs {equipment}. The request is waiting for review.",
+            recipient_roles=frozenset({"techsupport"}),
+            required_context=("eventName", "equipment"),
+            link=EQUIPMENT_LINK,
+        ),
+        # A coordinator changed a request: refined it, sent it back for review, or accepted its shortfall.
+        Trigger(
+            key="equipment.request_changed",
+            title="Equipment request changed",
+            body="The {equipment} request for {eventName} changed: {change}.",
+            recipient_roles=frozenset({"techsupport"}),
+            required_context=("eventName", "equipment", "change"),
+            link=EQUIPMENT_LINK,
         ),
         # SPM-95: a scheduled check finds approaching events whose arrangements are still outstanding.
         Trigger(

@@ -1,5 +1,7 @@
 import logging
 import time
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import NamedTuple
 from uuid import uuid4
@@ -47,9 +49,14 @@ from app.orchestration.clients import (
     preview_venue_reschedule,
     publish_notification,
     record_notification,
+    release_equipment_for_cancellation,
     release_event_holds,
     release_event_venue_bookings,
+    release_venue_for_cancellation,
     registered_attendees,
+    restore_equipment_after_failed_cancellation,
+    restore_venue_after_failed_cancellation,
+    ReleaseFailed,
     registration_count,
     reschedule_equipment,
     reschedule_venues,
@@ -122,7 +129,7 @@ from app.services.arrangements import (
     technical_needed,
     venue_gaps,
 )
-from shared.exceptions.http import conflict, forbidden, not_found
+from shared.exceptions.http import conflict, forbidden, not_found, service_unavailable
 from shared.services.base import BaseService
 
 logger = logging.getLogger("perf.event_service")
@@ -457,6 +464,77 @@ def require_organisation_access(event, caller: dict) -> None:
         raise forbidden(ORGANISATION_REFUSAL)
 
 
+def _require_canceller(event, caller: dict) -> None:
+    """SPM-88 AC1: an organiser of the event's own client organisation, or its assigned coordinator."""
+    if caller.get("role") == "organiser":
+        require_organisation_access(event, caller)
+        return
+    if caller.get("role") == "coordinator" and event.coordinatorId == caller.get("userId"):
+        return
+    raise forbidden("Only the event's organiser or its assigned coordinator can cancel it.")
+
+
+def _released(job: Future) -> tuple[list[dict], bool]:
+    """A release run alongside the other: what it freed, and whether it failed."""
+    try:
+        return job.result(), False
+    except ReleaseFailed:
+        return [], True
+
+
+def _announce_cancellation(
+    event_id: str,
+    event_name: str,
+    coordinator_id: str | None,
+    organiser_id: str | None,
+    reason: str,
+    actor_id: str,
+    venue: list[dict],
+    equipment: list[dict],
+    authorization: str | None,
+) -> None:
+    """SPM-88 AC7 and AC8: registered attendees, the coordinator, the organiser, the Venue Staff who
+    approved a booking, and the technical support members who handled a reserved line are told, with
+    the reason. Best effort: the cancellation already stands. Whoever cancelled is skipped."""
+    recipients = [
+        {"userId": user_id, "role": role}
+        for user_id, role in ((coordinator_id, "coordinator"), (organiser_id, "organiser"))
+        if user_id
+    ]
+    recipients += [
+        {"userId": user_id, "role": "venue"}
+        for user_id in {row.get("reviewedBy") for row in venue if row.get("previousStatus") == "approved"}
+        if user_id
+    ]
+    recipients += [
+        {"userId": user_id, "role": "techsupport"} for user_id in {row.get("handledBy") for row in equipment} if user_id
+    ]
+    try:
+        attendees = registered_attendees(event_id, authorization)
+    except HTTPException:
+        attendees = []
+    recipients += [{"userId": row["userId"], "role": "attendee"} for row in attendees if row.get("userId")]
+    publish_notification(
+        "event.cancelled",
+        event_id,
+        f"{event_id}:event.cancelled",
+        recipients,
+        {"eventName": event_name, "reason": reason},
+        actor_id=actor_id,
+        resource={"type": "event", "id": event_id},
+    )
+
+
+def _failed_cancellation(cause: str, undone: bool) -> str:
+    """SPM-88 AC9: tell the user the cancellation did not happen, and whether anything is left over."""
+    if undone:
+        return f"The event was not cancelled: {cause}. Everything already released was given back, so nothing changed."
+    return (
+        f"The event was not cancelled: {cause}, and some bookings or reservations already released could not be "
+        "given back. Please contact Venue Staff and Technical Support."
+    )
+
+
 def visible_to(caller: dict, events: list) -> list:
     """An event list as the caller may see it: an organiser gets only their organisation's events."""
     if caller.get("role") != "organiser":
@@ -616,6 +694,9 @@ def _to_out(
         registeredCount=registration_count(row.eventId, authorization),
         confirmedBy=row.confirmedBy,
         confirmedAt=row.confirmedAt,
+        cancellationReason=row.cancellationReason,
+        cancelledBy=row.cancelledBy,
+        cancelledAt=row.cancelledAt,
         hasOpenClarifications=_has_open_clarifications(row),
     )
 
@@ -2467,6 +2548,73 @@ class EventService(BaseService):
         self.db.commit()
         self.db.refresh(event)
         release_event_holds(event.eventId, authorization)
+        return _to_out(event, authorization)
+
+    # SPM-88: cancellation ------------------------------------------------------
+
+    def cancel_event(
+        self,
+        event_id: str,
+        reason: str,
+        caller: dict,
+        authorization: str | None,
+        schedule: Callable[..., None] | None = None,
+    ) -> EventOut:
+        """SPM-88. The organiser (any of their organisation's events) or the assigned coordinator
+        cancels a live event at once, with a reason and no approval step (AC1, AC2).
+
+        The venue and the equipment are released first, side by side (AC5, AC6). If either fails,
+        whatever was released is given back and the event stays as it was, so the event and its
+        arrangements never disagree (AC9). Only then is the event Cancelled, which is terminal (AC4):
+        the reason is kept, the status change is logged, and a pending change request is closed
+        (AC10, AC11). Registration only accepts a confirmed event, so it is closed too (AC7).
+
+        Telling people is best effort, so the route hands it to `schedule` to run after replying."""
+        event = self._require_event(event_id)
+        _require_canceller(event, caller)
+        if event.status in LOCKED_STATUSES:
+            raise conflict(f"A {event.status} event cannot be cancelled.")
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            venue_job = pool.submit(release_venue_for_cancellation, event_id, authorization)
+            equipment_job = pool.submit(release_equipment_for_cancellation, event_id, reason, authorization)
+        venue, venue_failed = _released(venue_job)
+        equipment, equipment_failed = _released(equipment_job)
+        if venue_failed or equipment_failed:
+            undone = True
+            if not equipment_failed:
+                undone = restore_equipment_after_failed_cancellation(event_id, equipment, authorization) and undone
+            if not venue_failed:
+                undone = restore_venue_after_failed_cancellation(event_id, venue, authorization) and undone
+            failed = " and ".join(
+                part for part, down in (("venue bookings", venue_failed), ("equipment", equipment_failed)) if down
+            )
+            raise service_unavailable(_failed_cancellation(f"its {failed} could not be released", undone))
+
+        now = datetime.utcnow()
+        self._record_status_change(event, "cancelled", caller["userId"], f"Cancelled: {reason}", now)
+        event.status = "cancelled"
+        event.cancellationReason, event.cancelledBy, event.cancelledAt = reason, caller["userId"], now
+        event.updatedAt = now
+        for change_request in self.change_request_dao.list_by_event(event_id):
+            if change_request.status == PENDING:
+                self._close_change_request(
+                    change_request, "closed", caller["userId"], f"The event was cancelled: {reason}"
+                )
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            undone = restore_equipment_after_failed_cancellation(event_id, equipment, authorization)
+            undone = restore_venue_after_failed_cancellation(event_id, venue, authorization) and undone
+            raise service_unavailable(_failed_cancellation("it could not be saved", undone))
+        self.db.refresh(event)
+        # Plain values, so the notice does not depend on this request's database session.
+        announcement = (
+            event.eventId, event.eventName, event.coordinatorId, event.organiserId,
+            reason, caller["userId"], venue, equipment, authorization,
+        )
+        (schedule or (lambda task, *args: task(*args)))(_announce_cancellation, *announcement)
         return _to_out(event, authorization)
 
     # SPM-120: safety review --------------------------------------------------

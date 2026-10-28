@@ -296,6 +296,45 @@ class UpcomingEventOut(BaseModel):
     needsReverification: bool = False
 
 
+class TechWorkItemOut(BaseModel):
+    """SPM-58: one equipment line on technical support's home screen, with its event."""
+
+    id: str = Field(description="The request id, or the reservation id for a re-verification.")
+    requestId: str
+    eventId: str
+    eventName: str
+    eventStartsAt: datetime | None = None
+    eventEndsAt: datetime | None = None
+    equipmentId: str
+    equipmentName: str
+    quantity: int
+    status: str
+    shortfall: int = Field(default=0, description="Units still missing: all of an unavailable line.")
+    note: str = Field(default="", description="What changed on the event, or why the line fell short.")
+
+
+class SuppliedEventOut(BaseModel):
+    """SPM-58 AC4: an upcoming event technical support is supplying."""
+
+    eventId: str
+    eventName: str
+    eventStartsAt: datetime | None = None
+    eventEndsAt: datetime | None = None
+    equipmentSummary: str = Field(description="What is held for it, e.g. `2 × Wireless mic set`.")
+
+
+class TechDashboardOut(BaseModel):
+    """SPM-58: technical support's home screen. Only work for events that have not ended and are
+    still live (not cancelled, completed, rejected or a draft) is listed; each list is soonest first."""
+
+    pending: list[TechWorkItemOut] = Field(description="AC1: requests awaiting review.")
+    reverification: list[TechWorkItemOut] = Field(description="AC2: reservations flagged after a significant change.")
+    shortfalls: list[TechWorkItemOut] = Field(
+        description="AC3: lines recorded as unavailable or partly fulfilled that the coordinator has not resolved."
+    )
+    upcoming: list[SuppliedEventOut] = Field(description="AC4: events with equipment held for them.")
+
+
 class EquipmentOutcomeOut(BaseModel):
     reservationId: str = ""
     requestId: str = ""
@@ -311,3 +350,24 @@ class EquipmentOutcomeOut(BaseModel):
 class EventHoldsRelease(BaseModel):
     eventId: str
     reason: str = "The event was closed"
+
+
+class ReleasedReservationOut(EquipmentReservationOut):
+    """SPM-88: a reservation an event's release freed, with what it was, so the release can be undone."""
+
+    previousStatus: str = Field(description="`active` or `reserved`: the reservation's status before the release.")
+    handledBy: str | None = Field(
+        default=None, description="AC8: the technical support member who reviewed the line it held."
+    )
+
+
+class RestoredReservation(BaseModel):
+    reservationId: str = Field(min_length=1)
+    status: Literal["active", "reserved"]
+
+
+class ReservationRestoreRequest(BaseModel):
+    """SPM-88 AC9: the cancellation failed further on, so its equipment release is undone."""
+
+    eventId: str = Field(min_length=1)
+    reservations: list[RestoredReservation]

@@ -25,10 +25,10 @@
         v-else-if="activeTab === 'Dashboard' && session.role === 'coordinator'"
         @open-tab="selectTab"
       />
-      <template v-else-if="activeTab === 'Dashboard'">
-        <TechReverificationQueue v-if="session.role === 'techsupport'" />
-        <DashboardHome :cards="currentData.cards" />
-      </template>
+      <TechDashboard v-else-if="activeTab === 'Dashboard' && session.role === 'techsupport'" />
+      <DashboardHome v-else-if="activeTab === 'Dashboard'" :cards="currentData.cards" />
+
+
       <VenueCatalogue v-else-if="activeTab === 'Venue Catalogue'" />
       <VenueCalendar
         v-else-if="activeTab === 'Venue Calendar'"
@@ -66,7 +66,8 @@ import DashboardHome from '../features/dashboard/DashboardHome.vue'
 import OrganiserDashboard from '../features/dashboard/OrganiserDashboard.vue'
 import AttendeeHome from '../features/dashboard/AttendeeHome.vue'
 import CoordinatorHome from '../features/dashboard/CoordinatorHome.vue'
-import TechReverificationQueue from '../features/dashboard/TechReverificationQueue.vue'
+import TechDashboard from '../features/dashboard/TechDashboard.vue'
+import VenueCatalogue from '../
 import VenueCatalogue from '../features/venue-catalogue/VenueCatalogue.vue'
 import VenueCalendar from '../features/venue-calendar/VenueCalendar.vue'
 import UnavailabilityList from '../features/unavailability/UnavailabilityList.vue'

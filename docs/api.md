@@ -39,6 +39,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `GET /events/queue` | `coordinatorlead` sees every request; a `coordinator` sees only the requests assigned to them |
 | `GET /events/assigned` | `coordinator` only: the caller's own assigned events at any stage except draft and discarded, soonest first. Filtered in the database, so `registeredCount` is only fetched for those rows. Every other role gets 403 |
 | `POST /events/{id}/reject` | `coordinator` assigned to the event (SPM-70) |
+| `POST /events/{id}/cancel` | `organiser` of the event's organisation, or the `coordinator` assigned to it (SPM-88). Any live status (409 for draft, discarded, rejected, completed, or already cancelled); a `reason` is required (422). Venue bookings and equipment reservations are released first, side by side; if either fails, what was released is given back, the event is unchanged, and 503 says so. Then the event is `cancelled` (terminal), with `cancellationReason`, `cancelledBy`, `cancelledAt`; the change is in the activity log and a pending change request becomes `closed`. Attendees, the coordinator, the organiser, the approving Venue Staff, and the technical support members who handled its lines get `event.cancelled` just after the reply |
 | `POST`, `PATCH`, `DELETE /events/{id}/readiness-items…` | `coordinator` assigned to the event |
 | `GET /events/{id}/coordinator` | `organiser` of that event's organisation, `coordinator`, `venue`, `techsupport` |
 | `POST /events/{id}/approve` | `coordinator` assigned to the event (SPM-69); only while it is `under review` or `changes requested` |
@@ -80,15 +81,18 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `POST /venues/bookings/{id}/withdraw` | `coordinator` assigned to the event (SPM-46), so after a reassignment the new coordinator |
 | `POST /venues/bookings/{id}/cancel` | `coordinator` assigned to the event, or `venue` (SPM-114) |
 | `POST /venues/bookings/{id}/replacement` | `coordinator` assigned to the event (SPM-115). The booking must be `approved` and overlap an unavailability block. The new venue is checked on its own, using the booking's existing time and the event's current details. On success the original booking becomes `cancelled` and stays readable; the event is not changed |
-| `POST /venues/bookings/release` | `coordinator` assigned to the event, or an `organiser` from the event's own client organisation (SPM-114) |
+| `POST /venues/bookings/release` | `coordinator` assigned to the event, or an `organiser` from the event's own client organisation (SPM-114). Each released booking includes `previousStatus` (SPM-88) |
+| `POST /venues/bookings/restore` | Same people as the release (SPM-88 AC9). Gives each named booking of the event that is still `cancelled` its previous status and any hold the release ended; 409 if its venue was approved for someone else meanwhile |
+| `POST /equipment/reservations/release-for-event` | `coordinator`, `techsupport`, or the event's own `organiser` (SPM-88). Each released reservation includes `previousStatus` and `handledBy` |
+| `POST /equipment/reservations/restore-for-event` | Same people as the release (SPM-88 AC9). Each named reservation of the event that is still `released` holds its stock again |
 | `POST /venues/bookings/{id}/approve` or `/reject` | `venue`; only a `pending` request (409 otherwise, so an approved booking stays locked). Approval is refused (409), leaving the request pending, when a confirmed booking, unavailability, or another request's active tentative hold overlaps the occupied window (SPM-64, SPM-116); an expired hold does not count. A successful approval records `reviewedBy`, `reviewedByName` and `reviewedAt` (SPM-8). Rejecting (SPM-10) needs a `reason` (422 when blank) and may name `suggestedVenueId`, an active venue other than the one rejected (422 otherwise). It ends any tentative hold, so the request reserves nothing, and records `reviewedBy`, `reviewedByName`, `reviewedAt`, `decisionReason`, `suggestedVenueId` and `suggestedVenueName`. A rejected request can no longer be approved, rejected, withdrawn, held, or cancelled (409) |
 | `POST /venues/bookings/{id}/hold` and `/hold/release` | `venue` (SPM-116); a hold needs a pending request and an `expiresAt` in the future and no later than the event's start, and is refused (409) when the venue is already taken for that window; the event's coordinator is told in the app until when |
 | `POST /venues/bookings/reverification` | `coordinator`, `safety` (event-service calls it on a confirmed significant edit, or when a Safety Officer requests changes) |
 | `POST /venues/bookings/{id}/recheck` | `coordinator`, `venue` (SPM-86). Reports the new window and does not move the booking |
 | `POST /venues/bookings/reschedule/preview`, `POST /venues/bookings/reschedule` | `coordinator` assigned to the event (SPM-87) |
 | `POST /venues/bookings/{id}/reconfirm` | `venue` (SPM-86). Moves an approved flagged booking onto the event's current times, or releases that booking |
-| `POST /equipment/requests` | `coordinator` assigned to the event (SPM-46) |
-| `PATCH /equipment/requests/{id}/details` | `coordinator` assigned to the event (SPM-46), and only while the request is still pending |
+| `POST /equipment/requests` | `coordinator` assigned to the event (SPM-46). Every technical support member is told a request is waiting (`equipment.requested`) |
+| `PATCH /equipment/requests/{id}/details` | `coordinator` assigned to the event (SPM-46), and only while the request is still pending. A change to the quantity or requirements tells technical support (`equipment.request_changed`); resubmitting a request and accepting a shortfall do too. Both notices open the event's equipment page and are best effort, so a failed notice never undoes the change |
 | `POST /equipment/requests/{id}/review`, `/reserve`, or `/unavailable` | `techsupport` |
 | `PATCH /equipment/requests/{id}` | refused |
 | `POST /equipment/availability` with `eventId` | signed-in caller |
@@ -97,6 +101,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `POST /equipment/reservations/reverification` | `coordinator`, `safety` (event-service calls it on a confirmed significant edit, or when a Safety Officer requests changes) |
 | `POST /equipment/reservations/reschedule/preview`, `POST /equipment/reservations/reschedule` | `coordinator` assigned to the event (SPM-87) |
 | `GET /equipment/queue` | `techsupport` (SPM-86). Held reservations still waiting for re-verification |
+| `GET /equipment/dashboard` | `techsupport` (SPM-58). Technical support's home screen in one reply: `pending` requests awaiting review, reservations flagged for `reverification`, unresolved `shortfalls` (requests `partial` or `unavailable`; an accepted shortfall is `resolved` and left out), and `upcoming` events with equipment held for them. Each item carries its event's name and dates. Only events that have not ended and are not cancelled, completed, rejected, or a draft are included; every list is soonest first. The lists are the whole team's |
 | `POST /equipment/reservations/{id}/reconfirm` | `techsupport` (SPM-86). Clears the flag and does not raise the reserved quantity |
 | `POST /events/{id}/reverification/settle` | `venue`, `techsupport`, `coordinator` (SPM-86). Returns a `reconsidering` event to `confirmed` only when every flag is clear |
 | `POST /events/{id}/attendee-notice` | `venue`, `coordinator` (SPM-86). Tells registered attendees the date, time, or venue changed |
