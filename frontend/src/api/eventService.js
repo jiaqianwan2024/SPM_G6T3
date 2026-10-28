@@ -56,6 +56,10 @@ export const discardEvent = (eventId) => axiosClient.delete(`/events/${eventId}`
 // passed yet; 403 if the caller isn't the assigned coordinator.
 export const completeEvent = (eventId) => axiosClient.post(`/events/${eventId}/complete`);
 
+// SPM-88: the organiser or the assigned coordinator cancels at once, with a reason. Venue and
+// equipment are released first; 503 when a release failed, in which case nothing changed.
+export const cancelEvent = (eventId, reason) => axiosClient.post(`/events/${eventId}/cancel`, { reason });
+
 export const getActivityLog = (eventId) => axiosClient.get(`/events/${eventId}/activity-log`);
 
 // SPM-71: the assigned coordinator edits an event. Send only the changed fields.

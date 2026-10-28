@@ -15,6 +15,8 @@ from app.schemas.equipment import (
     EquipmentPartialFulfillment,
     EquipmentReservationAdjust,
     EventHoldsRelease,
+    ReleasedReservationOut,
+    ReservationRestoreRequest,
     EquipmentActivityLogOut,
     EquipmentAvailabilityIn,
     EquipmentCreate,
@@ -264,16 +266,51 @@ def get_reservation(
     return service.get_reservation(reservation_id)
 
 
-@router.post("/reservations/release-for-event", response_model=list[EquipmentReservationOut])
+def _event_releaser(event_id: str, authorization: str | None) -> dict:
+    """Coordinators and technical support release an event's stock; so does an organiser cancelling
+    their own organisation's event (SPM-88 AC1), which event-service decides (SPM-47)."""
+    caller = resolve_caller(
+        authorization, settings.user_service_url, allowed_roles={"coordinator", "techsupport", "organiser"}
+    )
+    if caller.get("role") == "organiser":
+        check_event_access(event_id, authorization)
+    return caller
+
+
+@router.post(
+    "/reservations/release-for-event",
+    response_model=list[ReleasedReservationOut],
+    summary="Release every reservation an event holds",
+    description="Coordinators, technical support, and the event's own organiser (SPM-88). Rejecting, cancelling, "
+    "or completing an event frees its stock. Each reply names the previous status, so the release can be undone, "
+    "and the technical support member who handled the line.",
+    responses=error_responses(403, 404, 503),
+)
 def release_holds_for_event(
     body: EventHoldsRelease,
     authorization: str | None = Depends(forwarded_bearer),
     service: EquipmentService = Depends(get_equipment_service),
 ):
-    caller = resolve_caller(
-        authorization, settings.user_service_url, allowed_roles={"coordinator", "techsupport"}
-    )
+    caller = _event_releaser(body.eventId, authorization)
     return service.release_holds_for_event(body.eventId, caller, body.reason)
+
+
+@router.post(
+    "/reservations/restore-for-event",
+    response_model=list[EquipmentReservationOut],
+    summary="Undo a cancellation's equipment release",
+    description="SPM-88 AC9. The same people as the release. Event-service calls it when a cancellation fails "
+    "after its equipment release, so the event and its reservations never disagree. Each named reservation of "
+    "the event that is still `released` holds its stock again with the status it had.",
+    responses=error_responses(403, 404, 503),
+)
+def restore_holds_for_event(
+    body: ReservationRestoreRequest,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EquipmentService = Depends(get_equipment_service),
+):
+    caller = _event_releaser(body.eventId, authorization)
+    return service.restore_holds_for_event(body.eventId, body.reservations, caller)
 
 
 @router.post(

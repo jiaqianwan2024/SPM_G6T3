@@ -136,6 +136,17 @@ TRIGGERS: dict[str, Trigger] = {
             required_context=("eventName", "equipmentName", "shortfall", "reason"),
             extras=(("alternative", "Suggested alternative: {alternative}"),),
         ),
+        # SPM-88 AC7 and AC8: the event was cancelled. Registered attendees, the coordinator, the
+        # organiser, the Venue Staff who approved its bookings and the technical support members who
+        # handled its equipment are told, with the reason.
+        Trigger(
+            key="event.cancelled",
+            title="{eventName} has been cancelled",
+            body="{eventName} has been cancelled. Reason: {reason}",
+            recipient_roles=frozenset({"attendee", "coordinator", "organiser", "venue", "techsupport"}),
+            required_context=("eventName", "reason"),
+            attendee_visible=True,
+        ),
         # A coordinator asked for equipment, so technical support know a request is waiting for review.
         Trigger(
             key="equipment.requested",

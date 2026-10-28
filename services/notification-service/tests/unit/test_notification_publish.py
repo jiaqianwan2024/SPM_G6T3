@@ -59,6 +59,23 @@ class TestPublish(ServiceTestCase):
                 self.assertIn("AI in Events Summit", body)
                 self.assertIn(link, ("/app/events/e9", "/app/events/e9/equipment"))
 
+    def test_a_cancellation_reaches_attendees_and_staff_with_the_reason(self):
+        people = [
+            ATTENDEE,
+            {"userId": "u-coord", "role": "coordinator"},
+            {"userId": "u-vinod", "role": "venue"},
+            {"userId": "u-tia", "role": "techsupport"},
+        ]
+
+        result = self.publish(
+            trigger="event.cancelled", recipients=people, context={**CONTEXT, "reason": "Speaker withdrew"}, actor_id="u-org"
+        )
+
+        self.assertEqual(result.created, 4)
+        row = self.rows()[0]
+        self.assertEqual(row.title, "AI in Events Summit has been cancelled")
+        self.assertEqual(row.body, "AI in Events Summit has been cancelled. Reason: Speaker withdrew")
+
     def test_technical_support_are_told_of_a_new_or_changed_equipment_request_on_its_equipment_page(self):
         tech = {"userId": "u-tech", "role": "techsupport"}
         equipment = {**CONTEXT, "equipment": "2 × Projector PX-200"}

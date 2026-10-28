@@ -350,3 +350,24 @@ class EquipmentOutcomeOut(BaseModel):
 class EventHoldsRelease(BaseModel):
     eventId: str
     reason: str = "The event was closed"
+
+
+class ReleasedReservationOut(EquipmentReservationOut):
+    """SPM-88: a reservation an event's release freed, with what it was, so the release can be undone."""
+
+    previousStatus: str = Field(description="`active` or `reserved`: the reservation's status before the release.")
+    handledBy: str | None = Field(
+        default=None, description="AC8: the technical support member who reviewed the line it held."
+    )
+
+
+class RestoredReservation(BaseModel):
+    reservationId: str = Field(min_length=1)
+    status: Literal["active", "reserved"]
+
+
+class ReservationRestoreRequest(BaseModel):
+    """SPM-88 AC9: the cancellation failed further on, so its equipment release is undone."""
+
+    eventId: str = Field(min_length=1)
+    reservations: list[RestoredReservation]

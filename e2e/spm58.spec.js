@@ -40,6 +40,8 @@ async function reserve(requestId) {
 
 test.describe('SPM-58 Technical Support Staff dashboard', () => {
   test.beforeAll(async () => {
+    // Three events, each with equipment and reviews, are made through the API: more than a test's default time.
+    test.setTimeout(180_000)
     const day = 300 + Math.floor(Math.random() * 30000)
 
     // AC1: a request awaiting review.
@@ -64,6 +66,7 @@ test.describe('SPM-58 Technical Support Staff dashboard', () => {
   })
 
   test.afterAll(async () => {
+    test.setTimeout(180_000)
     // A cancelled event is no longer live, so it and its lines leave the home screen.
     for (const item of [fixtures.pending, fixtures.flagged, fixtures.short]) {
       if (item) await eventApi('POST', `/${item.event.eventId}/cancel`, 'EO-01', { reason: 'SPM-58 suite clean-up' })
