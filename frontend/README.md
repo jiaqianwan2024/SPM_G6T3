@@ -29,7 +29,7 @@ Firebase; on a page refresh `main.js` restores the session from Firebase and
 
 ```
 src/
-  views/                   Route-level pages (Landing, Login, Dashboard shell, /dev/ui catalogue)
+  views/                   Route-level pages (Login, also the / entry point; Dashboard shell; /dev/ui catalogue)
   features/                One folder per dashboard tab or page
     dashboard/             Role home screens: organiser, attendee, technical support, default cards
     lead-dashboard/        Event Coordinator Lead home
