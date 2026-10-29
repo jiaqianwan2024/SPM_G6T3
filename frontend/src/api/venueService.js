@@ -34,6 +34,9 @@ export const requestVenueBooking = (body) => axiosClient.post("/venues/bookings"
 
 export const getVenueBookings = (params = {}) => axiosClient.get("/venues/bookings", { params });
 
+// SPM-57: Venue Staff's home screen (pending requests, re-verification, the next few days).
+export const getVenueDashboard = () => axiosClient.get("/venues/dashboard");
+
 export const getPublicVenue = (eventId) =>
   axiosClient.get("/venues/bookings/public-summary", { params: { eventId } });
 

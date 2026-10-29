@@ -26,6 +26,7 @@
         @open-tab="selectTab"
       />
       <TechDashboard v-else-if="activeTab === 'Dashboard' && session.role === 'techsupport'" />
+      <VenueHome v-else-if="activeTab === 'Dashboard' && session.role === 'venue'" />
       <DashboardHome v-else-if="activeTab === 'Dashboard'" :cards="currentData.cards" />
 
 
@@ -67,6 +68,7 @@ import OrganiserDashboard from '../features/dashboard/OrganiserDashboard.vue'
 import AttendeeHome from '../features/dashboard/AttendeeHome.vue'
 import CoordinatorHome from '../features/dashboard/CoordinatorHome.vue'
 import TechDashboard from '../features/dashboard/TechDashboard.vue'
+import VenueHome from '../features/dashboard/VenueHome.vue'
 import VenueCatalogue from '../features/venue-catalogue/VenueCatalogue.vue'
 import VenueCalendar from '../features/venue-calendar/VenueCalendar.vue'
 import UnavailabilityList from '../features/unavailability/UnavailabilityList.vue'

@@ -536,7 +536,7 @@ def _failed_cancellation(cause: str, undone: bool) -> str:
 
 
 def visible_to(caller: dict, events: list) -> list:
-    """An event list as the caller may see it: an organiser gets only their organisation's events."""
+    """Events (rows or EventOut) as the caller may see them: an organiser gets only their organisation's."""
     if caller.get("role") != "organiser":
         return events
     return [event for event in events if _is_event_organiser(event, caller)]
@@ -760,7 +760,7 @@ class EventService(BaseService):
     def _require_event(self, event_id: str) -> Event:
         return self._require(self.event_dao.get_by_id(event_id), "Event not found")
 
-    def list_events(self, authorization: str | None = None) -> list[EventOut]:
+    def list_events(self, authorization: str | None = None, caller: dict | None = None) -> list[EventOut]:
         """Every event except drafts — a draft is only visible to its own organiser."""
         query_start = time.perf_counter()
         rows = self.event_dao.list_excluding_draft()
@@ -769,9 +769,11 @@ class EventService(BaseService):
             time.perf_counter() - query_start,
             len(rows),
         )
+        # SPM-47: an organiser's list is cut to their organisation before each event is built.
+        rows = visible_to(caller, rows) if caller else rows
         return _to_out_list(rows, authorization, "list_events")
 
-    def list_all_events(self, authorization: str | None = None) -> list[EventOut]:
+    def list_all_events(self, authorization: str | None = None, caller: dict | None = None) -> list[EventOut]:
         """Every event except rejected ones, drafts, and discarded drafts."""
         query_start = time.perf_counter()
         rows = self.event_dao.list_excluding_statuses(["rejected", "draft", "discarded"])
@@ -780,9 +782,11 @@ class EventService(BaseService):
             time.perf_counter() - query_start,
             len(rows),
         )
+        # SPM-47: an organiser's list is cut to their organisation before each event is built.
+        rows = visible_to(caller, rows) if caller else rows
         return _to_out_list(rows, authorization, "list_all_events")
 
-    def list_confirmed_events(self, authorization: str | None = None) -> list[EventOut]:
+    def list_confirmed_events(self, authorization: str | None = None, caller: dict | None = None) -> list[EventOut]:
         """Only events that have been confirmed (SPM-72 confirm_event sets the status)."""
         query_start = time.perf_counter()
         rows = self.event_dao.list_by_status("confirmed")
@@ -791,6 +795,8 @@ class EventService(BaseService):
             time.perf_counter() - query_start,
             len(rows),
         )
+        # SPM-47: an organiser's list is cut to their organisation before each event is built.
+        rows = visible_to(caller, rows) if caller else rows
         return _to_out_list(rows, authorization, "list_confirmed_events")
 
     def list_upcoming_events(self, authorization: str | None = None) -> list[EventOut]:

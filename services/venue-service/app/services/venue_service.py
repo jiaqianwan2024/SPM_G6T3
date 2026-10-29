@@ -37,6 +37,7 @@ from app.schemas.venue import (
     VenueBookingOut,
     VenueCalendarOut,
     VenueCreate,
+    VenueDashboardOut,
     VenueOut,
     VenueSearchResult,
     VenueUpdate,
@@ -311,6 +312,9 @@ def _diff_set(old_items: list[str], new_items: list[str]) -> dict:
         diff["removed"] = removed
     return diff
 
+
+# SPM-57 AC3: how many days ahead the Venue Staff dashboard shows confirmed bookings.
+DASHBOARD_UPCOMING_DAYS = 7
 
 class VenueService(BaseService):
     """Business logic for the venue catalogue and its bookings. Reads and
@@ -701,6 +705,19 @@ class VenueService(BaseService):
         self, status: str | None = None, event_id: str | None = None, venue_id: str | None = None
     ) -> list[VenueBookingOut]:
         return [self._present(row) for row in self.booking_dao.list(status, event_id, venue_id)]
+
+    def venue_dashboard(self, now: datetime | None = None) -> VenueDashboardOut:
+        """SPM-57: what is waiting on Venue Staff and what is happening in the venues. Pending
+        requests come oldest first, as the Booking Requests queue lists them; flagged and
+        upcoming bookings soonest first. Only events that have not ended are shown."""
+        now = now or datetime.utcnow()
+        horizon = now + timedelta(days=DASHBOARD_UPCOMING_DAYS)
+        return VenueDashboardOut(
+            pending=self.list_bookings(status="pending"),
+            reverification=[self._present(row) for row in self.booking_dao.list_approved_between(now, flagged_only=True)],
+            upcoming=[self._present(row) for row in self.booking_dao.list_approved_between(now, horizon)],
+            upcomingDays=DASHBOARD_UPCOMING_DAYS,
+        )
 
     def public_summary(self, event_id: str) -> dict:
         """Approved booking's venue name and location, for attendees (SPM-91)."""
