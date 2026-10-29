@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import LandingView from '../views/LandingView.vue'
 import LoginView from '../views/LoginView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import EventDetail from '../features/event-detail/EventDetail.vue'
@@ -24,7 +23,8 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     ...devRoutes,
-    { path: '/', name: 'landing', component: LandingView },
+    // The login page is the entry point; the guard below sends a signed-in user on to /app.
+    { path: '/', redirect: { name: 'login' } },
     { path: '/login', name: 'login', component: LoginView },
     { path: '/app', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
     {

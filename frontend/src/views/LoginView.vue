@@ -1,13 +1,11 @@
 <template>
-  <div class="login-split">
-    <router-link to="/" class="back-link">← Back</router-link>
+  <div class="login-page">
+    <div class="login-column">
+      <div class="login-brand">
+        <AnimatedOrb size="clamp(84px, 11vh, 112px)" :nodes="false" />
+        <AppLogo class="login-logo" />
+      </div>
 
-    <div class="login-brand">
-      <AnimatedOrb size="clamp(200px, 24vw, 300px)" :nodes="false" />
-      <p>Coordinators, venue staff, technical support, organisers and attendees — one shared record per event.</p>
-    </div>
-
-    <div class="login-form-wrap">
       <form class="login-form glass" @submit.prevent="submit" novalidate>
         <p class="eyebrow">Welcome back</p>
         <h2>Log in</h2>
@@ -69,6 +67,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import AnimatedOrb from '../components/shared/AnimatedOrb.vue'
+import AppLogo from '../components/shared/AppLogo.vue'
 import { auth } from '../firebase.js'
 import { users } from '../auth/users.data.js'
 import { getMe } from '../api/userService.js'
@@ -131,47 +130,44 @@ async function submit() {
 </script>
 
 <style scoped>
-.login-split {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+/* One centred column: the brand above the card, both in the middle of the window. */
+.login-page {
   min-height: 100vh;
+  display: flex;
   align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
 }
-
-.back-link {
-  position: absolute;
-  top: 28px;
-  left: 32px;
-  font-size: 12px;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--muted);
-  transition: color .35s var(--ease-out);
+.login-column {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
 }
-.back-link:hover { color: var(--text); }
 
 .login-brand {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 48px;
   text-align: center;
   animation: fade-in 1s var(--ease-out) both;
 }
+.login-logo { margin-top: 22px; }
+.login-logo :deep(.mark svg) { width: 26px; height: 26px; }
+.login-logo :deep(.wordmark) { font-size: 15px; }
 .login-brand p {
   max-width: 320px;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.7;
   color: var(--body);
-  margin-top: 32px;
+  margin: 12px 0 0;
+  text-wrap: balance;
 }
 
-.login-form-wrap { display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
 .login-form {
   width: 100%;
-  max-width: 380px;
   border-radius: var(--radius);
   padding: 36px 34px 32px;
   box-shadow: 0 30px 90px rgba(4, 1, 12, .6);
@@ -260,10 +256,9 @@ async function submit() {
   to { opacity: 1; transform: none; }
 }
 
-@media (max-width: 860px) {
-  .login-split { grid-template-columns: 1fr; padding-top: 60px; }
-  .login-brand { padding: 24px; }
-  .login-brand p { margin-top: 20px; }
+@media (max-width: 480px) {
+  .login-page { padding: 32px 16px; }
+  .login-form { padding: 30px 24px 26px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
