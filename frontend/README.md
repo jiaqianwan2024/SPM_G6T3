@@ -201,9 +201,16 @@ tests are listed in `docs/testing/README.md`.
 - `features/dashboard/VenueHome.vue` reads `GET /venues/dashboard` and lists booking
   requests awaiting a decision, confirmed bookings flagged for re-verification (with
   what changed), and confirmed bookings in the next 7 days (with the setup time), built
-  from the `/dev/ui` pieces (StatGrid, SectionBlock, UiEmptyState). A request or a
-  flagged booking opens it on Booking Requests; an upcoming booking opens the venue
-  calendar on its day. It replaced the placeholder cards Venue Staff used to see
+  from the `/dev/ui` pieces (StatGrid, SectionBlock, UiField, UiSelect, UiInput,
+  UiEmptyState). A request or a flagged booking opens it on Booking Requests; an
+  upcoming booking opens the venue calendar on its day. It replaced the placeholder
+  cards Venue Staff used to see
+- Each section is grouped by venue. A venue is one line with its count until opened,
+  and shows 10 items before "Show all". A section with 5 items or fewer, or only one
+  venue, starts open
+- Filters for venue, event name and event date (next 7, 30 or 90 days) narrow all three
+  sections and the counts at the top. They are kept for the browser tab, so they are
+  still set after opening an item and coming back
 
 **Cancelling an event (SPM-88)**
 - The organiser, or the assigned coordinator, cancels from the event page.

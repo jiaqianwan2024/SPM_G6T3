@@ -178,7 +178,7 @@ FIRST principles and the Week 9 advice on flaky tests, through `e2e/support/venu
 | Lead dashboard | Lead dashboard prototype | `e2e/lead-dashboard.spec.js` |
 | SPM-55 | TC-SPM55-AC01–AC07 | `e2e/spm55.spec.js` |
 | SPM-56 | TC-SPM56-AC01–AC07 | `e2e/spm56.spec.js` |
-| SPM-57 | TC-SPM57-AC01 to AC06 | `e2e/spm57.spec.js` (in CI; makes its own venue and bookings) |
+| SPM-57 | TC-SPM57-AC01 to AC06, AC01b | `e2e/spm57.spec.js` (in CI; makes its own venue and bookings) |
 | SPM-58 | TC-SPM58-AC01–AC07 | `e2e/spm58.spec.js` |
 | SPM-59 | TC-SPM59-AC01–AC06 | `e2e/spm59.spec.js` |
 | SPM-8 | TC-SPM08-AC01–AC11 (and AC01b, AC02b, AC06b, AC06c) | `e2e/spm08.spec.js` |
