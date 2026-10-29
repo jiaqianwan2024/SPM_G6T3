@@ -298,7 +298,7 @@ frontend/
     │   ├── equipmentService.js
     │   ├── registrationService.js
     │   └── notificationService.js
-    ├── views/                   routes: Landing, Login, Dashboard shell, /dev/ui catalogue
+    ├── views/                   routes: Login (also served at /), Dashboard shell, /dev/ui catalogue
     ├── features/                one folder per dashboard tab or page
     │   ├── dashboard/           role home screens (organiser, attendee, technical support, default cards)
     │   ├── lead-dashboard/      Event Coordinator Lead home
@@ -316,7 +316,7 @@ frontend/
     ├── config/                  roles.js (tabs per role), event status labels, event fields
     ├── utils/                   datetime.js (Singapore time helpers), eventSchedule.js
     ├── router/index.js
-    ├── composables/
+    ├── composables/             uid.js
     └── components/              ui/ (buttons, fields, tables, ...), layout/ (shell, navbar), shared/
 ```
 

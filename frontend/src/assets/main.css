@@ -202,21 +202,7 @@ select optgroup {
   transform: translateY(-2px);
 }
 
-/* ---------- Scroll reveal (driven by the v-reveal directive) ---------- */
-
-[data-reveal] {
-  opacity: 0;
-  transform: translateY(26px);
-  transition: opacity 1s var(--ease-out), transform 1s var(--ease-out);
-  transition-delay: var(--reveal-delay, 0ms);
-}
-[data-reveal].is-revealed {
-  opacity: 1;
-  transform: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  [data-reveal] { opacity: 1; transform: none; transition: none; }
   .btn:hover { transform: none; }
 }
