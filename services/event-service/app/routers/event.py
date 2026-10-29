@@ -70,7 +70,7 @@ from app.schemas.event import (
 )
 from app.schemas.followup import OpenEventOut, ReadinessCreate, ReadinessItemOut, ReadinessPatch
 from app.services.event_followup import EventFollowUp
-from app.services.event_service import COORDINATOR_LEAD, EventService, require_organisation_access, visible_to
+from app.services.event_service import COORDINATOR_LEAD, EventService, require_organisation_access
 from app.services.reminders import EventReminders
 from shared.auth.deps import forwarded_bearer
 from shared.auth.roles import resolve_caller
@@ -128,7 +128,7 @@ def list_events(
     service: EventService = Depends(get_event_service),
 ):
     caller = _refuse_attendees(authorization)
-    return visible_to(caller, service.list_events(authorization))
+    return service.list_events(authorization, caller)
 
 
 @router.post(
@@ -225,7 +225,7 @@ def list_all_events(
     service: EventService = Depends(get_event_service),
 ):
     caller = _refuse_attendees(authorization)
-    return visible_to(caller, service.list_all_events(authorization))
+    return service.list_all_events(authorization, caller)
 
 
 @router.get(
@@ -239,7 +239,7 @@ def list_confirmed_events(
     service: EventService = Depends(get_event_service),
 ):
     caller = _refuse_attendees(authorization)
-    return visible_to(caller, service.list_confirmed_events(authorization))
+    return service.list_confirmed_events(authorization, caller)
 
 
 @router.get(

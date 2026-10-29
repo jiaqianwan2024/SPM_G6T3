@@ -476,6 +476,19 @@ class VenueBookingOut(BaseModel):
     )
 
 
+
+class VenueDashboardOut(BaseModel):
+    """SPM-57: Venue Staff's home screen. Every list holds bookings as the Booking Requests screen shows them."""
+
+    pending: list[VenueBookingOut] = Field(description="AC1: requests awaiting a decision, oldest first.")
+    reverification: list[VenueBookingOut] = Field(
+        description="AC2: confirmed bookings flagged after a significant change to their event, soonest first."
+    )
+    upcoming: list[VenueBookingOut] = Field(
+        description="AC3: confirmed bookings under way or starting within `upcomingDays`, soonest first."
+    )
+    upcomingDays: int = Field(description="How many days ahead `upcoming` looks.")
+
 class ReleasedBookingOut(VenueBookingOut):
     """SPM-88: a booking an event cancellation released, with what it was, so the release can be undone."""
 

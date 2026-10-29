@@ -15,6 +15,8 @@ const ids = (response) => {
 
 test.describe('SPM-47 Multi-Tenant Event Access Restriction (API)', () => {
   test('TC-SPM47-AC01 the overview lists only the organisation\'s requests, drafts and past records', async () => {
+    // The whole organisation's list is slow on a database earlier runs filled with test events.
+    test.slow()
     const draft = await createDraftEvent('EO-01', `AUTO-SPM47-DRAFT-${Date.now()}`)
     try {
       const mine = ids(await eventApi('GET', '/mine', 'EO-01'))
@@ -34,6 +36,8 @@ test.describe('SPM-47 Multi-Tenant Event Access Restriction (API)', () => {
   })
 
   test('TC-SPM47-AC02 every organiser in the organisation sees its events', async () => {
+    // The whole organisation's list is slow on a database earlier runs filled with test events.
+    test.slow()
     const colleague = ids(await eventApi('GET', '/mine', 'EO-03'))
     const owner = ids(await eventApi('GET', '/mine', 'EO-01'))
 

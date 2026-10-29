@@ -82,6 +82,18 @@ class VenueBookingDAO(BaseDAO):
             .all()
         )
 
+    def list_approved_between(
+        self, now: datetime, until: datetime | None = None, flagged_only: bool = False
+    ) -> list[VenueBooking]:
+        """SPM-57: approved bookings whose event has not ended by `now` and, given `until`, starts
+        by then, soonest first. `flagged_only` keeps those needing re-verification (SPM-86)."""
+        query = self.db.query(VenueBooking).filter(VenueBooking.status == "approved", VenueBooking.endsAt > now)
+        if until is not None:
+            query = query.filter(VenueBooking.startsAt <= until)
+        if flagged_only:
+            query = query.filter(VenueBooking.needsReverification.is_(True))
+        return query.order_by(VenueBooking.startsAt, VenueBooking.bookingId).all()
+
     def list(self, status: str | None, event_id: str | None, venue_id: str | None) -> list[VenueBooking]:
         """Oldest first: the customer handles venue requests first come, first served."""
         query = self.db.query(VenueBooking)

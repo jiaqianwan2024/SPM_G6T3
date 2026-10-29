@@ -36,6 +36,7 @@ from app.schemas.venue import (
     VenueBookingOut,
     VenueCalendarOut,
     VenueCreate,
+    VenueDashboardOut,
     VenueOut,
     VenueSearchResult,
     VenueUpdate,
@@ -90,6 +91,25 @@ def list_venues(
 ):
     resolve_caller(authorization, settings.user_service_url, allowed_roles=CATALOGUE_READER_ROLES)
     return service.list_venues(include_retired=includeRetired)
+
+
+@router.get(
+    "/dashboard",
+    response_model=VenueDashboardOut,
+    summary="Venue Staff dashboard",
+    description=(
+        "SPM-57. Venue Staff only, as the Booking Requests screen is. Requests awaiting a decision (oldest "
+        "first), confirmed bookings flagged for re-verification, and confirmed bookings under way or starting "
+        "within `upcomingDays` (both soonest first). Bookings of events that have ended are left out."
+    ),
+    responses=error_responses(403, 503),
+)
+def venue_dashboard(
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    resolve_caller(authorization, settings.user_service_url, allowed_roles={"venue"})
+    return service.venue_dashboard()
 
 
 @router.get(

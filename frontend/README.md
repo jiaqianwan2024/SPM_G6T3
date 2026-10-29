@@ -197,6 +197,14 @@ tests are listed in `docs/testing/README.md`.
   reservations to re-verify, unresolved shortfalls, and upcoming events with
   equipment held. Each item opens the event's equipment page
 
+**Venue Staff home (SPM-57)**
+- `features/dashboard/VenueHome.vue` reads `GET /venues/dashboard` and lists booking
+  requests awaiting a decision, confirmed bookings flagged for re-verification (with
+  what changed), and confirmed bookings in the next 7 days (with the setup time), built
+  from the `/dev/ui` pieces (StatGrid, SectionBlock, UiEmptyState). A request or a
+  flagged booking opens it on Booking Requests; an upcoming booking opens the venue
+  calendar on its day. It replaced the placeholder cards Venue Staff used to see
+
 **Cancelling an event (SPM-88)**
 - The organiser, or the assigned coordinator, cancels from the event page.
   The dialog states what will be released and who will be told, and needs a

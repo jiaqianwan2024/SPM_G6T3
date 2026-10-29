@@ -77,6 +77,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `POST /venues/suitability` | `coordinator`, `venue` |
 | `POST /venues/bookings` | `coordinator` assigned to the event (SPM-63) |
 | `GET /venues/bookings`, `GET /venues/bookings/{id}` | `coordinator`, `venue` |
+| `GET /venues/dashboard` | `venue` only, as Booking Requests is (SPM-57). `pending` (oldest first), `reverification` (approved bookings flagged after an event change) and `upcoming` (approved bookings under way or starting within `upcomingDays`, 7), both soonest first; events that have ended are left out |
 | `GET /venues/bookings/clashes` | `venue` (SPM-122); read only, lists confirmed bookings whose occupied windows overlap under the venue's current setup and turnaround |
 | `POST /venues/bookings/{id}/withdraw` | `coordinator` assigned to the event (SPM-46), so after a reassignment the new coordinator |
 | `POST /venues/bookings/{id}/cancel` | `coordinator` assigned to the event, or `venue` (SPM-114) |

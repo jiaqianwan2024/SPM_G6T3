@@ -27,12 +27,8 @@ export const roles = {
   venue: {
     label: 'Venue Staff',
     tabs: ['Dashboard', 'Venue Calendar', 'Booking Requests', 'Unavailability', 'Venue Catalogue'],
-    cards: [
-      { title: 'Pending booking requests', sub: '3 requests to approve or reject' },
-      { title: 'Blocked for maintenance', sub: 'Hall B closed until Friday' },
-      { title: 'Turnaround conflicts', sub: 'Tight changeover flagged for Rm 204' },
-      { title: "This week's setups", sub: '5 events need setup confirmation' }
-    ]
+    // The Dashboard tab is VenueHome (SPM-57: live requests, re-verification, the next few days), not cards.
+    cards: []
   },
   techsupport: {
     label: 'Technical Support Staff',

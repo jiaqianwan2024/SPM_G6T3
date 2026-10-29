@@ -129,7 +129,7 @@ npm run test:spm127
 
 `e2e/sgt.spec.js` and `e2e/lead-dashboard.spec.js` have no story command; run them with `npx playwright test e2e/sgt.spec.js` (after `npm run test:prepare` on a fresh database).
 
-`test:acceptance` (what CI's e2e job runs) omits SPM-55 through SPM-59,
+`test:acceptance` (what CI's e2e job runs) omits SPM-55, SPM-56, SPM-58, SPM-59,
 SPM-9, SPM-17, SPM-108, SPM-110, SPM-115, SPM-117 through SPM-119, the
 planning-review epic (SPM-5, SPM-15, SPM-65 through SPM-73), the equipment epic
 (SPM-2, SPM-3, SPM-4, SPM-75 through SPM-78), the request-and-change epic (SPM-14,
@@ -178,7 +178,7 @@ FIRST principles and the Week 9 advice on flaky tests, through `e2e/support/venu
 | Lead dashboard | Lead dashboard prototype | `e2e/lead-dashboard.spec.js` |
 | SPM-55 | TC-SPM55-AC01–AC07 | `e2e/spm55.spec.js` |
 | SPM-56 | TC-SPM56-AC01–AC07 | `e2e/spm56.spec.js` |
-| SPM-57 | TC-SPM57-AC01–AC06 | `e2e/spm57.spec.js` |
+| SPM-57 | TC-SPM57-AC01 to AC06 | `e2e/spm57.spec.js` (in CI; makes its own venue and bookings) |
 | SPM-58 | TC-SPM58-AC01–AC07 | `e2e/spm58.spec.js` |
 | SPM-59 | TC-SPM59-AC01–AC06 | `e2e/spm59.spec.js` |
 | SPM-8 | TC-SPM08-AC01–AC11 (and AC01b, AC02b, AC06b, AC06c) | `e2e/spm08.spec.js` |
