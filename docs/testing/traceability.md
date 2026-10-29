@@ -35,6 +35,7 @@
 | SPM-56 | Org-scoped list including colleagues, server enforced | TC-SPM56-AC06 | `e2e/spm56.spec.js` | Automated |
 | SPM-56 | Empty states and first-request prompt | TC-SPM56-AC07 | `e2e/spm56.spec.js` | Automated |
 | SPM-57 | Pending booking requests with event, requested venue, and requested date and time | TC-SPM57-AC01 | `e2e/spm57.spec.js`; `services/venue-service/tests/unit/test_venue_dashboard.py` | Automated (API and UI) |
+| SPM-57 | A long queue is grouped by venue; the venue, event name and event date filters narrow every section and its count | TC-SPM57-AC01b | `e2e/spm57.spec.js` | Automated (UI); boundary at 7 days for the date filter |
 | SPM-57 | Bookings flagged for re-verification, with what changed | TC-SPM57-AC02 | `e2e/spm57.spec.js`; `test_venue_dashboard.py` | Automated (API and UI) |
 | SPM-57 | Confirmed bookings in the next 7 days, with the setup time | TC-SPM57-AC03 | `e2e/spm57.spec.js`; `test_venue_dashboard.py` | Automated (API and UI); boundary at exactly 7 days |
 | SPM-57 | Every item opens the screen where the work is done | TC-SPM57-AC04 | `e2e/spm57.spec.js` | Automated (UI) |
