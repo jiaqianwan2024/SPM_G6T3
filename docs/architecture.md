@@ -4,7 +4,7 @@ Developer guide for the Event Planning and Venue Booking system. Data model (tab
 
 ## What you are looking at
 
-Vue 3 frontend, FastAPI microservices, and **one shared MySQL instance with one schema per service**, running in local Docker. Firebase is the intended auth layer later; local demo login still uses a JWT from `user-service`.
+Vue 3 frontend, FastAPI microservices, and **one shared MySQL instance with one schema per service**, running in local Docker. Firebase Authentication is the identity layer: the Vue app signs in against Firebase, sends the ID token with every call, and each service verifies it. Roles live in `user-service`, which other services ask through `GET /users/me`.
 
 `frontend/src/api/*.js` are **not** microservices. They are axios wrappers. Business logic and databases live under `services/`. The two talk only over HTTP.
 
@@ -29,7 +29,13 @@ flowchart LR
   VenueSvc -->|"HTTP"| EventSvc
   VenueSvc -->|"HTTP"| NotifSvc
   EquipSvc -->|"HTTP"| EventSvc
+  EquipSvc -->|"HTTP"| VenueSvc
+  EquipSvc -->|"HTTP"| NotifSvc
+  RegSvc -->|"HTTP"| EventSvc
+  RegSvc -->|"HTTP"| NotifSvc
 ```
+
+Every service also calls `user-service` to resolve the caller's role, so those arrows are left out of the diagram.
 
 There is **no repo-root `db/` folder**. Database data is stored in one Docker volume. Each service owns its schema through its own Alembic migration tree. `infra/` starts one MySQL instance and creates the six empty schemas.
 
@@ -266,7 +272,9 @@ SPM_G6T3/
 ├── scripts/                  migrate, seed, start all backends
 ├── Test Data/                shared acceptance-test credentials
 ├── e2e/                      Playwright browser and API acceptance tests
+├── tests/integration/        runs every service's integration tests
 ├── docs/                     architecture, API, data model, testing
+├── .github/workflows/        CI: unit + integration (`test`) and Playwright (`e2e`)
 ├── package.json              development and acceptance-test commands
 └── README.md
 ```
@@ -279,9 +287,9 @@ frontend/
 ├── package.json
 ├── vite.config.js
 └── src/
-    ├── main.js
+    ├── main.js                  restores the session from Firebase on load
     ├── App.vue
-    ├── firebase.js              placeholder — Auth later
+    ├── firebase.js              Firebase app and auth set-up
     ├── api/                     axios wrappers → owning microservice
     │   ├── axiosClient.js
     │   ├── userService.js
@@ -290,18 +298,26 @@ frontend/
     │   ├── equipmentService.js
     │   ├── registrationService.js
     │   └── notificationService.js
-    ├── views/                   routes: Landing, Login, Dashboard shell
-    ├── features/                one folder per dashboard tab
-    │   ├── dashboard/
-    │   ├── venue-catalogue/
-    │   ├── venue-request/       choose a venue for an event (SPM-62)
-    │   └── browse-events/
-    ├── auth/users.data.js       demo credentials (UI)
-    ├── store/session.js         client session
-    ├── config/roles.js          tabs per role
+    ├── views/                   routes: Landing, Login, Dashboard shell, /dev/ui catalogue
+    ├── features/                one folder per dashboard tab or page
+    │   ├── dashboard/           role home screens (organiser, attendee, technical support, default cards)
+    │   ├── lead-dashboard/      Event Coordinator Lead home
+    │   ├── safety-reviews/      Safety Officer home and review queue
+    │   ├── my-events/, drafts/, create-event/                    organiser
+    │   ├── assigned-events/, review-queue/, assignments/         coordinators and the Lead
+    │   ├── event-detail/        the event page and its panels (decisions, edits, cancel, readiness, ...)
+    │   ├── event-calendar/
+    │   ├── venue-catalogue/, venue-calendar/, venue-request/, booking-requests/, unavailability/
+    │   ├── equipment-catalogue/, upcoming-events/
+    │   ├── browse-events/, my-registrations/                     attendees
+    │   └── notifications/       bell, notifications page, where a notice leads
+    ├── auth/users.data.js       demo accounts listed on the login screen
+    ├── store/                   session.js (signed-in user), draftEditor.js
+    ├── config/                  roles.js (tabs per role), event status labels, event fields
+    ├── utils/                   datetime.js (Singapore time helpers), eventSchedule.js
     ├── router/index.js
     ├── composables/
-    └── components/shared/
+    └── components/              ui/ (buttons, fields, tables, ...), layout/ (shell, navbar), shared/
 ```
 
 ### `services/`
@@ -316,9 +332,12 @@ services/<name>/
 │   ├── db/session.py        engine + session (not the MySQL files)
 │   ├── models/              SQLAlchemy — one module per table
 │   ├── schemas/             Pydantic API shapes (camelCase JSON)
+│   ├── dao/                 queries, one class per table
 │   ├── routers/             HTTP endpoints
 │   └── services/            business rules
 ├── alembic/                 schema migrations (source of truth)
+├── tests/unit/              unittest + Coverage.py, 100% required
+├── tests/integration/       HTTP + SQL workflow
 ├── alembic.ini
 ├── Dockerfile
 └── requirements.txt
@@ -345,17 +364,27 @@ infra/
 | `migrate.py` | wait for MySQL → alembic upgrade → seed |
 | `prepare-acceptance-tests.py` | start MySQL, migrate, and seed before Playwright |
 | `revision.py` | `alembic revision --autogenerate` for one service (Windows-safe) |
+| `run-reminders.py` | run the approaching-event reminder check now (SPM-95), the same call a daily scheduler makes |
+| `run-unit-coverage.py` | `npm run test:unit`: every service's unit tests, failing below 100% statement coverage |
 | `seed.py` | demo rows (called by migrate unless `--no-seed`) |
 
 ### `shared/`
 
 ```
 shared/
-├── auth/tokens.py      demo JWT; Firebase verify stub
+├── auth/
+│   ├── tokens.py       verifies Firebase ID tokens (firebase-admin)
+│   ├── deps.py         FastAPI dependency that requires a valid token
+│   ├── roles.py        resolves the caller's role through user-service `/users/me`
+│   └── service_key.py  `X-Service-Key` for calls between services with no user
+├── config/             common settings and CORS origins
+├── dao/base.py         base data-access object
+├── services/base.py    base service class (404 helper)
 ├── openapi.py          FastAPI titles, Swagger Bearer auth, error examples
 ├── schemas/
 ├── exceptions/
-└── logging/
+├── logging/
+└── testing/            unit-test base case (SQLite) and cross-service contract files
 ```
 
 ### `docs/`
@@ -365,7 +394,7 @@ shared/
 | `architecture.md` | this file |
 | `api.md` | OpenAPI / Swagger index (ports, auth, role gates) |
 | `data-model.md` | tables, enums, conflict/capacity rules, ERD |
-| `testing/` | How to run SPM-43 / SPM-45 and the AC-to-spec map |
+| `testing/` | How to run unit, integration, and acceptance tests, and the acceptance-criteria-to-test map |
 
 ---
 
@@ -400,7 +429,6 @@ Because all schemas share one MySQL process and volume, an instance outage affec
 
 ## Current gaps (so nobody is surprised)
 
-- Many dashboard tabs are still placeholders.
-- Browse-events still reads hardcoded `.data.js` until wired to `src/api`. The venue catalogue reads venue-service (SPM-60).
-- Login UI is still client-side; `user-service` already has `/users/login` for when you wire it.
-- Notifications persist in MySQL; sending is still a stub (print / queued email).
+- Some tabs are not built yet and say so on screen: Reports and Venue Requests (coordinator), Reservations, My Assignments, and Maintenance Status (technical support), and Waiting List (attendee).
+- In-app notifications are stored in MySQL and shown in the bell. Email sending is still a stub: `notification-service` prints the message and reports it as queued.
+- `features/browse-events/events.data.js` and `features/venue-catalogue/venues.data.js` are no longer imported; both screens read their services.

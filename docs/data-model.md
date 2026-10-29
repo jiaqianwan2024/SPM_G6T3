@@ -33,10 +33,20 @@ flowchart LR
   EquipSvc -->|"equipment schema"| MySQL
   RegSvc -->|"registration schema"| MySQL
   NotifSvc -->|"notification schema"| MySQL
-  EventSvc -->|"HTTP identity"| UserSvc
-  EventSvc -->|"HTTP registration count"| RegSvc
+  EventSvc -->|"HTTP registration count, roster"| RegSvc
+  EventSvc -->|"HTTP bookings, release"| VenueSvc
+  EventSvc -->|"HTTP reservations, release"| EquipSvc
   RegSvc -->|"HTTP event eligibility"| EventSvc
+  VenueSvc -->|"HTTP event facts"| EventSvc
+  EquipSvc -->|"HTTP event coordinator"| EventSvc
+  EquipSvc -->|"HTTP venue name"| VenueSvc
+  EventSvc -->|"HTTP notices"| NotifSvc
+  VenueSvc -->|"HTTP notices"| NotifSvc
+  EquipSvc -->|"HTTP notices"| NotifSvc
+  RegSvc -->|"HTTP notices"| NotifSvc
 ```
+
+Every service also calls user-service (`GET /users/me`) to resolve the caller's role from their token.
 
 ---
 
@@ -106,6 +116,10 @@ Lifecycle state is stored in `status`, not a separate table.
 | accessibility_needs | TEXT | |
 | equipment_requirements | TEXT | |
 | layout_preference | VARCHAR(64) nullable | The event's required layout |
+| preferred_location | VARCHAR(255) | SPM-80: the organiser's preferred area for the venue (`0006` migration) |
+| required_facilities | JSON | SPM-80: facilities picked from the catalogue's list |
+| accessibility_note | TEXT | SPM-80: free-text accessibility needs |
+| accessibility_selections | JSON | SPM-80: accessibility features picked from the catalogue's list |
 | internal_notes | TEXT nullable | SPM-71: staff only; never on the shared event read |
 | organiser_contact | VARCHAR(255) nullable | SPM-71 |
 | registration_enabled | BOOLEAN | |
@@ -124,13 +138,13 @@ Lifecycle state is stored in `status`, not a separate table.
 | created_at | DATETIME | |
 | updated_at | DATETIME | |
 
-**Event status:** the create API currently writes `created`; seed data also uses `planning` and `confirmed`. Other lifecycle values are not validated or transitioned by the current service. Approving a request (SPM-69) moves it from `under review` or `changes requested` to `planning`, written to `event_status_history`. Raising a clarification (SPM-68) moves `under review` to `changes requested`, and resolving the last open one moves it back. Submitting for a safety review (SPM-120) moves `planning` to `safety review`. Approval moves it on to `safety approved`, and rejection or a change request moves it back to `planning`. Confirming (SPM-72) moves `safety approved` to `confirmed`. A significant change in `safety review` or `safety approved` sends the event back to `planning`. A significant change on a `confirmed` event moves it to `reconsidering`. `POST /events/{id}/reverification/settle` moves `reconsidering` back to `confirmed` only when no flagged arrangement remains and the venue and equipment rules pass (SPM-86). Each move is written to `event_status_history`. The `0009` migration renamed any `preparing` event to `safety approved`.
+**Event status:** creating an event writes `submitted`, and saving a draft writes `draft` (submitting it later moves it to `submitted`; discarding it, to `discarded`). Assigning a coordinator moves `submitted` to `under review`, and rejecting it (SPM-70) moves it to `rejected`. Approving a request (SPM-69) moves it from `under review` or `changes requested` to `planning`, written to `event_status_history`. Raising a clarification (SPM-68) moves `under review` to `changes requested`, and resolving the last open one moves it back. Submitting for a safety review (SPM-120) moves `planning` to `safety review`. Approval moves it on to `safety approved`, and rejection or a change request moves it back to `planning`. Confirming (SPM-72) moves `safety approved` to `confirmed`. A significant change in `safety review` or `safety approved` sends the event back to `planning`. A significant change on a `confirmed` event moves it to `reconsidering`. `POST /events/{id}/reverification/settle` moves `reconsidering` back to `confirmed` only when no flagged arrangement remains and the venue and equipment rules pass (SPM-86). Marking a `confirmed` event completed after its end (SPM-73) moves it to `completed`. Cancelling (SPM-88) moves any live status to `cancelled`, which is terminal, and records `cancellation_reason`, `cancelled_by`, and `cancelled_at`. Each move is written to `event_status_history`. The `0009` migration renamed any `preparing` event to `safety approved`.
 
 **Registration needs at submission (SPM-81):** a request with dates must say `registrationEnabled` (true or false; 422 if left out). When registration is needed the organiser may also give `registrationOpensAt`, `registrationClosesAt`, and `capacity`. The close must be after the open and no later than `proposed_start_at`, on a draft save as well as on submit. Blank details do not block submission: events read back `registrationDetailsOutstanding: true` (computed: registration on and the open, close, or capacity still blank) until the coordinator sets them through SPM-90. A capacity above the expected attendance is only warned about in the organiser form.
 
 **Registration settings (SPM-90, `PATCH /events/{id}/registration-settings`):** the assigned coordinator sets `registration_enabled`, `registration_opens_at`, `registration_closes_at`, and `capacity` while the event is `approved`, `planning`, `safety review`, `safety approved`, `preparing`, `prepared`, `confirmed`, or `reconsidering`. The close must be after the open and no later than `proposed_start_at`. `capacity` cannot go below the attendees currently registered in registration-service. If it exceeds what a venue booking with status `approved` holds in the event's `layout_preference`, the coordinator must confirm the change; the venue's largest layout applies when there is no layout match. The coordinator must also confirm turning registration off while attendees are registered. Existing registrations are left as they are, and the attendees are notified. Each changed setting is written to `event_field_changes`.
 
-New API-created events have `submitted_at = NULL`. Event editing, submission, and status-history writes are not currently implemented.
+`submitted_at` is set when an event is submitted and stays `NULL` on a draft.
 
 **Coordinator edits (SPM-71, `PATCH /events/{id}`):** only the assigned coordinator (`coordinator_id`) may edit, and not while the event is `completed`, `cancelled`, `rejected`, `draft`, or `discarded`. `name`, `description`, `purpose`, `category`, `internal_notes`, and `organiser_contact` save quietly. `proposed_start_at`, `proposed_end_at`, `expected_attendance`, `layout_preference`, `accessibility_needs`, and `equipment_requirements` are significant. A significant change on an event with an `approved` venue booking or an `active`/`reserved` equipment reservation, or on a `confirmed` event, is refused until the coordinator confirms it. Once confirmed, those bookings and reservations get `needs_reverification`, and a `confirmed` event moves to `reconsidering` (written to `event_status_history`). Each changed field is written to `event_field_changes`. The booking is not moved. SPM-86 treats that flag as a gap for safety submission and Confirm. Re-confirming a venue booking writes the event's current start and end onto that booking and recomputes the occupied window, or cancels that booking when the venue no longer fits. Re-confirming equipment clears the flag and does not increase `quantity`. Only `reconsidering` returns to `confirmed`, and only when every flag is clear. A date or time change notifies registered attendees. A Safety Officer change request sets the same flag.
 
@@ -148,8 +162,9 @@ New API-created events have `submitted_at = NULL`. Event editing, submission, an
 | status | VARCHAR(16) nullable | SPM-68: `open` \| `resolved` on clarifications; null on decisions |
 | resolved_by | VARCHAR(64) nullable | SPM-68: logical FK → users |
 | resolved_at | DATETIME nullable | SPM-68 |
+| reason | VARCHAR(64) nullable | SPM-70: the reason picked from the list on a `reject` row (`0011` migration) |
 
-**Approval (SPM-69, `POST /events/{id}/approve`):** each approval adds an `approve` row: `reviewer_id` is the deciding coordinator, `comment` is their optional note to the organiser, and `created_at` is when they decided. The latest `approve` or `reject` row is what `GET /events/{id}/decision` returns. The `event_status_history` row for the approval does not carry the note. Rejection does not write rows here yet.
+**Approval (SPM-69, `POST /events/{id}/approve`):** each approval adds an `approve` row: `reviewer_id` is the deciding coordinator, `comment` is their optional note to the organiser, and `created_at` is when they decided. The latest `approve` or `reject` row is what `GET /events/{id}/decision` returns. The `event_status_history` row for the approval does not carry the note. Rejecting a request (SPM-70) adds a `reject` row with the listed `reason` and the coordinator's explanation in `comment`.
 
 **Clarifications (SPM-68, `POST /events/{id}/clarifications`):** each clarification is a `request_clarification` row raised by the assigned coordinator (`reviewer_id`), with its question in `comment`, an optional `field`, and `status` `open` until that coordinator resolves it (`resolved_by`, `resolved_at`). Raising one moves a request that is `under review` to `changes requested`. Once no row for the event is `open`, a `changes requested` event returns to `under review`. Both moves are written to `event_status_history`, but the question itself is not. Drafts cannot take one. Migration `0004` marked every clarification that existed before it as `open`.
 
@@ -284,6 +299,27 @@ SPM-87 AC9: one row per reschedule (`POST /events/{id}/reschedule`). `GET /event
 
 **Rescheduling (SPM-87):** the assigned coordinator moves an `approved`, `planning`, or `confirmed` event (including `safety review`, `safety approved`, `preparing`, `prepared`, and `reconsidering`). Each `approved` venue booking that is free and suitable at the new occupied window gets the new `starts_at`/`ends_at`, a recomputed occupied window, and `needs_reverification`. Any other approved booking becomes `cancelled`. A `pending` request takes the new times. Held equipment reservations and the event's open equipment requests take the new times, and a reservation whose quantity cannot be met then gets `needs_reverification`. A `registration_closes_at` after the new start becomes the new start. Status changes as for an SPM-71 significant change.
 
+### event_readiness_items
+
+SPM-5: the coordinator's follow-up lines for one event, shown on its readiness view. The `0007` migration added this table.
+
+| Column | Type | Notes |
+|---|---|---|
+| item_id | VARCHAR(64) PK | |
+| event_id | VARCHAR(64) | Logical FK → events, indexed |
+| category | VARCHAR(80) | The part of the event the line covers |
+| handler_id | VARCHAR(64) | Logical FK → users; empty when unassigned |
+| handler_name | VARCHAR(255) | |
+| handler_email | VARCHAR(255) | |
+| handler_phone | VARCHAR(64) | |
+| status | VARCHAR(40) | Default `outstanding` |
+| note | TEXT | |
+| due_at | DATETIME nullable | |
+| assigned_at | DATETIME | |
+| attachments | JSON | |
+
+Only the assigned coordinator adds, changes, or removes lines.
+
 ---
 
 ## 3. venue-service (`venue`)
@@ -338,6 +374,7 @@ Stores maintenance and blocked periods.
 | starts_at | DATETIME | |
 | ends_at | DATETIME | |
 | reason | TEXT | |
+| note | TEXT | Optional detail from Venue Staff |
 | created_by | VARCHAR(64) | Logical FK → users |
 | created_at | DATETIME | |
 
@@ -447,13 +484,19 @@ One row per catalogue change. Nothing writes this table yet. SPM-75 uses it for 
 | quantity | INT | |
 | technical_requirements | TEXT | |
 | requested_by | VARCHAR(64) | Logical FK → users |
-| status | VARCHAR(32) | `pending` \| `approved` \| `rejected` \| `unavailable` \| `cancelled` |
+| status | VARCHAR(32) | `pending` \| `approved` \| `rejected` \| `reserved` \| `partial` (only some units reserved) \| `unavailable` \| `resolved` (the coordinator accepted the shortfall) \| `attention` (technical support released its reservation, SPM-78) \| `complete` |
 | starts_at | DATETIME | Caller-supplied request window |
 | ends_at | DATETIME | |
 | reviewed_by | VARCHAR(64) nullable | Technical support user who last acted |
 | reviewed_at | DATETIME nullable | When that action was recorded |
 | review_note | TEXT | |
+| decision_reason | TEXT | SPM-77: why the line is unavailable or only partly fulfilled |
+| alternative_equipment_id | VARCHAR(64) nullable | SPM-77: equipment suggested instead |
+| shortfall | INT | SPM-77: units still missing on a `partial` line |
+| reserved_quantity | INT | SPM-77: units reserved on a `partial` line |
 | created_at | DATETIME | |
+
+Technical support are told when the event's assigned coordinator creates a request, changes a pending one, sends one back for review, or accepts a shortfall (`equipment.requested`, `equipment.request_changed`).
 
 ### equipment_reservations
 
@@ -468,11 +511,11 @@ Created only when the explicit reserve endpoint is called for an approved reques
 | quantity | INT | |
 | starts_at | DATETIME | |
 | ends_at | DATETIME | |
-| status | VARCHAR(32) | `active` \| `released` |
+| status | VARCHAR(32) | `active` \| `partial` (only some units could be held) \| `released`; older rows may read `reserved`, which counts as held |
 | needs_reverification | BOOLEAN | SPM-71: default false. Set on `active`/`reserved` reservations when a significant event change is saved; the status is unchanged, so the stock stays held. SPM-86: cleared when technical support re-confirm, and left set when extra units are unavailable. The reserved quantity is not increased |
 | reverification_note | TEXT nullable | SPM-71: what changed on the event. SPM-86: cleared when the reservation is re-confirmed |
 
-The reserve operation refuses a quantity above what is serviceable in that period, and refuses a second reservation for the same request. Releasing a reservation sets its status to `released`, which returns that quantity to later availability checks. Cancelling requests and reacting to event cancellation are not implemented.
+The reserve operation refuses a quantity above what is serviceable in that period, and refuses a second reservation for the same request. Releasing a reservation sets its status to `released`, which returns that quantity to later availability checks. Rejecting, completing, or cancelling the event releases all of its held reservations. A cancellation (SPM-88) gives them back if the cancellation then fails (`POST /equipment/reservations/restore-for-event`).
 
 ---
 
@@ -535,10 +578,11 @@ Venue-service writes its coordinator notices through `POST /notifications/record
 | notification_id | VARCHAR(64) PK | |
 | user_id | VARCHAR(64) | Logical FK → users |
 | event_id | VARCHAR(64) nullable | Logical FK → events |
-| type | VARCHAR(64) | Unrestricted string; seed data uses `event_confirmed`, and confirming an event (SPM-72) writes `event.confirmed` |
+| type | VARCHAR(64) | The trigger key for published notices (for example `booking.assigned`, `event.cancelled`, `equipment.requested`; the full list is in `notification-service/app/services/triggers.py`). Older direct writes use names such as `event.confirmed`; seed data uses `event_confirmed` |
 | title | VARCHAR(255) | |
 | body | TEXT | |
 | is_read | BOOLEAN | |
+| cleared_from_bell | BOOLEAN | SPM-94: hidden from the bell panel by Clear all or Remove; still listed on the notifications page (`0003` migration) |
 | created_at | DATETIME | |
 | link | VARCHAR(255) nullable | Where the notification takes the reader, e.g. `/app/events/{eventId}`. Set by published triggers |
 | resource_type | VARCHAR(64) nullable | What the notification concerns, e.g. `event` or `safety_review` |
@@ -653,6 +697,51 @@ erDiagram
     text new_value
     string changed_by FK
     datetime created_at
+  }
+
+  event_clarification_replies {
+    string reply_id PK
+    string review_id FK
+    string author_id FK
+    string author_role
+    text message
+    datetime created_at
+  }
+
+  event_safety_reviews {
+    string review_id PK
+    string event_id FK
+    string status
+    string submitted_by FK
+    json package
+    string decided_by FK
+    text decision_note
+  }
+
+  event_safety_handoffs {
+    string event_id PK
+    text crowd_movement
+    string venue_sent_by FK
+    text equipment_placement
+    string technical_sent_by FK
+  }
+
+  event_reschedules {
+    string reschedule_id PK
+    string event_id FK
+    datetime old_start_at
+    datetime new_start_at
+    text reason
+    string rescheduled_by FK
+  }
+
+  event_readiness_items {
+    string item_id PK
+    string event_id FK
+    string category
+    string handler_id FK
+    string status
+    datetime due_at
   }
 
   venues {
@@ -836,6 +925,11 @@ erDiagram
   events ||--o{ event_change_requests : has
   events ||--o{ event_status_history : has
   events ||--o{ event_field_changes : has
+  event_reviews ||--o{ event_clarification_replies : "answered by"
+  events ||--o{ event_safety_reviews : "reviewed for safety"
+  events ||--o| event_safety_handoffs : "handed off"
+  events ||--o{ event_reschedules : "moved by"
+  events ||--o{ event_readiness_items : "followed up by"
   events ||--o{ venue_bookings : books
   events ||--o{ equipment_requests : needs
   events ||--o| registration_windows : opens

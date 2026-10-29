@@ -103,17 +103,17 @@
 | SPM-61 | Missing facility or access excluded | TC-SPM61-AC06 | `e2e/spm61.spec.js` | Automated |
 | SPM-61 | Outside hours excluded | TC-SPM61-AC07 | `e2e/spm61.spec.js` | Automated |
 | SPM-61 | Layout capacity and headroom | TC-SPM61-AC08 | `e2e/spm61.spec.js` | Automated (API and UI) |
-| SPM-61 | Pending overlap marked contested | TC-SPM61-AC09 | `e2e/spm61.spec.js` | Automated (API and UI); an active hold, unlike a pending request, leaves the venue out (TC-SPM61-AC03b) |
+| SPM-61 | Pending overlap marked contested | TC-SPM61-AC09 | `e2e/spm61.spec.js` | Automated (API and UI); an active hold, unlike a pending request, leaves the venue out (TC-SPM61-AC03) |
 | SPM-62 | Verdict with reasons | TC-SPM62-AC01 | `e2e/spm62.spec.js` | Automated |
-| SPM-62 | Over-capacity names both numbers | TC-SPM62-AC02 | `e2e/spm62.spec.js` | Automated |
+| SPM-62 | Over-capacity names both numbers | TC-SPM62-AC02, AC02b | `e2e/spm62.spec.js` | Automated |
 | SPM-62 | Missing layout, facility, access | TC-SPM62-AC03 | `e2e/spm62.spec.js` | Automated |
 | SPM-62 | Clash named as failure | TC-SPM62-AC04 | `e2e/spm62.spec.js` | Automated: a confirmed booking, and an unavailability block recorded through SPM-9 |
 | SPM-62 | Outside hours is a failure | TC-SPM62-AC05 | `e2e/spm62.spec.js` | Automated |
 | SPM-62 | Tight fit is a warning | TC-SPM62-AC06 | `e2e/spm62.spec.js` | Automated |
 | SPM-62 | Pending overlap is a warning | TC-SPM62-AC07 | `e2e/spm62.spec.js` | Automated |
 | SPM-62 | Failures block submit; warnings do not | TC-SPM62-AC08 | `e2e/spm62.spec.js` | Automated |
-| SPM-62 | Shared suitability rule | TC-SPM62-AC09 | `e2e/spm62.spec.js`; `services/venue-service/tests/unit/test_venue_search.py` | Automated (API and UI): a search for an event gives each venue the same verdict as checking it directly, and booking requests run the same check. Re-verification (SPM-86) uses the same suitability check when Venue Staff re-confirm a flagged booking |
-| SPM-63 | Request venue for planning event | TC-SPM63-AC01 | `e2e/spm63.spec.js` | Automated |
+| SPM-62 | Shared suitability rule | TC-SPM62-AC09, AC09b | `e2e/spm62.spec.js`; `services/venue-service/tests/unit/test_venue_search.py` | Automated (API and UI): a search for an event gives each venue the same verdict as checking it directly, and booking requests run the same check. Re-verification (SPM-86) uses the same suitability check when Venue Staff re-confirm a flagged booking |
+| SPM-63 | Request venue for planning event | TC-SPM63-AC01, AC01b | `e2e/spm63.spec.js` | Automated |
 | SPM-63 | Request carries event facts | TC-SPM63-AC02 | `e2e/spm63.spec.js` | Automated |
 | SPM-63 | Failed suitability blocks submit | TC-SPM63-AC03 | `e2e/spm63.spec.js` | Automated |
 | SPM-63 | Warnings acknowledged and carried | TC-SPM63-AC04 | `e2e/spm63.spec.js` | Automated (browser). The coordinator acknowledges the warning on Choose venues, and Venue Staff see it with the request on Booking Requests (SPM-8). |
@@ -129,7 +129,7 @@
 | SPM-115 | Recording a block leaves the event status unchanged | TC-SPM115-AC05 | `e2e/spm115.spec.js` | Automated. Venue Staff record the block. The event status stays the same, and the approved booking stays approved until a replacement is requested. |
 | SPM-64 | Shared conflict rule | TC-SPM64-AC01 | `e2e/spm64.spec.js` | Automated (search, suitability, approval); venue blocking (SPM-9) finds affected bookings with the same occupied window and active-hold rule; rescheduling (SPM-87) and re-verification (SPM-86) use the same occupied window |
 | SPM-64 | Occupied window adds setup and turnaround | TC-SPM64-AC02 | `e2e/spm64.spec.js` | Automated |
-| SPM-64 | Confirmed bookings never overlap, also in the database | TC-SPM64-AC03 | `e2e/spm64.spec.js`; `services/venue-service/tests/integration/test_double_booking_mysql.py` | Automated |
+| SPM-64 | Confirmed bookings never overlap, also in the database | TC-SPM64-AC03, AC03b | `e2e/spm64.spec.js`; `services/venue-service/tests/integration/test_double_booking_mysql.py` | Automated |
 | SPM-64 | Conflicts with unavailability and active holds | TC-SPM64-AC04 | `e2e/spm64.spec.js` | Automated: active hold, and an unavailability block recorded through SPM-9 |
 | SPM-64 | Expired hold does not conflict | TC-SPM64-AC05 | `e2e/spm64.spec.js` | Automated (polls until a real hold has expired) |
 | SPM-64 | Touching windows fine, touching event times can clash | TC-SPM64-AC06 | `e2e/spm64.spec.js` | Automated |
@@ -143,8 +143,8 @@
 | SPM-122 | Clashes shown in the venue catalogue once new times are saved | TC-SPM122-AC01b | `e2e/spm122.spec.js` | Automated (browser) |
 | SPM-122 | Each clash names the venue, both events and the overlapping times | TC-SPM122-AC02 | `e2e/spm122.spec.js`; `services/venue-service/tests/unit/test_venue_booking_clashes.py` | Automated |
 | SPM-122 | Listed bookings kept with their status and event details | TC-SPM122-AC03 | `e2e/spm122.spec.js`; `services/venue-service/tests/unit/test_venue_booking_clashes.py` | Automated |
-| SPM-116 | Venue Staff hold a pending request until a future time no later than the event's start | TC-SPM116-AC01 | `e2e/spm116.spec.js`; `services/venue-service/tests/unit/test_venue_holds.py` | Automated (API and browser) |
-| SPM-116 | An active hold reserves the venue until it expires or is released | TC-SPM116-AC02 | `e2e/spm116.spec.js`; `services/venue-service/tests/unit/test_venue_holds.py` | Automated |
+| SPM-116 | Venue Staff hold a pending request until a future time no later than the event's start | TC-SPM116-AC01, AC01b, AC01c | `e2e/spm116.spec.js`; `services/venue-service/tests/unit/test_venue_holds.py` | Automated (API and browser) |
+| SPM-116 | An active hold reserves the venue until it expires or is released | TC-SPM116-AC02, AC02b | `e2e/spm116.spec.js`; `services/venue-service/tests/unit/test_venue_holds.py` | Automated |
 | SPM-116 | An expired hold reserves nothing and is not a confirmed booking | TC-SPM116-AC03 | `e2e/spm116.spec.js`; `services/venue-service/tests/unit/test_venue_holds.py` | Automated (waits for a real hold to expire) |
 | SPM-116 | Once expired the venue is available again | TC-SPM116-AC04 | `e2e/spm116.spec.js`; `services/venue-service/tests/integration/test_workflow.py` | Automated |
 | SPM-116 | The assigned coordinator is notified before the hold expires | TC-SPM116-AC05 | `e2e/spm116.spec.js`; `services/venue-service/tests/unit/test_venue_holds.py` | Automated (API and browser); told when the hold is placed, with its expiry |

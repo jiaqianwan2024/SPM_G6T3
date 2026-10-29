@@ -1,9 +1,9 @@
 # ConnectSphere — Vue frontend
 
-Login, the venue catalogue, and event registration enforce the real acceptance
-criteria given for those stories. API calls belong in `src/api/` (`axiosClient.js`
-plus one file per microservice); screens still use co-located hardcoded data
-until they are wired to the backend.
+Every screen reads and writes through the microservices. API calls belong in
+`src/api/` (`axiosClient.js` plus one file per microservice); a screen never
+holds its own copy of the data. The services enforce every rule, so the screens
+only mirror them to give earlier feedback.
 
 ## Run it
 
@@ -21,46 +21,58 @@ npm run dev
 ```
 
 Demo credentials are shown on the login screen (also in `src/auth/users.data.js`).
-Each account logs into a different role's dashboard.
+Each account logs into a different role's dashboard. Signing in goes through
+Firebase; on a page refresh `main.js` restores the session from Firebase and
+`GET /users/me`, so the user stays signed in.
 
 ## Folder structure
 
 ```
 src/
-  views/                   Route-level pages (Landing, Login, Dashboard shell)
-  features/                One folder per dashboard TAB — mirrors the sidebar 1:1
-    dashboard/
-      DashboardHome.vue     "Dashboard" tab
-    venue-catalogue/
-      VenueCatalogue.vue    "Venue Catalogue" tab (Event Coordinator, Venue Staff)
-      VenueForm.vue          add / edit form (Venue Staff only)
-      VenueActivityLog.vue   who changed what, and when (SGT)
-      venues.data.js         old hardcoded data, no longer imported
-    venue-request/
-      EventVenueSelect.vue  /app/events/:id/venues, suitability verdict per venue
-    browse-events/
-      BrowseEvents.vue      "Browse Events" tab (Attendee)
-      events.data.js         its hardcoded data + eligibility rule logic
-  auth/                    Cross-cutting, not a tab
+  views/                   Route-level pages (Landing, Login, Dashboard shell, /dev/ui catalogue)
+  features/                One folder per dashboard tab or page
+    dashboard/             Role home screens: organiser, attendee, technical support, default cards
+    lead-dashboard/        Event Coordinator Lead home
+    safety-reviews/        Safety Officer home and review queue
+    my-events/  drafts/  create-event/              Organiser tabs
+    assigned-events/  review-queue/  assignments/   Coordinator and Lead tabs
+    event-detail/          /app/events/:id and its panels (decisions, edits, cancel, readiness, ...)
+    event-calendar/
+    venue-catalogue/       Venue list, add / edit form, activity log, tentative holds
+    venue-calendar/        "Venue Calendar" tab (SPM-108)
+    venue-request/         /app/events/:id/venues: search and suitability per venue
+    booking-requests/      Venue Staff's "Booking Requests" tab
+    unavailability/        Venue Staff's "Unavailability" tab
+    equipment-catalogue/   Equipment list, detail, form, and an event's equipment check
+    upcoming-events/       Technical Support's "Upcoming Events" tab
+    browse-events/  my-registrations/               Attendee tabs
+    notifications/         Bell, notifications page, and where a notice leads
+  auth/
     users.data.js          Demo account reference shown on the login page
-  store/                   Cross-cutting, not a tab — reactive session state
-    session.js
+  store/
+    session.js             Signed-in user (role, name, id)
+    draftEditor.js         Unsaved-draft state for the New Request form
   api/                     Thin axios wrappers — not microservices
-    axiosClient.js
-    userService.js
-    eventService.js
-    venueService.js
-    equipmentService.js
-    registrationService.js
-    notificationService.js
-  firebase.js              Firebase init placeholder
+    axiosClient.js         One client per service; adds the Firebase token, signs out on 401
+    userService.js  eventService.js  venueService.js
+    equipmentService.js  registrationService.js  notificationService.js
+  firebase.js              Firebase app and auth set-up
   config/
-    roles.js               Which tabs exist per role, and their Dashboard cards
-  components/shared/       Used across multiple views/features
-    AppLogo.vue
-    AnimatedOrb.vue
+    roles.js               Which tabs exist per role
+    eventStatus.js         Status labels and which statuses are locked
+    eventFields.js         Event request fields and their labels
+  utils/
+    datetime.js            Singapore-time display and input helpers
+    eventSchedule.js
+  components/
+    ui/                    Buttons, fields, tables, tabs, modal, ...
+    layout/                App shell, navbar, page header, sections
+    shared/                Logo, notification bell and menu, profile card, backdrops
   router/index.js          Routes + the auth guard on /app
 ```
+
+`features/venue-catalogue/venues.data.js` and `features/browse-events/events.data.js`
+are left over from before those screens read their services, and are not imported.
 
 **Why this split**: `auth` and `store` aren't under `features/` because they
 aren't tied to one tab — every tab depends on the session, and login isn't a
@@ -70,7 +82,10 @@ for a given role. If you add a real "Reports" tab later, its component and
 data file belong in a new `features/reports/` folder, following the same
 pattern — don't add it to `components/shared/`.
 
-## What's implemented against your three stories
+## What's implemented
+
+The sections below describe the screens in more detail. Each story's acceptance
+tests are listed in `docs/testing/README.md`.
 
 **Login**
 - Empty email/password blocks submission with inline errors
@@ -95,8 +110,7 @@ pattern — don't add it to `components/shared/`.
   supported layouts, operating hours, and turnaround time
 - Venue Staff can add, edit, and retire a venue; retiring a venue with a
   confirmed upcoming booking shows those bookings and asks to confirm first.
-  Coordinators can only view (Technical Support can read venues through the
-  API but has no catalogue tab)
+  Coordinators and Technical Support can only view
 - Every change is shown in the venue's activity log, with times in Singapore time (SGT)
 - Venue Staff see confirmed bookings that clash once setup and turnaround are
   included (SPM-122): a banner over the venue list names each venue with clashes,
@@ -160,19 +174,39 @@ pattern — don't add it to `components/shared/`.
   and the readiness view are other stories (SPM-108, SPM-5)
 
 **Attendee registration**
-- `features/browse-events/` — 4 hardcoded events specifically chosen to
-  exercise each rule: one registrable normally, one already at capacity, one
-  not yet confirmed, one whose registration window hasn't opened yet
+- `features/browse-events/` lists the confirmed events open for registration,
+  read from event-service. Opening one shows its public details and places left
 - The Register button is disabled with the specific reason shown when a rule
-  fails; submitting requires name + email; success shows a confirmation
+  fails; submitting requires name + email; success shows a confirmation.
+  registration-service checks the same rules again (confirmed event, open
+  window, capacity, no duplicate) when the registration is sent
+- `features/my-registrations/` lists the attendee's own registrations; opening
+  one shows its details and lets them withdraw before the event starts
+
+**Venue calendar (SPM-108)**
+- `features/venue-calendar/` shows one venue's confirmed bookings, pending
+  requests, active and expired holds, and unavailability, each in its own
+  colour and label, by week or by month, including past dates
+- A booking spans its occupied window (setup and turnaround hatched in the week
+  view) and shows the event's name, client, and advertised time; clicking it
+  opens the event, or the held request on Booking Requests for Venue Staff
+- Time outside the venue's opening hours is shaded, and closed days say so
+
+**Technical Support home (SPM-58)**
+- `features/dashboard/TechDashboard.vue` lists requests awaiting review,
+  reservations to re-verify, unresolved shortfalls, and upcoming events with
+  equipment held. Each item opens the event's equipment page
+
+**Cancelling an event (SPM-88)**
+- The organiser, or the assigned coordinator, cancels from the event page.
+  The dialog states what will be released and who will be told, and needs a
+  reason. A failed release leaves the event unchanged and shows why. A
+  cancelled event shows its reason
 
 ## What's NOT here
 
-- Refreshing the UI still resets client session state until login is wired to
-  `/api/auth/login`
-- Only Dashboard, Venue Catalogue, and Browse Events tabs have real behavior;
-  every other tab shows "not built yet for this sprint"
-- Capacity must also be re-validated on the server at submit time (see
-  `event-service`)
+- Some tabs still show "not built yet for this sprint": Reports and Venue
+  Requests (coordinator), Reservations, My Assignments, and Maintenance Status
+  (technical support), and Waiting List (attendee)
 - The orb is an original swirling-marble design with a single orbit ring —
   deliberately not shaped like a two-tone capsule or any branded "capture ball"

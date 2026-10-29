@@ -13,7 +13,7 @@ Start the backends (`python scripts/dev-backend.py`), then open `/docs` on the s
 | registration-service | 8005 | http://localhost:8005/docs | http://localhost:8005/redoc |
 | notification-service | 8006 | http://localhost:8006/docs | http://localhost:8006/redoc |
 
-`GET /health` on every service is public. Every other route expects a Firebase ID token.
+`GET /health` on every service is public. Routes that one service calls on another with no user signed in take the `X-Service-Key` header (the `INTERNAL_SERVICE_KEY` setting) instead of a token: the `/internal/...` routes, `POST /notifications/publish`, and `POST /events/reminders/run` (which also accepts a coordinator or the Coordinator Lead). Every other route expects a Firebase ID token.
 
 ## Auth in Swagger
 
