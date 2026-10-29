@@ -65,12 +65,12 @@ Every service with a database follows:
 | `app/core/config.py` | Env vars |
 | `alembic/` | Migrations (source of truth for schema) |
 
-`event-service/app/orchestration/` calls other services over HTTP (no cross-DB joins). Cross-service IDs (`event_id`, `user_id`, `venue_id`) are logical foreign keys only.
+`app/dao/` holds each service's queries. `event-service`, `venue-service`, and `equipment-service` also have `app/orchestration/`, which calls other services over HTTP (no cross-DB joins). Cross-service IDs (`event_id`, `user_id`, `venue_id`) are logical foreign keys only.
 
 Each service defaults `DATABASE_URL` to its local Docker MySQL instance, for example:
 
 ```
-mysql+pymysql://connectsphere:connectsphere@localhost:3307/user
+mysql+pymysql://connectsphere:connectsphere@127.0.0.1:3307/user
 ```
 
 Schema is owned by Alembic. Do not use `create_all()` to evolve tables.
@@ -79,10 +79,15 @@ Schema is owned by Alembic. Do not use `create_all()` to evolve tables.
 
 ```
 shared/
-├── auth/          Firebase-ready token helpers (JWT for local demo)
+├── auth/          Firebase ID-token check, role lookup through user-service, service key for service-to-service calls
+├── config/        Common settings and CORS origins
+├── dao/           Base data-access object
+├── services/      Base service class
 ├── schemas/       Common Pydantic models
 ├── exceptions/    Shared HTTP errors
-└── logging/       Logging notes
+├── logging/       Logging notes
+├── testing/       Unit-test base case and cross-service contract files
+└── openapi.py     Swagger titles, Bearer auth, and error examples for every service
 ```
 
 ## Request flow — `getEvent(eventId)`
@@ -147,7 +152,7 @@ Acceptance tests (from the repository root):
 npm run test:acceptance
 ```
 
-How to run SPM-43 and SPM-45: [docs/testing/README.md](docs/testing/README.md).
+`test:acceptance` is what CI's `e2e` job runs; `npm run test:e2e` runs every spec, including stories left out of CI. How to run one story's spec: [docs/testing/README.md](docs/testing/README.md).
 
 Unit tests (unittest and Coverage.py for each service's `app/` package):
 
@@ -165,10 +170,12 @@ npm run test:integration
 
 How to run one service: [docs/testing/integration-tests.md](docs/testing/integration-tests.md).
 
+`npm run test:ci` runs the unit and integration suites together, as CI's `test` job does. Stop the dev backends first: some unit tests cover the "service unreachable" paths and only reach them when nothing listens on ports 8001–8006.
+
 Backend (from repo root, with the same venv already activated):
 
 ```
 python scripts/dev-backend.py
 ```
 
-Screens still use hardcoded demo data until they import the `src/api` service files.
+Every screen reads the services through `frontend/src/api/`. Tabs that are not built yet say so on screen.
