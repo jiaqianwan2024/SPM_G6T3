@@ -41,7 +41,17 @@ jobs:
         run: python scripts/migrate.py --no-seed
 
       - name: Run integration tests
-        run: python -m unittest discover -s tests/integration -p "test_*.py"
+        run: python scripts/record_unittest.py --suite integration --fresh discover -s tests/integration -p "test_*.py"
+
+      # Raw per-test results for the report job's test-case CSV.
+      - name: Upload unit and integration results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-unit
+          path: test-reports/
+          if-no-files-found: ignore
+          retention-days: 7
 
   e2e:
     runs-on: ubuntu-latest
@@ -146,6 +156,15 @@ jobs:
       - name: Run acceptance tests
         run: npm run test:acceptance
 
+      - name: Upload acceptance results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-e2e
+          path: test-reports/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
@@ -155,3 +174,39 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+
+  # The team's test-case template, filled with this run's results: one CSV for
+  # every acceptance case (by TC- ID) and every unit and integration test.
+  report:
+    needs: [test, e2e]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: Created By and Date of Creation come from the commit that added each test.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download raw results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-*
+          merge-multiple: true
+          path: test-reports
+
+      - name: Build test-results.csv
+        run: python scripts/test_report.py
+
+      - name: Upload test-results.csv
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            test-reports/test-results.csv
+            test-reports/story-summary.csv
+          retention-days: 90

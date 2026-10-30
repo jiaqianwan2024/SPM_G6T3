@@ -144,6 +144,47 @@ database with old test data, so it passes the same way every time.
 
 Failures: `test-results/`. HTML report: `playwright-report/`.
 
+## Test-case results CSV
+
+Results are kept in the team's test-case template: Test Case ID, Test Scenario,
+Pre-conditions, Test Steps, Test Data, Expected Result, Created By, Date of Creation,
+then Actual Result, Pass/Fail/Not Executed/Blocked, Remarks, Executed By and Date of
+Execution. Two columns are added: Test Level (Acceptance, Unit, Integration) and Story.
+
+- **Design half**: [`test-cases.csv`](test-cases.csv), one row per acceptance test case
+  ID. `npm run test:catalogue` adds any new ID from `traceability.md` or a spec, taking
+  Created By and Date of Creation from the commit that added the ID. It never
+  overwrites a filled cell, so write Pre-conditions, Test Steps, Test Data and
+  Expected Result straight into the file (Excel is fine).
+- **Results half**: every test run writes raw results to `test-reports/` (gitignored).
+  Playwright writes `e2e.jsonl`; `npm run test:unit` and `npm run test:integration`
+  write `unit.jsonl` and `integration.jsonl`.
+- **The CSVs**: `npm run test:report` joins the two into `test-reports/test-results.csv`
+  (one row per test case) and rolls that up into `test-reports/story-summary.csv` (one
+  row per user story, plus one per service for unit and integration tests, with
+  counts and the failed or blocked case IDs). `npm run test:report:save` also keeps
+  dated copies of both in `docs/testing/results/` to commit for a report or
+  submission. Run the full suites first, so the copies aren't a partial run.
+
+An acceptance case is Pass only when every test for its ID passes, Fail if any
+fails, and Blocked if any is skipped (the rule under the traceability table). A
+case none of whose tests ran is Not Executed, with the reason in Remarks: excluded
+from CI by `test:acceptance`, or not part of the run. Tests without a TC- ID are
+listed as `E2E-<spec>-NN` until they get one. Unit and integration tests have no
+case IDs, so each test is its own row (`UT-…`, `IT-…`), named after the test method.
+A story takes the worst status of its cases (Fail, then Blocked, then Not Executed,
+then Pass), so it is Pass only when every case passed; a partly run story is Not
+Executed, with how many cases didn't run in Remarks.
+
+In GitHub Actions the `report` job builds both CSVs after the `test` and `e2e` jobs,
+even when they fail. Download them as the `test-results` artifact on the run's page
+(kept 90 days); the page also shows a pass/fail table, the failed cases, and every
+story's status.
+
+Run unit tests while no backend is running. The venue-service unit tests reach a
+live event-service if one is up, which skips their error paths and drops coverage
+below 100%.
+
 ## Writing reliable specs
 
 The venue booking specs (SPM-8, SPM-61 to SPM-64, SPM-112, SPM-116, SPM-122) follow the

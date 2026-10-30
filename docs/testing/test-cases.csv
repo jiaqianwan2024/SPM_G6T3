@@ -1,0 +1,526 @@
+﻿Test Case ID,Story,Test Scenario,Pre-conditions,Test Steps,Test Data,Expected Result,Created By,Date of Creation
+TC-SPM43-AC01,SPM-43,Valid login reaches role home / Safety Officer signs in with a pre-created account,Fresh seeded database and running app (npm run test:prepare).,,,Valid login reaches role home / Safety Officer signs in with a pre-created account,jiaqianwan2024,22/09/2026
+TC-SPM43-AC02,SPM-43,Valid login creates session,Fresh seeded database and running app (npm run test:prepare).,,,Valid login creates session,jiaqianwan2024,22/09/2026
+TC-SPM43-AC03,SPM-43,Invalid login is generic / no session,Fresh seeded database and running app (npm run test:prepare).,,,Invalid login is generic / no session,jiaqianwan2024,22/09/2026
+TC-SPM43-AC04,SPM-43,Empty fields block submit,Fresh seeded database and running app (npm run test:prepare).,,,Empty fields block submit,jiaqianwan2024,22/09/2026
+TC-SPM43-AC05,SPM-43,Protected page / API requires session,Fresh seeded database and running app (npm run test:prepare).,,,Protected page / API requires session,jiaqianwan2024,22/09/2026
+TC-SPM43-AC06,SPM-43,Logout prevents Back access,Fresh seeded database and running app (npm run test:prepare).,,,Logout prevents Back access,jiaqianwan2024,22/09/2026
+TC-SPM43-AC07,SPM-43,Password is masked,Fresh seeded database and running app (npm run test:prepare).,,,Password is masked,jiaqianwan2024,22/09/2026
+TC-SPM45-AC01,SPM-45,Venue Staff permissions,Fresh seeded database and running app (npm run test:prepare).,,,Venue Staff permissions,jiaqianwan2024,22/09/2026
+TC-SPM45-AC02,SPM-45,Technical Support permissions,Fresh seeded database and running app (npm run test:prepare).,,,Technical Support permissions,jiaqianwan2024,22/09/2026
+TC-SPM45-AC03,SPM-45,Event Coordinator permissions,Fresh seeded database and running app (npm run test:prepare).,,,Event Coordinator permissions,jiaqianwan2024,22/09/2026
+TC-SPM45-AC04,SPM-45,Wrong-role action returns 403,Fresh seeded database and running app (npm run test:prepare).,,,Wrong-role action returns 403,jiaqianwan2024,22/09/2026
+TC-SPM46-AC01,SPM-46,Assigned coordinator can act,Fresh seeded database and running app (npm run test:prepare).,,,Assigned coordinator can act,jiaqianwan2024,23/09/2026
+TC-SPM46-AC02,SPM-46,Unassigned staff read-only,Fresh seeded database and running app (npm run test:prepare).,,,Unassigned staff read-only,jiaqianwan2024,23/09/2026
+TC-SPM46-AC03,SPM-46,Reassignment swaps permissions,Fresh seeded database and running app (npm run test:prepare).,,,Reassignment swaps permissions,jiaqianwan2024,23/09/2026
+TC-SPM47-AC01,SPM-47,"Overview shows only the organisation's requests, drafts and past records",Fresh seeded database and running app (npm run test:prepare).,,,"Overview shows only the organisation's requests, drafts and past records",jiaqianwan2024,23/09/2026
+TC-SPM47-AC02,SPM-47,Every organiser in the organisation sees its events,Fresh seeded database and running app (npm run test:prepare).,,,Every organiser in the organisation sees its events,jiaqianwan2024,23/09/2026
+TC-SPM47-AC03,SPM-47,Another organisation's event URL is 403,Fresh seeded database and running app (npm run test:prepare).,,,Another organisation's event URL is 403,jiaqianwan2024,23/09/2026
+TC-SPM47-AC04,SPM-47,Own organisation's events still open to organisers; any event to staff,Fresh seeded database and running app (npm run test:prepare).,,,Own organisation's events still open to organisers; any event to staff,SoHongYao,27/10/2026
+TC-SPM55-AC01,SPM-55,Unassigned submitted requests with wait time,Fresh seeded database and running app (npm run test:prepare).,,,Unassigned submitted requests with wait time,jiaqianwan2024,23/09/2026
+TC-SPM55-AC02,SPM-55,Assigned events with status and outstanding work,Fresh seeded database and running app (npm run test:prepare).,,,Assigned events with status and outstanding work,jiaqianwan2024,23/09/2026
+TC-SPM55-AC03,SPM-55,Pending change requests newest first,Fresh seeded database and running app (npm run test:prepare).,,,Pending change requests newest first,jiaqianwan2024,23/09/2026
+TC-SPM55-AC04,SPM-55,Re-verification items shown prominently,Fresh seeded database and running app (npm run test:prepare).,,,Re-verification items shown prominently,jiaqianwan2024,23/09/2026
+TC-SPM55-AC05,SPM-55,Items link to the work screen,Fresh seeded database and running app (npm run test:prepare).,,,Items link to the work screen,jiaqianwan2024,23/09/2026
+TC-SPM55-AC06,SPM-55,Lists obey coordinator access rules,Fresh seeded database and running app (npm run test:prepare).,,,Lists obey coordinator access rules,jiaqianwan2024,23/09/2026
+TC-SPM55-AC07,SPM-55,Empty states say there is nothing to do,Fresh seeded database and running app (npm run test:prepare).,,,Empty states say there is nothing to do,jiaqianwan2024,23/09/2026
+TC-SPM56-AC01,SPM-56,Open clarifications shown first,Fresh seeded database and running app (npm run test:prepare).,,,Open clarifications shown first,jiaqianwan2024,23/09/2026
+TC-SPM56-AC02,SPM-56,Events grouped by plain-language stage,Fresh seeded database and running app (npm run test:prepare).,,,Events grouped by plain-language stage,jiaqianwan2024,23/09/2026
+TC-SPM56-AC03,SPM-56,Pending change requests and outcomes,Fresh seeded database and running app (npm run test:prepare).,,,Pending change requests and outcomes,jiaqianwan2024,23/09/2026
+TC-SPM56-AC04,SPM-56,"Confirmed events show venue, date, time",Fresh seeded database and running app (npm run test:prepare).,,,"Confirmed events show venue, date, time",jiaqianwan2024,23/09/2026
+TC-SPM56-AC05,SPM-56,New event request from the dashboard,Fresh seeded database and running app (npm run test:prepare).,,,New event request from the dashboard,jiaqianwan2024,23/09/2026
+TC-SPM56-AC06,SPM-56,"Org-scoped list including colleagues, server enforced",Fresh seeded database and running app (npm run test:prepare).,,,"Org-scoped list including colleagues, server enforced",jiaqianwan2024,23/09/2026
+TC-SPM56-AC07,SPM-56,Empty states and first-request prompt,Fresh seeded database and running app (npm run test:prepare).,,,Empty states and first-request prompt,jiaqianwan2024,23/09/2026
+TC-SPM57-AC01,SPM-57,"Pending booking requests with event, requested venue, and requested date and time",Fresh seeded database and running app (npm run test:prepare).,,,"Pending booking requests with event, requested venue, and requested date and time",jiaqianwan2024,23/09/2026
+TC-SPM57-AC01b,SPM-57,"A long queue is grouped by venue; the venue, event name and event date filters narrow every section and its count",Fresh seeded database and running app (npm run test:prepare).,,,"A long queue is grouped by venue; the venue, event name and event date filters narrow every section and its count",SoHongYao,29/10/2026
+TC-SPM57-AC02,SPM-57,"Bookings flagged for re-verification, with what changed",Fresh seeded database and running app (npm run test:prepare).,,,"Bookings flagged for re-verification, with what changed",jiaqianwan2024,23/09/2026
+TC-SPM57-AC03,SPM-57,"Confirmed bookings in the next 7 days, with the setup time",Fresh seeded database and running app (npm run test:prepare).,,,"Confirmed bookings in the next 7 days, with the setup time",jiaqianwan2024,23/09/2026
+TC-SPM57-AC04,SPM-57,Every item opens the screen where the work is done,Fresh seeded database and running app (npm run test:prepare).,,,Every item opens the screen where the work is done,jiaqianwan2024,23/09/2026
+TC-SPM57-AC05,SPM-57,Lists obey the same access rules as Booking Requests (Venue Staff only),Fresh seeded database and running app (npm run test:prepare).,,,Lists obey the same access rules as Booking Requests (Venue Staff only),jiaqianwan2024,23/09/2026
+TC-SPM57-AC06,SPM-57,Each section has an empty state,Fresh seeded database and running app (npm run test:prepare).,,,Each section has an empty state,jiaqianwan2024,23/09/2026
+TC-SPM58-AC01,SPM-58,Equipment requests awaiting review,Fresh seeded database and running app (npm run test:prepare).,,,Equipment requests awaiting review,jiaqianwan2024,23/09/2026
+TC-SPM58-AC02,SPM-58,Reservations flagged for re-verification,Fresh seeded database and running app (npm run test:prepare).,,,Reservations flagged for re-verification,jiaqianwan2024,23/09/2026
+TC-SPM58-AC03,SPM-58,Unresolved unavailable or shortfall lines,Fresh seeded database and running app (npm run test:prepare).,,,Unresolved unavailable or shortfall lines,jiaqianwan2024,23/09/2026
+TC-SPM58-AC04,SPM-58,Upcoming supplied events soonest first,Fresh seeded database and running app (npm run test:prepare).,,,Upcoming supplied events soonest first,jiaqianwan2024,23/09/2026
+TC-SPM58-AC05,SPM-58,Items link to the work screen,Fresh seeded database and running app (npm run test:prepare).,,,Items link to the work screen,jiaqianwan2024,23/09/2026
+TC-SPM58-AC06,SPM-58,Lists obey technical-support access rules,Fresh seeded database and running app (npm run test:prepare).,,,Lists obey technical-support access rules,jiaqianwan2024,23/09/2026
+TC-SPM58-AC07,SPM-58,Each section has an empty state,Fresh seeded database and running app (npm run test:prepare).,,,Each section has an empty state,jiaqianwan2024,23/09/2026
+TC-SPM59-AC01,SPM-59,Next upcoming registration first,Fresh seeded database and running app (npm run test:prepare).,,,Next upcoming registration first,jiaqianwan2024,23/09/2026
+TC-SPM59-AC02,SPM-59,Changed event flagged,Fresh seeded database and running app (npm run test:prepare).,,,Changed event flagged,jiaqianwan2024,23/09/2026
+TC-SPM59-AC03,SPM-59,Cancelled registration shown as cancelled,Fresh seeded database and running app (npm run test:prepare).,,,Cancelled registration shown as cancelled,jiaqianwan2024,23/09/2026
+TC-SPM59-AC04,SPM-59,Open events beneath own registrations,Fresh seeded database and running app (npm run test:prepare).,,,Open events beneath own registrations,jiaqianwan2024,23/09/2026
+TC-SPM59-AC05,SPM-59,"No coordinator, notes, or other attendees",Fresh seeded database and running app (npm run test:prepare).,,,"No coordinator, notes, or other attendees",jiaqianwan2024,23/09/2026
+TC-SPM59-AC06,SPM-59,No registrations points at browsing events,Fresh seeded database and running app (npm run test:prepare).,,,No registrations points at browsing events,jiaqianwan2024,23/09/2026
+TC-SPM08-AC01,SPM-8,"View a submitted request with event timing, venue requirements and submission time",Fresh seeded database and running app (npm run test:prepare).,,,"View a submitted request with event timing, venue requirements and submission time",jiaqianwan2024,23/09/2026
+TC-SPM08-AC01b,SPM-8,"View a submitted request with event timing, venue requirements and submission time",Fresh seeded database and running app (npm run test:prepare).,,,"View a submitted request with event timing, venue requirements and submission time",SoHongYao,13/10/2026
+TC-SPM08-AC02,SPM-8,Venue Staff approve a pending request,Fresh seeded database and running app (npm run test:prepare).,,,Venue Staff approve a pending request,jiaqianwan2024,23/09/2026
+TC-SPM08-AC02b,SPM-8,Venue Staff approve a pending request,Fresh seeded database and running app (npm run test:prepare).,,,Venue Staff approve a pending request,SoHongYao,13/10/2026
+TC-SPM08-AC03,SPM-8,Approved booking can be viewed and reserves the occupied window,Fresh seeded database and running app (npm run test:prepare).,,,Approved booking can be viewed and reserves the occupied window,jiaqianwan2024,23/09/2026
+TC-SPM08-AC04,SPM-8,Approved booking stays locked,Fresh seeded database and running app (npm run test:prepare).,,,Approved booking stays locked,jiaqianwan2024,23/09/2026
+TC-SPM08-AC05,SPM-8,"Approval records who and when, and the record stays",Fresh seeded database and running app (npm run test:prepare).,,,"Approval records who and when, and the record stays",jiaqianwan2024,23/09/2026
+TC-SPM08-AC06,SPM-8,"Overlapping unavailability blocks approval, shows an error, request stays pending",Fresh seeded database and running app (npm run test:prepare).,,,"Overlapping unavailability blocks approval, shows an error, request stays pending",jiaqianwan2024,23/09/2026
+TC-SPM08-AC06b,SPM-8,"Overlapping unavailability blocks approval, shows an error, request stays pending",Fresh seeded database and running app (npm run test:prepare).,,,"Overlapping unavailability blocks approval, shows an error, request stays pending",SoHongYao,13/10/2026
+TC-SPM08-AC06c,SPM-8,"Overlapping unavailability blocks approval, shows an error, request stays pending",Fresh seeded database and running app (npm run test:prepare).,,,"Overlapping unavailability blocks approval, shows an error, request stays pending",SoHongYao,13/10/2026
+TC-SPM08-AC07,SPM-8,Overlapping confirmed booking blocks approval,Fresh seeded database and running app (npm run test:prepare).,,,Overlapping confirmed booking blocks approval,jiaqianwan2024,23/09/2026
+TC-SPM08-AC08,SPM-8,Overlapping active tentative hold blocks approval,Fresh seeded database and running app (npm run test:prepare).,,,Overlapping active tentative hold blocks approval,jiaqianwan2024,23/09/2026
+TC-SPM08-AC09,SPM-8,Expired hold does not block and is not a confirmed booking,Fresh seeded database and running app (npm run test:prepare).,,,Expired hold does not block and is not a confirmed booking,jiaqianwan2024,23/09/2026
+TC-SPM08-AC10,SPM-8,"No overlap: approved, confirmed booking links venue and event, venue locked",Fresh seeded database and running app (npm run test:prepare).,,,"No overlap: approved, confirmed booking links venue and event, venue locked",SoHongYao,13/10/2026
+TC-SPM08-AC11,SPM-8,Competing requests shown oldest first,Fresh seeded database and running app (npm run test:prepare).,,,Competing requests shown oldest first,SoHongYao,13/10/2026
+TC-SPM09-AC01,SPM-9,Record unavailability period,Fresh seeded database and running app (npm run test:prepare).,,,Record unavailability period,jiaqianwan2024,23/09/2026
+TC-SPM09-AC02,SPM-9,Mandatory reason from published list,Fresh seeded database and running app (npm run test:prepare).,,,Mandatory reason from published list,jiaqianwan2024,23/09/2026
+TC-SPM09-AC03,SPM-9,Block excludes venue from search,Fresh seeded database and running app (npm run test:prepare).,,,Block excludes venue from search,jiaqianwan2024,23/09/2026
+TC-SPM09-AC04,SPM-9,Block prevents overlapping approval,Fresh seeded database and running app (npm run test:prepare).,,,Block prevents overlapping approval,jiaqianwan2024,23/09/2026
+TC-SPM09-AC05,SPM-9,Calendar shows Unavailable,Fresh seeded database and running app (npm run test:prepare).,,,Calendar shows Unavailable,jiaqianwan2024,23/09/2026
+TC-SPM09-AC06,SPM-9,"Overlap warning, acknowledge, notify",Fresh seeded database and running app (npm run test:prepare).,,,"Overlap warning, acknowledge, notify",jiaqianwan2024,23/09/2026
+TC-SPM09-AC07,SPM-9,Cancel block frees the slot,Fresh seeded database and running app (npm run test:prepare).,,,Cancel block frees the slot,jiaqianwan2024,23/09/2026
+TC-SPM09-AC08,SPM-9,Unavailability changes in activity log,Fresh seeded database and running app (npm run test:prepare).,,,Unavailability changes in activity log,jiaqianwan2024,23/09/2026
+TC-SPM10-AC01,SPM-10,View the full details of a pending request,Fresh seeded database and running app (npm run test:prepare).,,,View the full details of a pending request,jiaqianwan2024,23/09/2026
+TC-SPM10-AC02,SPM-10,Rejecting requires a reason,Fresh seeded database and running app (npm run test:prepare).,,,Rejecting requires a reason,jiaqianwan2024,23/09/2026
+TC-SPM10-AC02b,SPM-10,Rejecting requires a reason,Fresh seeded database and running app (npm run test:prepare).,,,Rejecting requires a reason,SoHongYao,16/10/2026
+TC-SPM10-AC03,SPM-10,Optional suggested alternative venue,Fresh seeded database and running app (npm run test:prepare).,,,Optional suggested alternative venue,jiaqianwan2024,23/09/2026
+TC-SPM10-AC04,SPM-10,"Rejected, out of the pending queue, no longer approvable or changeable",Fresh seeded database and running app (npm run test:prepare).,,,"Rejected, out of the pending queue, no longer approvable or changeable",jiaqianwan2024,23/09/2026
+TC-SPM10-AC05,SPM-10,A rejected request reserves nothing; its active hold is released,Fresh seeded database and running app (npm run test:prepare).,,,A rejected request reserves nothing; its active hold is released,jiaqianwan2024,23/09/2026
+TC-SPM10-AC06,SPM-10,"Who rejected it, the reason, and when are recorded",Fresh seeded database and running app (npm run test:prepare).,,,"Who rejected it, the reason, and when are recorded",jiaqianwan2024,23/09/2026
+TC-SPM10-AC07,SPM-10,"A tentative hold expires at its expiry time, frees the venue, is not a confirmed booking",Fresh seeded database and running app (npm run test:prepare).,,,"A tentative hold expires at its expiry time, frees the venue, is not a confirmed booking",jiaqianwan2024,23/09/2026
+TC-SPM10-AC08,SPM-10,A pending request without a hold stays queued until approved or rejected,Fresh seeded database and running app (npm run test:prepare).,,,A pending request without a hold stays queued until approved or rejected,SoHongYao,16/10/2026
+TC-SPM17-AC01,SPM-17,"Staff list name, location, capacity",Fresh seeded database and running app (npm run test:prepare).,,,"Staff list name, location, capacity",jiaqianwan2024,23/09/2026
+TC-SPM17-AC02,SPM-17,Venue detail fields,Fresh seeded database and running app (npm run test:prepare).,,,Venue detail fields,jiaqianwan2024,23/09/2026
+TC-SPM17-AC03,SPM-17,Retired hidden unless filtered,Fresh seeded database and running app (npm run test:prepare).,,,Retired hidden unless filtered,jiaqianwan2024,23/09/2026
+TC-SPM17-AC04,SPM-17,Open venue calendar from catalogue,Fresh seeded database and running app (npm run test:prepare).,,,Open venue calendar from catalogue,jiaqianwan2024,23/09/2026
+TC-SPM17-AC05,SPM-17,Organiser and attendee blocked on server,Fresh seeded database and running app (npm run test:prepare).,,,Organiser and attendee blocked on server,jiaqianwan2024,23/09/2026
+TC-SPM17-AC06,SPM-17,Empty catalogue copy,Fresh seeded database and running app (npm run test:prepare).,,,Empty catalogue copy,jiaqianwan2024,23/09/2026
+TC-SPM60-AC01,SPM-60,Venue record fields,Fresh seeded database and running app (npm run test:prepare).,,,Venue record fields,jiaqianwan2024,23/09/2026
+TC-SPM60-AC02,SPM-60,Layouts with capacity,Fresh seeded database and running app (npm run test:prepare).,,,Layouts with capacity,jiaqianwan2024,23/09/2026
+TC-SPM60-AC03,SPM-60,Capacity from highest layout,Fresh seeded database and running app (npm run test:prepare).,,,Capacity from highest layout,jiaqianwan2024,23/09/2026
+TC-SPM60-AC04,SPM-60,"Add, edit, retire without deleting history",Fresh seeded database and running app (npm run test:prepare).,,,"Add, edit, retire without deleting history",jiaqianwan2024,23/09/2026
+TC-SPM60-AC05,SPM-60,Retire warns on future confirmed bookings,Fresh seeded database and running app (npm run test:prepare).,,,Retire warns on future confirmed bookings,jiaqianwan2024,23/09/2026
+TC-SPM60-AC06,SPM-60,Zero or negative layout capacity rejected,Fresh seeded database and running app (npm run test:prepare).,,,Zero or negative layout capacity rejected,jiaqianwan2024,23/09/2026
+TC-SPM60-AC07,SPM-60,Only venue staff can write,Fresh seeded database and running app (npm run test:prepare).,,,Only venue staff can write,jiaqianwan2024,23/09/2026
+TC-SPM60-AC08,SPM-60,Seeded published catalogue,Fresh seeded database and running app (npm run test:prepare).,,,Seeded published catalogue,jiaqianwan2024,23/09/2026
+TC-SPM60-AC09,SPM-60,Changes written to activity log,Fresh seeded database and running app (npm run test:prepare).,,,Changes written to activity log,jiaqianwan2024,23/09/2026
+TC-SPM61-AC01,SPM-61,Search pre-filled from event,Fresh seeded database and running app (npm run test:prepare).,,,Search pre-filled from event,jiaqianwan2024,23/09/2026
+TC-SPM61-AC02,SPM-61,Published filters,Fresh seeded database and running app (npm run test:prepare).,,,Published filters,jiaqianwan2024,23/09/2026
+TC-SPM61-AC03,SPM-61,"Confirmed booking, unavailability, or active hold excluded (with setup and turnaround)",Fresh seeded database and running app (npm run test:prepare).,,,"Confirmed booking, unavailability, or active hold excluded (with setup and turnaround)",jiaqianwan2024,23/09/2026
+TC-SPM61-AC04,SPM-61,Expired hold does not exclude,Fresh seeded database and running app (npm run test:prepare).,,,Expired hold does not exclude,jiaqianwan2024,23/09/2026
+TC-SPM61-AC05,SPM-61,Layout or capacity mismatch excluded,Fresh seeded database and running app (npm run test:prepare).,,,Layout or capacity mismatch excluded,jiaqianwan2024,23/09/2026
+TC-SPM61-AC06,SPM-61,Missing facility or access excluded,Fresh seeded database and running app (npm run test:prepare).,,,Missing facility or access excluded,jiaqianwan2024,23/09/2026
+TC-SPM61-AC07,SPM-61,Outside hours excluded,Fresh seeded database and running app (npm run test:prepare).,,,Outside hours excluded,jiaqianwan2024,23/09/2026
+TC-SPM61-AC08,SPM-61,Layout capacity and headroom,Fresh seeded database and running app (npm run test:prepare).,,,Layout capacity and headroom,jiaqianwan2024,23/09/2026
+TC-SPM61-AC09,SPM-61,Pending overlap marked contested,Fresh seeded database and running app (npm run test:prepare).,,,Pending overlap marked contested,SoHongYao,06/10/2026
+TC-SPM62-AC01,SPM-62,Verdict with reasons,Fresh seeded database and running app (npm run test:prepare).,,,Verdict with reasons,jiaqianwan2024,23/09/2026
+TC-SPM62-AC02,SPM-62,Over-capacity names both numbers,Fresh seeded database and running app (npm run test:prepare).,,,Over-capacity names both numbers,jiaqianwan2024,23/09/2026
+TC-SPM62-AC02b,SPM-62,Over-capacity names both numbers,Fresh seeded database and running app (npm run test:prepare).,,,Over-capacity names both numbers,SoHongYao,16/10/2026
+TC-SPM62-AC03,SPM-62,"Missing layout, facility, access",Fresh seeded database and running app (npm run test:prepare).,,,"Missing layout, facility, access",jiaqianwan2024,23/09/2026
+TC-SPM62-AC04,SPM-62,Clash named as failure,Fresh seeded database and running app (npm run test:prepare).,,,Clash named as failure,jiaqianwan2024,23/09/2026
+TC-SPM62-AC05,SPM-62,Outside hours is a failure,Fresh seeded database and running app (npm run test:prepare).,,,Outside hours is a failure,jiaqianwan2024,23/09/2026
+TC-SPM62-AC06,SPM-62,Tight fit is a warning,Fresh seeded database and running app (npm run test:prepare).,,,Tight fit is a warning,jiaqianwan2024,23/09/2026
+TC-SPM62-AC07,SPM-62,Pending overlap is a warning,Fresh seeded database and running app (npm run test:prepare).,,,Pending overlap is a warning,jiaqianwan2024,23/09/2026
+TC-SPM62-AC08,SPM-62,Failures block submit; warnings do not,Fresh seeded database and running app (npm run test:prepare).,,,Failures block submit; warnings do not,jiaqianwan2024,23/09/2026
+TC-SPM62-AC09,SPM-62,Shared suitability rule,Fresh seeded database and running app (npm run test:prepare).,,,Shared suitability rule,jiaqianwan2024,23/09/2026
+TC-SPM62-AC09b,SPM-62,Shared suitability rule,Fresh seeded database and running app (npm run test:prepare).,,,Shared suitability rule,SoHongYao,16/10/2026
+TC-SPM63-AC01,SPM-63,Request venue for planning event,Fresh seeded database and running app (npm run test:prepare).,,,Request venue for planning event,jiaqianwan2024,23/09/2026
+TC-SPM63-AC01b,SPM-63,Request venue for planning event,Fresh seeded database and running app (npm run test:prepare).,,,Request venue for planning event,SoHongYao,16/10/2026
+TC-SPM63-AC02,SPM-63,Request carries event facts,Fresh seeded database and running app (npm run test:prepare).,,,Request carries event facts,jiaqianwan2024,23/09/2026
+TC-SPM63-AC03,SPM-63,Failed suitability blocks submit,Fresh seeded database and running app (npm run test:prepare).,,,Failed suitability blocks submit,jiaqianwan2024,23/09/2026
+TC-SPM63-AC04,SPM-63,Warnings acknowledged and carried,Fresh seeded database and running app (npm run test:prepare).,,,Warnings acknowledged and carried,jiaqianwan2024,23/09/2026
+TC-SPM63-AC05,SPM-63,Notify staff and pending queue,Fresh seeded database and running app (npm run test:prepare).,,,Notify staff and pending queue,jiaqianwan2024,23/09/2026
+TC-SPM63-AC06,SPM-63,Pending does not lock the venue,Fresh seeded database and running app (npm run test:prepare).,,,Pending does not lock the venue,jiaqianwan2024,23/09/2026
+TC-SPM63-AC07,SPM-63,A second venue while the first is pending,Fresh seeded database and running app (npm run test:prepare).,,,A second venue while the first is pending,jiaqianwan2024,23/09/2026
+TC-SPM63-AC08,SPM-63,Coordinator can withdraw,Fresh seeded database and running app (npm run test:prepare).,,,Coordinator can withdraw,jiaqianwan2024,23/09/2026
+TC-SPM63-AC09,SPM-63,Arrangement not complete while pending,Fresh seeded database and running app (npm run test:prepare).,,,Arrangement not complete while pending,jiaqianwan2024,23/09/2026
+TC-SPM115-AC01,SPM-115,Search for and request a replacement,Fresh seeded database and running app (npm run test:prepare).,,,Search for and request a replacement,seanyeo2024,10/10/2026
+TC-SPM115-AC02,SPM-115,Replacement checked on its own,Fresh seeded database and running app (npm run test:prepare).,,,Replacement checked on its own,seanyeo2024,10/10/2026
+TC-SPM115-AC03,SPM-115,Original booking remains readable,Fresh seeded database and running app (npm run test:prepare).,,,Original booking remains readable,seanyeo2024,10/10/2026
+TC-SPM115-AC04,SPM-115,Event details stay unchanged,Fresh seeded database and running app (npm run test:prepare).,,,Event details stay unchanged,seanyeo2024,10/10/2026
+TC-SPM115-AC05,SPM-115,Recording a block leaves the event status unchanged,Fresh seeded database and running app (npm run test:prepare).,,,Recording a block leaves the event status unchanged,seanyeo2024,10/10/2026
+TC-SPM64-AC01,SPM-64,Shared conflict rule,Fresh seeded database and running app (npm run test:prepare).,,,Shared conflict rule,jiaqianwan2024,23/09/2026
+TC-SPM64-AC02,SPM-64,Occupied window adds setup and turnaround,Fresh seeded database and running app (npm run test:prepare).,,,Occupied window adds setup and turnaround,jiaqianwan2024,23/09/2026
+TC-SPM64-AC03,SPM-64,"Confirmed bookings never overlap, also in the database",Fresh seeded database and running app (npm run test:prepare).,,,"Confirmed bookings never overlap, also in the database",jiaqianwan2024,23/09/2026
+TC-SPM64-AC03b,SPM-64,"Confirmed bookings never overlap, also in the database",Fresh seeded database and running app (npm run test:prepare).,,,"Confirmed bookings never overlap, also in the database",SoHongYao,16/10/2026
+TC-SPM64-AC04,SPM-64,Conflicts with unavailability and active holds,Fresh seeded database and running app (npm run test:prepare).,,,Conflicts with unavailability and active holds,jiaqianwan2024,23/09/2026
+TC-SPM64-AC05,SPM-64,Expired hold does not conflict,Fresh seeded database and running app (npm run test:prepare).,,,Expired hold does not conflict,jiaqianwan2024,23/09/2026
+TC-SPM64-AC06,SPM-64,"Touching windows fine, touching event times can clash",Fresh seeded database and running app (npm run test:prepare).,,,"Touching windows fine, touching event times can clash",jiaqianwan2024,23/09/2026
+TC-SPM64-AC07,SPM-64,Simultaneous approvals: one winner,Fresh seeded database and running app (npm run test:prepare).,,,Simultaneous approvals: one winner,jiaqianwan2024,23/09/2026
+TC-SPM64-AC08,SPM-64,"Cancel, reject, complete, or withdraw releases the hold",Fresh seeded database and running app (npm run test:prepare).,,,"Cancel, reject, complete, or withdraw releases the hold",SoHongYao,07/10/2026
+TC-SPM112-AC01,SPM-112,"Occupied window is start minus setup through end plus turnaround, from the venue's current times",Fresh seeded database and running app (npm run test:prepare).,,,"Occupied window is start minus setup through end plus turnaround, from the venue's current times",SoHongYao,07/10/2026
+TC-SPM112-AC02,SPM-112,"Search, suitability, approval and unavailability use the same window",Fresh seeded database and running app (npm run test:prepare).,,,"Search, suitability, approval and unavailability use the same window",SoHongYao,07/10/2026
+TC-SPM112-AC02b,SPM-112,The coordinator's venue screen applies the same window,Fresh seeded database and running app (npm run test:prepare).,,,The coordinator's venue screen applies the same window,SoHongYao,07/10/2026
+TC-SPM112-AC03,SPM-112,Windows that only touch do not conflict,Fresh seeded database and running app (npm run test:prepare).,,,Windows that only touch do not conflict,SoHongYao,07/10/2026
+TC-SPM122-AC01,SPM-122,Every pair of confirmed bookings whose windows overlap under the venue's current times is listed,Fresh seeded database and running app (npm run test:prepare).,,,Every pair of confirmed bookings whose windows overlap under the venue's current times is listed,SoHongYao,08/10/2026
+TC-SPM122-AC01b,SPM-122,Clashes shown in the venue catalogue once new times are saved,Fresh seeded database and running app (npm run test:prepare).,,,Clashes shown in the venue catalogue once new times are saved,SoHongYao,08/10/2026
+TC-SPM122-AC02,SPM-122,"Each clash names the venue, both events and the overlapping times",Fresh seeded database and running app (npm run test:prepare).,,,"Each clash names the venue, both events and the overlapping times",SoHongYao,08/10/2026
+TC-SPM122-AC03,SPM-122,Listed bookings kept with their status and event details,Fresh seeded database and running app (npm run test:prepare).,,,Listed bookings kept with their status and event details,SoHongYao,08/10/2026
+TC-SPM116-AC01,SPM-116,Venue Staff hold a pending request until a future time no later than the event's start,Fresh seeded database and running app (npm run test:prepare).,,,Venue Staff hold a pending request until a future time no later than the event's start,SoHongYao,09/10/2026
+TC-SPM116-AC01b,SPM-116,Venue Staff hold a pending request until a future time no later than the event's start,Fresh seeded database and running app (npm run test:prepare).,,,Venue Staff hold a pending request until a future time no later than the event's start,SoHongYao,09/10/2026
+TC-SPM116-AC01c,SPM-116,Venue Staff hold a pending request until a future time no later than the event's start,Fresh seeded database and running app (npm run test:prepare).,,,Venue Staff hold a pending request until a future time no later than the event's start,SoHongYao,09/10/2026
+TC-SPM116-AC02,SPM-116,An active hold reserves the venue until it expires or is released,Fresh seeded database and running app (npm run test:prepare).,,,An active hold reserves the venue until it expires or is released,SoHongYao,09/10/2026
+TC-SPM116-AC02b,SPM-116,An active hold reserves the venue until it expires or is released,Fresh seeded database and running app (npm run test:prepare).,,,An active hold reserves the venue until it expires or is released,SoHongYao,09/10/2026
+TC-SPM116-AC03,SPM-116,An expired hold reserves nothing and is not a confirmed booking,Fresh seeded database and running app (npm run test:prepare).,,,An expired hold reserves nothing and is not a confirmed booking,SoHongYao,09/10/2026
+TC-SPM116-AC04,SPM-116,Once expired the venue is available again,Fresh seeded database and running app (npm run test:prepare).,,,Once expired the venue is available again,SoHongYao,09/10/2026
+TC-SPM116-AC05,SPM-116,The assigned coordinator is notified before the hold expires,Fresh seeded database and running app (npm run test:prepare).,,,The assigned coordinator is notified before the hold expires,SoHongYao,09/10/2026
+TC-SPM116-AC06,SPM-116,Rejecting a request releases its hold,Fresh seeded database and running app (npm run test:prepare).,,,Rejecting a request releases its hold,SoHongYao,09/10/2026
+TC-SPM122-AC04,SPM-122,Event records unchanged,Fresh seeded database and running app (npm run test:prepare).,,,Event records unchanged,SoHongYao,08/10/2026
+TC-SPM112-AC04,SPM-112,Touching event times conflict when setup or turnaround overlap,Fresh seeded database and running app (npm run test:prepare).,,,Touching event times conflict when setup or turnaround overlap,SoHongYao,07/10/2026
+TC-SPM108-AC01,SPM-108,Calendar shows all three kinds,Fresh seeded database and running app (npm run test:prepare).,,,Calendar shows all three kinds,jiaqianwan2024,23/09/2026
+TC-SPM108-AC02,SPM-108,Kinds are visually distinct,Fresh seeded database and running app (npm run test:prepare).,,,Kinds are visually distinct,jiaqianwan2024,23/09/2026
+TC-SPM108-AC03,SPM-108,"Entry shows name, org, time, and opens",Fresh seeded database and running app (npm run test:prepare).,,,"Entry shows name, org, time, and opens",jiaqianwan2024,23/09/2026
+TC-SPM108-AC04,SPM-108,Outside hours shown unavailable,Fresh seeded database and running app (npm run test:prepare).,,,Outside hours shown unavailable,jiaqianwan2024,23/09/2026
+TC-SPM108-AC05,SPM-108,"Week, month, and past ranges",Fresh seeded database and running app (npm run test:prepare).,,,"Week, month, and past ranges",jiaqianwan2024,23/09/2026
+TC-SPM108-AC06,SPM-108,Next open reflects new decision,Fresh seeded database and running app (npm run test:prepare).,,,Next open reflects new decision,jiaqianwan2024,23/09/2026
+TC-SPM108-AC07,SPM-108,Internal roles can read any calendar,Fresh seeded database and running app (npm run test:prepare).,,,Internal roles can read any calendar,jiaqianwan2024,23/09/2026
+TC-SPM108-AC08,SPM-108,Empty range is not an error,Fresh seeded database and running app (npm run test:prepare).,,,Empty range is not an error,jiaqianwan2024,23/09/2026
+TC-SPM05-AC01,SPM-5,Readiness table columns,Fresh seeded database and running app (npm run test:prepare).,,,Readiness table columns,jiaqianwan2024,23/09/2026
+TC-SPM05-AC02,SPM-5,Update readiness status,Fresh seeded database and running app (npm run test:prepare).,,,Update readiness status,jiaqianwan2024,23/09/2026
+TC-SPM05-AC03,SPM-5,Assigned personnel contact,Fresh seeded database and running app (npm run test:prepare).,,,Assigned personnel contact,jiaqianwan2024,23/09/2026
+TC-SPM05-AC04,SPM-5,View supporting attachments,Fresh seeded database and running app (npm run test:prepare).,,,View supporting attachments,jiaqianwan2024,23/09/2026
+TC-SPM05-AC05,SPM-5,"Create, modify, and delete a line item",Fresh seeded database and running app (npm run test:prepare).,,,"Create, modify, and delete a line item",jiaqianwan2024,23/09/2026
+TC-SPM05-AC06,SPM-5,Saved line-item information persists,Fresh seeded database and running app (npm run test:prepare).,,,Saved line-item information persists,jiaqianwan2024,23/09/2026
+TC-SPM05-AC07,SPM-5,Confirmation on status,Fresh seeded database and running app (npm run test:prepare).,,,Confirmation on status,jiaqianwan2024,23/09/2026
+TC-SPM05-AC08,SPM-5,Near-due line items are alerted,Fresh seeded database and running app (npm run test:prepare).,,,Near-due line items are alerted,jiaqianwan2024,23/09/2026
+TC-SPM05-AC09,SPM-5,Overdue line items are flagged,Fresh seeded database and running app (npm run test:prepare).,,,Overdue line items are flagged,jiaqianwan2024,23/09/2026
+TC-SPM15-AC01,SPM-15,Organisation events with status and date,Fresh seeded database and running app (npm run test:prepare).,,,Organisation events with status and date,jiaqianwan2024,23/09/2026
+TC-SPM15-AC02,SPM-15,Drafts distinguishable from submitted,Fresh seeded database and running app (npm run test:prepare).,,,Drafts distinguishable from submitted,jiaqianwan2024,23/09/2026
+TC-SPM15-AC03,SPM-15,Arrangements in plain language,Fresh seeded database and running app (npm run test:prepare).,,,Arrangements in plain language,jiaqianwan2024,23/09/2026
+TC-SPM15-AC04,SPM-15,Needs-action items flagged and linked,Fresh seeded database and running app (npm run test:prepare).,,,Needs-action items flagged and linked,jiaqianwan2024,23/09/2026
+TC-SPM15-AC05,SPM-15,Assigned coordinator name and contact,Fresh seeded database and running app (npm run test:prepare).,,,Assigned coordinator name and contact,jiaqianwan2024,23/09/2026
+TC-SPM15-AC06,SPM-15,"Confirmed venue, date, time, layout, equipment",Fresh seeded database and running app (npm run test:prepare).,,,"Confirmed venue, date, time, layout, equipment",jiaqianwan2024,23/09/2026
+TC-SPM15-AC07,SPM-15,Shown status matches stored status,Fresh seeded database and running app (npm run test:prepare).,,,Shown status matches stored status,jiaqianwan2024,23/09/2026
+TC-SPM15-AC08,SPM-15,No internal notes or other clients,Fresh seeded database and running app (npm run test:prepare).,,,No internal notes or other clients,jiaqianwan2024,23/09/2026
+TC-SPM15-AC09,SPM-15,Empty state points at creating a request,Fresh seeded database and running app (npm run test:prepare).,,,Empty state points at creating a request,jiaqianwan2024,23/09/2026
+TC-SPM65-AC01,SPM-65,Queue statuses exclude drafts,Fresh seeded database and running app (npm run test:prepare).,,,Queue statuses exclude drafts,jiaqianwan2024,23/09/2026
+TC-SPM65-AC02,SPM-65,Queue row fields,Fresh seeded database and running app (npm run test:prepare).,,,Queue row fields,jiaqianwan2024,23/09/2026
+TC-SPM65-AC03,SPM-65,Unassigned distinguished and filterable,Fresh seeded database and running app (npm run test:prepare).,,,Unassigned distinguished and filterable,jiaqianwan2024,23/09/2026
+TC-SPM65-AC04,SPM-65,Sort by wait and proposed date,Fresh seeded database and running app (npm run test:prepare).,,,Sort by wait and proposed date,jiaqianwan2024,23/09/2026
+TC-SPM65-AC05,SPM-65,A coordinator sees only their assigned requests (SPM-117),Fresh seeded database and running app (npm run test:prepare).,,,A coordinator sees only their assigned requests (SPM-117),jiaqianwan2024,23/09/2026
+TC-SPM65-AC06,SPM-65,Near proposed date uses shared threshold,Fresh seeded database and running app (npm run test:prepare).,,,Near proposed date uses shared threshold,jiaqianwan2024,23/09/2026
+TC-SPM65-AC07,SPM-65,Empty filter explains the exclusion,Fresh seeded database and running app (npm run test:prepare).,,,Empty filter explains the exclusion,jiaqianwan2024,23/09/2026
+TC-SPM66-AC01,SPM-66,Superseded by SPM-117: the Lead assigns a coordinator,Fresh seeded database and running app (npm run test:prepare).,,,Superseded by SPM-117: the Lead assigns a coordinator,jiaqianwan2024,23/09/2026
+TC-SPM66-AC02,SPM-66,Candidate list shows active-event counts,Fresh seeded database and running app (npm run test:prepare).,,,Candidate list shows active-event counts,jiaqianwan2024,23/09/2026
+TC-SPM66-AC03,SPM-66,No workload cap,Fresh seeded database and running app (npm run test:prepare).,,,No workload cap,jiaqianwan2024,23/09/2026
+TC-SPM66-AC04,SPM-66,Assignment recorded in the activity log,Fresh seeded database and running app (npm run test:prepare).,,,Assignment recorded in the activity log,jiaqianwan2024,23/09/2026
+TC-SPM66-AC05,SPM-66,Notify and show coordinator contact,Fresh seeded database and running app (npm run test:prepare).,,,Notify and show coordinator contact,jiaqianwan2024,23/09/2026
+TC-SPM66-AC06,SPM-66,Submitted moves to Under Review,Fresh seeded database and running app (npm run test:prepare).,,,Submitted moves to Under Review,jiaqianwan2024,23/09/2026
+TC-SPM66-AC07,SPM-66,"Everyone but the Lead, Event Coordinators included, gets 403",Fresh seeded database and running app (npm run test:prepare).,,,"Everyone but the Lead, Event Coordinators included, gets 403",jiaqianwan2024,23/09/2026
+TC-SPM66-AC08,SPM-66,Cannot assign a non-coordinator,Fresh seeded database and running app (npm run test:prepare).,,,Cannot assign a non-coordinator,jiaqianwan2024,23/09/2026
+TC-SPM117-AC01,SPM-117,An Event Coordinator Lead signs in with a pre-created account,Fresh seeded database and running app (npm run test:prepare).,,,An Event Coordinator Lead signs in with a pre-created account,Norven Koh Pei Ming,12/10/2026
+TC-SPM117-AC02,SPM-117,A newly submitted request stays unassigned until the Lead assigns it,Fresh seeded database and running app (npm run test:prepare).,,,A newly submitted request stays unassigned until the Lead assigns it,Norven Koh Pei Ming,12/10/2026
+TC-SPM117-AC03,SPM-117,"The Lead sees unassigned requests in the review queue with name, organisation, date and time, attendance, and submission time",Fresh seeded database and running app (npm run test:prepare).,,,"The Lead sees unassigned requests in the review queue with name, organisation, date and time, attendance, and submission time",Norven Koh Pei Ming,12/10/2026
+TC-SPM117-AC04,SPM-117,The Lead assigns a request to an Event Coordinator,Fresh seeded database and running app (npm run test:prepare).,,,The Lead assigns a request to an Event Coordinator,Norven Koh Pei Ming,12/10/2026
+TC-SPM117-AC05,SPM-117,An Event Coordinator who tries to assign gets 403,Fresh seeded database and running app (npm run test:prepare).,,,An Event Coordinator who tries to assign gets 403,Norven Koh Pei Ming,12/10/2026
+TC-SPM117-AC06,SPM-117,"The activity log records who assigned, who was assigned, and when",Fresh seeded database and running app (npm run test:prepare).,,,"The activity log records who assigned, who was assigned, and when",Norven Koh Pei Ming,12/10/2026
+TC-SPM117-AC07,SPM-117,The new coordinator and the organiser are notified,Fresh seeded database and running app (npm run test:prepare).,,,The new coordinator and the organiser are notified,Norven Koh Pei Ming,12/10/2026
+TC-SPM118-AC01,SPM-118,The Lead reassigns an event to a different coordinator; the current one cannot be chosen again,Fresh seeded database and running app (npm run test:prepare).,,,The Lead reassigns an event to a different coordinator; the current one cannot be chosen again,Norven Koh Pei Ming,12/10/2026
+TC-SPM118-AC02,SPM-118,An Event Coordinator who tries to reassign gets 403,Fresh seeded database and running app (npm run test:prepare).,,,An Event Coordinator who tries to reassign gets 403,Norven Koh Pei Ming,12/10/2026
+TC-SPM118-AC03,SPM-118,Edit permission moves at once from the previous to the new coordinator,Fresh seeded database and running app (npm run test:prepare).,,,Edit permission moves at once from the previous to the new coordinator,Norven Koh Pei Ming,12/10/2026
+TC-SPM118-AC04,SPM-118,"The activity log records who reassigned, who was assigned, and when",Fresh seeded database and running app (npm run test:prepare).,,,"The activity log records who reassigned, who was assigned, and when",Norven Koh Pei Ming,12/10/2026
+TC-SPM118-AC05,SPM-118,"The new coordinator, the previous coordinator, and the organiser are notified",Fresh seeded database and running app (npm run test:prepare).,,,"The new coordinator, the previous coordinator, and the organiser are notified",Norven Koh Pei Ming,12/10/2026
+TC-SPM119-AC01,SPM-119,The Lead sees each Event Coordinator and their active events,Fresh seeded database and running app (npm run test:prepare).,,,The Lead sees each Event Coordinator and their active events,Norven Koh Pei Ming,12/10/2026
+TC-SPM119-AC02,SPM-119,The Lead can open any of those events,Fresh seeded database and running app (npm run test:prepare).,,,The Lead can open any of those events,Norven Koh Pei Ming,12/10/2026
+TC-SPM119-AC03,SPM-119,An Event Coordinator does not get the view and manages only their own events,Fresh seeded database and running app (npm run test:prepare).,,,An Event Coordinator does not get the view and manages only their own events,Norven Koh Pei Ming,12/10/2026
+TC-SPM68-AC01,SPM-68,Raise a clarification with optional field,Fresh seeded database and running app (npm run test:prepare).,,,Raise a clarification with optional field,jiaqianwan2024,23/09/2026
+TC-SPM68-AC02,SPM-68,Event moves to Changes Requested,Fresh seeded database and running app (npm run test:prepare).,,,Event moves to Changes Requested,jiaqianwan2024,23/09/2026
+TC-SPM68-AC03,SPM-68,"Thread shows author, role, and time",Fresh seeded database and running app (npm run test:prepare).,,,"Thread shows author, role, and time",jiaqianwan2024,23/09/2026
+TC-SPM68-AC04,SPM-68,Multiple clarifications stay independent,Fresh seeded database and running app (npm run test:prepare).,,,Multiple clarifications stay independent,jiaqianwan2024,23/09/2026
+TC-SPM68-AC05,SPM-68,All resolved returns Under Review,Fresh seeded database and running app (npm run test:prepare).,,,All resolved returns Under Review,jiaqianwan2024,23/09/2026
+TC-SPM68-AC06,SPM-68,Attendees cannot see threads,Fresh seeded database and running app (npm run test:prepare).,,,Attendees cannot see threads,jiaqianwan2024,23/09/2026
+TC-SPM68-AC07,SPM-68,Threads remain after later statuses,Fresh seeded database and running app (npm run test:prepare).,,,Threads remain after later statuses,jiaqianwan2024,23/09/2026
+TC-SPM68-AC08,SPM-68,Drafts cannot receive a clarification,Fresh seeded database and running app (npm run test:prepare).,,,Drafts cannot receive a clarification,jiaqianwan2024,23/09/2026
+TC-SPM69-AC01,SPM-69,Assigned coordinator can approve with a note,Fresh seeded database and running app (npm run test:prepare).,,,Assigned coordinator can approve with a note,jiaqianwan2024,23/09/2026
+TC-SPM69-AC02,SPM-69,Approval records decider and time,Fresh seeded database and running app (npm run test:prepare).,,,Approval records decider and time,jiaqianwan2024,23/09/2026
+TC-SPM69-AC03,SPM-69,Organiser sees approval outcome,Fresh seeded database and running app (npm run test:prepare).,,,Organiser sees approval outcome,jiaqianwan2024,23/09/2026
+TC-SPM69-AC04,SPM-69,Open clarifications warn and require confirm,Fresh seeded database and running app (npm run test:prepare).,,,Open clarifications warn and require confirm,jiaqianwan2024,23/09/2026
+TC-SPM69-AC05,SPM-69,Unassigned submitted cannot be approved,Fresh seeded database and running app (npm run test:prepare).,,,Unassigned submitted cannot be approved,jiaqianwan2024,23/09/2026
+TC-SPM69-AC06,SPM-69,Approval does not reserve arrangements,Fresh seeded database and running app (npm run test:prepare).,,,Approval does not reserve arrangements,jiaqianwan2024,23/09/2026
+TC-SPM70-AC01,SPM-70,Assigned coordinator can reject,Fresh seeded database and running app (npm run test:prepare).,,,Assigned coordinator can reject,jiaqianwan2024,23/09/2026
+TC-SPM70-AC02,SPM-70,Mandatory reason and explanation,Fresh seeded database and running app (npm run test:prepare).,,,Mandatory reason and explanation,jiaqianwan2024,23/09/2026
+TC-SPM70-AC03,SPM-70,Rejected is terminal,Fresh seeded database and running app (npm run test:prepare).,,,Rejected is terminal,jiaqianwan2024,23/09/2026
+TC-SPM70-AC04,SPM-70,Organiser sees reason and explanation,Fresh seeded database and running app (npm run test:prepare).,,,Organiser sees reason and explanation,jiaqianwan2024,23/09/2026
+TC-SPM70-AC05,SPM-70,Rejecting releases holds,Fresh seeded database and running app (npm run test:prepare).,,,Rejecting releases holds,jiaqianwan2024,23/09/2026
+TC-SPM70-AC06,SPM-70,Rejected event stays in history,Fresh seeded database and running app (npm run test:prepare).,,,Rejected event stays in history,jiaqianwan2024,23/09/2026
+TC-SPM70-AC07,SPM-70,Organiser can submit a fresh request,Fresh seeded database and running app (npm run test:prepare).,,,Organiser can submit a fresh request,jiaqianwan2024,23/09/2026
+TC-SPM71-AC01,SPM-71,Quiet fields save without warning,Fresh seeded database and running app (npm run test:prepare).,,,Quiet fields save without warning,jiaqianwan2024,23/09/2026
+TC-SPM71-AC02,SPM-71,Significant fields are published,Fresh seeded database and running app (npm run test:prepare).,,,Significant fields are published,jiaqianwan2024,23/09/2026
+TC-SPM71-AC03,SPM-71,Significant edit requires confirmation,Fresh seeded database and running app (npm run test:prepare).,,,Significant edit requires confirmation,jiaqianwan2024,23/09/2026
+TC-SPM71-AC04,SPM-71,Affected arrangements marked for re-verification,Fresh seeded database and running app (npm run test:prepare).,,,Affected arrangements marked for re-verification,jiaqianwan2024,23/09/2026
+TC-SPM71-AC05,SPM-71,Edits written to the activity log,Fresh seeded database and running app (npm run test:prepare).,,,Edits written to the activity log,jiaqianwan2024,23/09/2026
+TC-SPM71-AC06,SPM-71,Confirmed event no longer reads fully confirmed,Fresh seeded database and running app (npm run test:prepare).,,,Confirmed event no longer reads fully confirmed,jiaqianwan2024,23/09/2026
+TC-SPM71-AC07,SPM-71,Terminal events cannot be edited,Fresh seeded database and running app (npm run test:prepare).,,,Terminal events cannot be edited,jiaqianwan2024,23/09/2026
+TC-SPM72-AC01,SPM-72,"Confirm needs an approved venue booking for the event's date and time, and every equipment line reserved or recorded as not required",Fresh seeded database and running app (npm run test:prepare).,,,"Confirm needs an approved venue booking for the event's date and time, and every equipment line reserved or recorded as not required",jiaqianwan2024,23/09/2026
+TC-SPM72-AC02,SPM-72,"Confirm unavailable while anything is outstanding, and the view names it",Fresh seeded database and running app (npm run test:prepare).,,,"Confirm unavailable while anything is outstanding, and the view names it",jiaqianwan2024,23/09/2026
+TC-SPM72-AC03,SPM-72,"Confirming records Confirmed, the decider, and the time",Fresh seeded database and running app (npm run test:prepare).,,,"Confirming records Confirmed, the decider, and the time",jiaqianwan2024,23/09/2026
+TC-SPM72-AC04,SPM-72,"Organiser notified and sees confirmed venue, date, time, layout, and equipment",Fresh seeded database and running app (npm run test:prepare).,,,"Organiser notified and sees confirmed venue, date, time, layout, and equipment",jiaqianwan2024,23/09/2026
+TC-SPM72-AC05,SPM-72,Venue staff and technical support on the arrangements notified,Fresh seeded database and running app (npm run test:prepare).,,,Venue staff and technical support on the arrangements notified,jiaqianwan2024,23/09/2026
+TC-SPM72-AC06,SPM-72,A registration-enabled event is visible to attendees once confirmed and its period opens,Fresh seeded database and running app (npm run test:prepare).,,,A registration-enabled event is visible to attendees once confirmed and its period opens,jiaqianwan2024,23/09/2026
+TC-SPM73-AC01,SPM-73,Complete only after end time,Fresh seeded database and running app (npm run test:prepare).,,,Complete only after end time,jiaqianwan2024,23/09/2026
+TC-SPM73-AC02,SPM-73,Completion records who and when,Fresh seeded database and running app (npm run test:prepare).,,,Completion records who and when,jiaqianwan2024,23/09/2026
+TC-SPM73-AC03,SPM-73,Completed holds leave future availability,Fresh seeded database and running app (npm run test:prepare).,,,Completed holds leave future availability,jiaqianwan2024,23/09/2026
+TC-SPM73-AC04,SPM-73,History stays readable,Fresh seeded database and running app (npm run test:prepare).,,,History stays readable,jiaqianwan2024,23/09/2026
+TC-SPM73-AC05,SPM-73,Completed excluded from active queues,Fresh seeded database and running app (npm run test:prepare).,,,Completed excluded from active queues,jiaqianwan2024,23/09/2026
+TC-SPM73-AC06,SPM-73,Attendees cannot register or withdraw,Fresh seeded database and running app (npm run test:prepare).,,,Attendees cannot register or withdraw,jiaqianwan2024,23/09/2026
+TC-SPM02-AC01,SPM-2,Requested and available quantity per line,Fresh seeded database and running app (npm run test:prepare).,,,Requested and available quantity per line,jiaqianwan2024,23/09/2026
+TC-SPM02-AC02,SPM-2,Overlapping reservations excluded,Fresh seeded database and running app (npm run test:prepare).,,,Overlapping reservations excluded,jiaqianwan2024,23/09/2026
+TC-SPM02-AC03,SPM-2,Out-of-service units excluded,Fresh seeded database and running app (npm run test:prepare).,,,Out-of-service units excluded,jiaqianwan2024,23/09/2026
+TC-SPM02-AC04,SPM-2,Whole-request verdict and named shortfalls,Fresh seeded database and running app (npm run test:prepare).,,,Whole-request verdict and named shortfalls,jiaqianwan2024,23/09/2026
+TC-SPM02-AC05,SPM-2,Shortfall names overlapping events,Fresh seeded database and running app (npm run test:prepare).,,,Shortfall names overlapping events,jiaqianwan2024,23/09/2026
+TC-SPM02-AC06,SPM-2,Touching periods do not compete,Fresh seeded database and running app (npm run test:prepare).,,,Touching periods do not compete,jiaqianwan2024,23/09/2026
+TC-SPM02-AC07,SPM-2,Re-check after reserve or release,Fresh seeded database and running app (npm run test:prepare).,,,Re-check after reserve or release,jiaqianwan2024,23/09/2026
+TC-SPM02-AC08,SPM-2,Check is read-only,Fresh seeded database and running app (npm run test:prepare).,,,Check is read-only,jiaqianwan2024,23/09/2026
+TC-SPM02-AC09,SPM-2,"Exact fit, shortfall of one, overlap, OOS, touching",Fresh seeded database and running app (npm run test:prepare).,,,"Exact fit, shortfall of one, overlap, OOS, touching",jiaqianwan2024,23/09/2026
+TC-SPM03-AC01,SPM-3,Reserve up to available quantity,Fresh seeded database and running app (npm run test:prepare).,,,Reserve up to available quantity,jiaqianwan2024,23/09/2026
+TC-SPM03-AC02,SPM-3,Excess quantity refused,Fresh seeded database and running app (npm run test:prepare).,,,Excess quantity refused,jiaqianwan2024,23/09/2026
+TC-SPM03-AC03,SPM-3,Reservation reduces overlapping availability,Fresh seeded database and running app (npm run test:prepare).,,,Reservation reduces overlapping availability,jiaqianwan2024,23/09/2026
+TC-SPM03-AC04,SPM-3,Out-of-service units cannot be reserved,Fresh seeded database and running app (npm run test:prepare).,,,Out-of-service units cannot be reserved,jiaqianwan2024,23/09/2026
+TC-SPM03-AC05,SPM-3,Simultaneous last-unit race,Fresh seeded database and running app (npm run test:prepare).,,,Simultaneous last-unit race,jiaqianwan2024,23/09/2026
+TC-SPM03-AC06,SPM-3,Reservation visible on event and type,Fresh seeded database and running app (npm run test:prepare).,,,Reservation visible on event and type,jiaqianwan2024,23/09/2026
+TC-SPM03-AC07,SPM-3,Coordinator sees full reservation,Fresh seeded database and running app (npm run test:prepare).,,,Coordinator sees full reservation,jiaqianwan2024,23/09/2026
+TC-SPM03-AC08,SPM-3,Event end-states release reservations,Fresh seeded database and running app (npm run test:prepare).,,,Event end-states release reservations,jiaqianwan2024,23/09/2026
+TC-SPM03-AC09,SPM-3,Reserve and release in the activity log,Fresh seeded database and running app (npm run test:prepare).,,,Reserve and release in the activity log,jiaqianwan2024,23/09/2026
+TC-SPM03-AC10,SPM-3,Full reserve marks equipment ready,Fresh seeded database and running app (npm run test:prepare).,,,Full reserve marks equipment ready,jiaqianwan2024,23/09/2026
+TC-SPM04-AC01,SPM-4,"Upcoming equipment events, soonest first",Fresh seeded database and running app (npm run test:prepare).,,,"Upcoming equipment events, soonest first",jiaqianwan2024,23/09/2026
+TC-SPM04-AC02,SPM-4,Queue row fields,Fresh seeded database and running app (npm run test:prepare).,,,Queue row fields,jiaqianwan2024,23/09/2026
+TC-SPM04-AC03,SPM-4,"Review, partial, reserved, or unavailable",Fresh seeded database and running app (npm run test:prepare).,,,"Review, partial, reserved, or unavailable",jiaqianwan2024,23/09/2026
+TC-SPM04-AC04,SPM-4,Attention and re-verification first on a date,Fresh seeded database and running app (npm run test:prepare).,,,Attention and re-verification first on a date,jiaqianwan2024,23/09/2026
+TC-SPM04-AC05,SPM-4,Status and date filters; terminal events excluded,Fresh seeded database and running app (npm run test:prepare).,,,Status and date filters; terminal events excluded,jiaqianwan2024,23/09/2026
+TC-SPM04-AC06,SPM-4,No-requirement events excluded,Fresh seeded database and running app (npm run test:prepare).,,,No-requirement events excluded,jiaqianwan2024,23/09/2026
+TC-SPM04-AC07,SPM-4,Open event to check and reserve,Fresh seeded database and running app (npm run test:prepare).,,,Open event to check and reserve,jiaqianwan2024,23/09/2026
+TC-SPM75-AC01,SPM-75,Catalogue record fields,Fresh seeded database and running app (npm run test:prepare).,,,Catalogue record fields,jiaqianwan2024,23/09/2026
+TC-SPM75-AC02,SPM-75,Out-of-service counts by reason,Fresh seeded database and running app (npm run test:prepare).,,,Out-of-service counts by reason,jiaqianwan2024,23/09/2026
+TC-SPM75-AC03,SPM-75,Available = owned − OOS − overlapping,Fresh seeded database and running app (npm run test:prepare).,,,Available = owned − OOS − overlapping,jiaqianwan2024,23/09/2026
+TC-SPM75-AC04,SPM-75,Writes are technical-support only,Fresh seeded database and running app (npm run test:prepare).,,,Writes are technical-support only,jiaqianwan2024,23/09/2026
+TC-SPM75-AC05,SPM-75,Out-of-service above total rejected,Fresh seeded database and running app (npm run test:prepare).,,,Out-of-service above total rejected,jiaqianwan2024,23/09/2026
+TC-SPM75-AC06,SPM-75,OOS below reserved requires acknowledgement,Fresh seeded database and running app (npm run test:prepare).,,,OOS below reserved requires acknowledgement,jiaqianwan2024,23/09/2026
+TC-SPM75-AC07,SPM-75,Quantity changes in the activity log,Fresh seeded database and running app (npm run test:prepare).,,,Quantity changes in the activity log,jiaqianwan2024,23/09/2026
+TC-SPM76-AC01,SPM-76,"Request captures type, quantity, and notes",Fresh seeded database and running app (npm run test:prepare).,,,"Request captures type, quantity, and notes",jiaqianwan2024,23/09/2026
+TC-SPM76-AC02,SPM-76,Only technical support can reserve or mark unavailable,Fresh seeded database and running app (npm run test:prepare).,,,Only technical support can reserve or mark unavailable,jiaqianwan2024,23/09/2026
+TC-SPM76-AC03,SPM-76,Last updater and time stored,Fresh seeded database and running app (npm run test:prepare).,,,Last updater and time stored,jiaqianwan2024,23/09/2026
+TC-SPM76-AC04,SPM-76,Unfulfillable line notifies the coordinator,Fresh seeded database and running app (npm run test:prepare).,,,Unfulfillable line notifies the coordinator,jiaqianwan2024,23/09/2026
+TC-SPM77-AC01,SPM-77,Mark a line unavailable with alternative,Fresh seeded database and running app (npm run test:prepare).,,,Mark a line unavailable with alternative,jiaqianwan2024,23/09/2026
+TC-SPM77-AC02,SPM-77,Partly fulfil and state the shortfall,Fresh seeded database and running app (npm run test:prepare).,,,Partly fulfil and state the shortfall,jiaqianwan2024,23/09/2026
+TC-SPM77-AC03,SPM-77,Coordinator notified of shortfall,Fresh seeded database and running app (npm run test:prepare).,,,Coordinator notified of shortfall,jiaqianwan2024,23/09/2026
+TC-SPM77-AC04,SPM-77,Shortfall shows needing attention,Fresh seeded database and running app (npm run test:prepare).,,,Shortfall shows needing attention,jiaqianwan2024,23/09/2026
+TC-SPM77-AC05,SPM-77,Accept shortfall or amend and resubmit,Fresh seeded database and running app (npm run test:prepare).,,,Accept shortfall or amend and resubmit,jiaqianwan2024,23/09/2026
+TC-SPM77-AC06,SPM-77,Complete review marks arrangement ready,Fresh seeded database and running app (npm run test:prepare).,,,Complete review marks arrangement ready,jiaqianwan2024,23/09/2026
+TC-SPM77-AC07,SPM-77,Responses written to the activity log,Fresh seeded database and running app (npm run test:prepare).,,,Responses written to the activity log,jiaqianwan2024,23/09/2026
+TC-SPM78-AC01,SPM-78,"Reduce, increase, or release on an active event",Fresh seeded database and running app (npm run test:prepare).,,,"Reduce, increase, or release on an active event",jiaqianwan2024,23/09/2026
+TC-SPM78-AC02,SPM-78,Increase uses the availability check,Fresh seeded database and running app (npm run test:prepare).,,,Increase uses the availability check,jiaqianwan2024,23/09/2026
+TC-SPM78-AC03,SPM-78,Reduce or release returns units immediately,Fresh seeded database and running app (npm run test:prepare).,,,Reduce or release returns units immediately,jiaqianwan2024,23/09/2026
+TC-SPM78-AC04,SPM-78,Release on confirmed requires reason and notifies,Fresh seeded database and running app (npm run test:prepare).,,,Release on confirmed requires reason and notifies,jiaqianwan2024,23/09/2026
+TC-SPM78-AC05,SPM-78,Release returns arrangement to needing attention,Fresh seeded database and running app (npm run test:prepare).,,,Release returns arrangement to needing attention,jiaqianwan2024,23/09/2026
+TC-SPM78-AC06,SPM-78,Adjustments logged with old and new quantity,Fresh seeded database and running app (npm run test:prepare).,,,Adjustments logged with old and new quantity,jiaqianwan2024,23/09/2026
+TC-SPM14-AC01,SPM-14,Missing required fields listed and blocked,Fresh seeded database and running app (npm run test:prepare).,,,Missing required fields listed and blocked,jiaqianwan2024,23/09/2026
+TC-SPM14-AC02,SPM-14,Submit moves to Submitted and the queue,Fresh seeded database and running app (npm run test:prepare).,,,Submit moves to Submitted and the queue,jiaqianwan2024,23/09/2026
+TC-SPM14-AC03,SPM-14,Confirmation names event and reference,Fresh seeded database and running app (npm run test:prepare).,,,Confirmation names event and reference,jiaqianwan2024,23/09/2026
+TC-SPM14-AC04,SPM-14,Submitted is not directly editable,Fresh seeded database and running app (npm run test:prepare).,,,Submitted is not directly editable,jiaqianwan2024,23/09/2026
+TC-SPM14-AC05,SPM-14,Second submit refused,Fresh seeded database and running app (npm run test:prepare).,,,Second submit refused,jiaqianwan2024,23/09/2026
+TC-SPM14-AC06,SPM-14,Submit notifies ConnectSphere,Fresh seeded database and running app (npm run test:prepare).,,,Submit notifies ConnectSphere,jiaqianwan2024,23/09/2026
+TC-SPM14-AC07,SPM-14,No minimum notice period,Fresh seeded database and running app (npm run test:prepare).,,,No minimum notice period,jiaqianwan2024,23/09/2026
+TC-SPM79-AC01,SPM-79,Save draft with name only,Fresh seeded database and running app (npm run test:prepare).,,,Save draft with name only,jiaqianwan2024,23/09/2026
+TC-SPM79-AC02,SPM-79,Reopen and edit keeps prior values,Fresh seeded database and running app (npm run test:prepare).,,,Reopen and edit keeps prior values,jiaqianwan2024,23/09/2026
+TC-SPM79-AC03,SPM-79,Drafts labelled and excluded from the queue,Fresh seeded database and running app (npm run test:prepare).,,,Drafts labelled and excluded from the queue,jiaqianwan2024,23/09/2026
+TC-SPM79-AC04,SPM-79,Draft captures the published fields,Fresh seeded database and running app (npm run test:prepare).,,,Draft captures the published fields,jiaqianwan2024,23/09/2026
+TC-SPM79-AC05,SPM-79,Unsaved navigation warns,Fresh seeded database and running app (npm run test:prepare).,,,Unsaved navigation warns,jiaqianwan2024,23/09/2026
+TC-SPM79-AC06,SPM-79,Internal users cannot see a draft,Fresh seeded database and running app (npm run test:prepare).,,,Internal users cannot see a draft,jiaqianwan2024,23/09/2026
+TC-SPM80-AC01,SPM-80,Published layout or no preference,Fresh seeded database and running app (npm run test:prepare).,,,Published layout or no preference,jiaqianwan2024,23/09/2026
+TC-SPM80-AC02,SPM-80,Location and catalogue facilities,Fresh seeded database and running app (npm run test:prepare).,,,Location and catalogue facilities,jiaqianwan2024,23/09/2026
+TC-SPM80-AC03,SPM-80,Accessibility list plus note,Fresh seeded database and running app (npm run test:prepare).,,,Accessibility list plus note,jiaqianwan2024,23/09/2026
+TC-SPM80-AC04,SPM-80,Equipment lines from the catalogue,Fresh seeded database and running app (npm run test:prepare).,,,Equipment lines from the catalogue,jiaqianwan2024,23/09/2026
+TC-SPM80-AC05,SPM-80,Invalid quantity rejected,Fresh seeded database and running app (npm run test:prepare).,,,Invalid quantity rejected,jiaqianwan2024,23/09/2026
+TC-SPM80-AC06,SPM-80,Duplicate type edits the existing line,Fresh seeded database and running app (npm run test:prepare).,,,Duplicate type edits the existing line,jiaqianwan2024,23/09/2026
+TC-SPM80-AC07,SPM-80,Coordinator sees requirements unchanged,Fresh seeded database and running app (npm run test:prepare).,,,Coordinator sees requirements unchanged,jiaqianwan2024,23/09/2026
+TC-SPM81-AC01,SPM-81,Registration-needed indicator required,Fresh seeded database and running app (npm run test:prepare).,,,Registration-needed indicator required,jiaqianwan2024,23/09/2026
+TC-SPM81-AC02,SPM-81,Optional period and capacity,Fresh seeded database and running app (npm run test:prepare).,,,Optional period and capacity,jiaqianwan2024,23/09/2026
+TC-SPM81-AC03,SPM-81,"Blank period still submits, flagged outstanding",Fresh seeded database and running app (npm run test:prepare).,,,"Blank period still submits, flagged outstanding",jiaqianwan2024,23/09/2026
+TC-SPM81-AC04,SPM-81,Close not after open rejected,Fresh seeded database and running app (npm run test:prepare).,,,Close not after open rejected,jiaqianwan2024,23/09/2026
+TC-SPM81-AC05,SPM-81,Close after event start rejected,Fresh seeded database and running app (npm run test:prepare).,,,Close after event start rejected,jiaqianwan2024,23/09/2026
+TC-SPM81-AC06,SPM-81,Capacity above attendance warns,Fresh seeded database and running app (npm run test:prepare).,,,Capacity above attendance warns,jiaqianwan2024,23/09/2026
+TC-SPM81-AC07,SPM-81,No registration UI when not needed,Fresh seeded database and running app (npm run test:prepare).,,,No registration UI when not needed,jiaqianwan2024,23/09/2026
+TC-SPM82-AC01,SPM-82,Missing required fields listed and blocked,Fresh seeded database and running app (npm run test:prepare).,,,Missing required fields listed and blocked,jiaqianwan2024,23/09/2026
+TC-SPM82-AC02,SPM-82,Submit moves to Submitted and the queue,Fresh seeded database and running app (npm run test:prepare).,,,Submit moves to Submitted and the queue,jiaqianwan2024,23/09/2026
+TC-SPM82-AC03,SPM-82,Confirmation names event and reference,Fresh seeded database and running app (npm run test:prepare).,,,Confirmation names event and reference,jiaqianwan2024,23/09/2026
+TC-SPM82-AC04,SPM-82,Submitted is not directly editable,Fresh seeded database and running app (npm run test:prepare).,,,Submitted is not directly editable,jiaqianwan2024,23/09/2026
+TC-SPM82-AC05,SPM-82,Second submit refused,Fresh seeded database and running app (npm run test:prepare).,,,Second submit refused,jiaqianwan2024,23/09/2026
+TC-SPM82-AC06,SPM-82,Submit notifies ConnectSphere,Fresh seeded database and running app (npm run test:prepare).,,,Submit notifies ConnectSphere,jiaqianwan2024,23/09/2026
+TC-SPM82-AC07,SPM-82,No minimum notice period,Fresh seeded database and running app (npm run test:prepare).,,,No minimum notice period,jiaqianwan2024,23/09/2026
+TC-SPM83-AC01,SPM-83,Discard only in Draft,Fresh seeded database and running app (npm run test:prepare).,,,Discard only in Draft,jiaqianwan2024,23/09/2026
+TC-SPM83-AC02,SPM-83,Discard confirmation names the event,Fresh seeded database and running app (npm run test:prepare).,,,Discard confirmation names the event,jiaqianwan2024,23/09/2026
+TC-SPM83-AC03,SPM-83,Discarded draft leaves the list,Fresh seeded database and running app (npm run test:prepare).,,,Discarded draft leaves the list,jiaqianwan2024,23/09/2026
+TC-SPM83-AC04,SPM-83,Non-draft discard is 403,Fresh seeded database and running app (npm run test:prepare).,,,Non-draft discard is 403,jiaqianwan2024,23/09/2026
+TC-SPM83-AC05,SPM-83,Discard written to the activity log,Fresh seeded database and running app (npm run test:prepare).,,,Discard written to the activity log,jiaqianwan2024,23/09/2026
+TC-SPM85-AC01,SPM-85,"Coordinator sees current, proposed, and reason",Fresh seeded database and running app (npm run test:prepare).,,,"Coordinator sees current, proposed, and reason",jiaqianwan2024,23/09/2026
+TC-SPM85-AC02,SPM-85,"Impact names venue, equipment, registration",Fresh seeded database and running app (npm run test:prepare).,,,"Impact names venue, equipment, registration",jiaqianwan2024,23/09/2026
+TC-SPM85-AC03,SPM-85,Date/time/layout re-runs suitability,Fresh seeded database and running app (npm run test:prepare).,,,Date/time/layout re-runs suitability,jiaqianwan2024,23/09/2026
+TC-SPM85-AC04,SPM-85,Over-capacity names both figures,Fresh seeded database and running app (npm run test:prepare).,,,Over-capacity names both figures,jiaqianwan2024,23/09/2026
+TC-SPM85-AC05,SPM-85,Extra equipment availability reported,Fresh seeded database and running app (npm run test:prepare).,,,Extra equipment availability reported,jiaqianwan2024,23/09/2026
+TC-SPM85-AC06,SPM-85,Accept applies values and notifies,Fresh seeded database and running app (npm run test:prepare).,,,Accept applies values and notifies,jiaqianwan2024,23/09/2026
+TC-SPM85-AC07,SPM-85,"Decline requires reason, event untouched",Fresh seeded database and running app (npm run test:prepare).,,,"Decline requires reason, event untouched",jiaqianwan2024,23/09/2026
+TC-SPM85-AC08,SPM-85,Partial accept is a decline plus narrower ask,Fresh seeded database and running app (npm run test:prepare).,,,Partial accept is a decline plus narrower ask,jiaqianwan2024,23/09/2026
+TC-SPM85-AC09,SPM-85,Decision written to the activity log,Fresh seeded database and running app (npm run test:prepare).,,,Decision written to the activity log,jiaqianwan2024,23/09/2026
+TC-SPM86-AC01,SPM-86,Significant change flags arrangements,Fresh seeded database and running app (npm run test:prepare).,,,Significant change flags arrangements,jiaqianwan2024,23/09/2026
+TC-SPM86-AC02,SPM-86,"Flag visible on event, readiness, calendar, queues",Fresh seeded database and running app (npm run test:prepare).,,,"Flag visible on event, readiness, calendar, queues",jiaqianwan2024,23/09/2026
+TC-SPM86-AC03,SPM-86,Venue and technical staff notified,Fresh seeded database and running app (npm run test:prepare).,,,Venue and technical staff notified,jiaqianwan2024,23/09/2026
+TC-SPM86-AC04,SPM-86,"Booking re-checked, not silently moved",Fresh seeded database and running app (npm run test:prepare).,,,"Booking re-checked, not silently moved",jiaqianwan2024,23/09/2026
+TC-SPM86-AC05,SPM-86,Venue staff re-confirm in one action,Fresh seeded database and running app (npm run test:prepare).,,,Venue staff re-confirm in one action,jiaqianwan2024,23/09/2026
+TC-SPM86-AC06,SPM-86,"Unsuitable booking released, search again",Fresh seeded database and running app (npm run test:prepare).,,,"Unsuitable booking released, search again",jiaqianwan2024,23/09/2026
+TC-SPM86-AC07,SPM-86,"Extra equipment flagged, not reserved",Fresh seeded database and running app (npm run test:prepare).,,,"Extra equipment flagged, not reserved",jiaqianwan2024,23/09/2026
+TC-SPM86-AC08,SPM-86,Not presented as fully confirmed,Fresh seeded database and running app (npm run test:prepare).,,,Not presented as fully confirmed,jiaqianwan2024,23/09/2026
+TC-SPM86-AC09,SPM-86,Registered attendees notified,Fresh seeded database and running app (npm run test:prepare).,,,Registered attendees notified,jiaqianwan2024,23/09/2026
+TC-SPM86-AC10,SPM-86,All re-verified restores presentation,Fresh seeded database and running app (npm run test:prepare).,,,All re-verified restores presentation,jiaqianwan2024,23/09/2026
+TC-SPM87-AC01,SPM-87,"Reschedule Approved, Planning, or Confirmed",Fresh seeded database and running app (npm run test:prepare).,,,"Reschedule Approved, Planning, or Confirmed",jiaqianwan2024,23/09/2026
+TC-SPM87-AC02,SPM-87,Preview venue and equipment at the new period,Fresh seeded database and running app (npm run test:prepare).,,,Preview venue and equipment at the new period,jiaqianwan2024,23/09/2026
+TC-SPM87-AC03,SPM-87,Carry booking when free and suitable,Fresh seeded database and running app (npm run test:prepare).,,,Carry booking when free and suitable,jiaqianwan2024,23/09/2026
+TC-SPM87-AC04,SPM-87,Unavailable venue: proceed or abandon,Fresh seeded database and running app (npm run test:prepare).,,,Unavailable venue: proceed or abandon,jiaqianwan2024,23/09/2026
+TC-SPM87-AC05,SPM-87,Old period released only after apply,Fresh seeded database and running app (npm run test:prepare).,,,Old period released only after apply,jiaqianwan2024,23/09/2026
+TC-SPM87-AC06,SPM-87,"Equipment shortfalls flagged, not dropped",Fresh seeded database and running app (npm run test:prepare).,,,"Equipment shortfalls flagged, not dropped",jiaqianwan2024,23/09/2026
+TC-SPM87-AC07,SPM-87,"Organiser, staff, and attendees notified",Fresh seeded database and running app (npm run test:prepare).,,,"Organiser, staff, and attendees notified",jiaqianwan2024,23/09/2026
+TC-SPM87-AC08,SPM-87,Registration close brought forward,Fresh seeded database and running app (npm run test:prepare).,,,Registration close brought forward,jiaqianwan2024,23/09/2026
+TC-SPM87-AC09,SPM-87,Reschedule written to the activity log,Fresh seeded database and running app (npm run test:prepare).,,,Reschedule written to the activity log,jiaqianwan2024,23/09/2026
+TC-SPM88-AC01,SPM-88,Organiser and coordinator can cancel,Fresh seeded database and running app (npm run test:prepare).,,,Organiser and coordinator can cancel,jiaqianwan2024,23/09/2026
+TC-SPM88-AC02,SPM-88,"Reason required, immediate, no approval",Fresh seeded database and running app (npm run test:prepare).,,,"Reason required, immediate, no approval",jiaqianwan2024,23/09/2026
+TC-SPM88-AC03,SPM-88,Confirmation states releases and notifies,Fresh seeded database and running app (npm run test:prepare).,,,Confirmation states releases and notifies,jiaqianwan2024,23/09/2026
+TC-SPM88-AC04,SPM-88,Cancelled is terminal,Fresh seeded database and running app (npm run test:prepare).,,,Cancelled is terminal,jiaqianwan2024,23/09/2026
+TC-SPM88-AC05,SPM-88,Venue bookings released,Fresh seeded database and running app (npm run test:prepare).,,,Venue bookings released,jiaqianwan2024,23/09/2026
+TC-SPM88-AC06,SPM-88,Equipment reservations released,Fresh seeded database and running app (npm run test:prepare).,,,Equipment reservations released,jiaqianwan2024,23/09/2026
+TC-SPM88-AC07,SPM-88,"Registration closes, attendees notified",Fresh seeded database and running app (npm run test:prepare).,,,"Registration closes, attendees notified",jiaqianwan2024,23/09/2026
+TC-SPM88-AC08,SPM-88,Coordinator and staff notified,Fresh seeded database and running app (npm run test:prepare).,,,Coordinator and staff notified,jiaqianwan2024,23/09/2026
+TC-SPM88-AC09,SPM-88,Failed release blocks cancellation,Fresh seeded database and running app (npm run test:prepare).,,,Failed release blocks cancellation,jiaqianwan2024,23/09/2026
+TC-SPM88-AC10,SPM-88,History remains and is logged,Fresh seeded database and running app (npm run test:prepare).,,,History remains and is logged,jiaqianwan2024,23/09/2026
+TC-SPM88-AC11,SPM-88,Pending change request closed,Fresh seeded database and running app (npm run test:prepare).,,,Pending change request closed,jiaqianwan2024,23/09/2026
+TC-SPM106-AC01,SPM-106,Raise CR on allowed statuses,Fresh seeded database and running app (npm run test:prepare).,,,Raise CR on allowed statuses,jiaqianwan2024,23/09/2026
+TC-SPM106-AC02,SPM-106,"Current, proposed, and reason required",Fresh seeded database and running app (npm run test:prepare).,,,"Current, proposed, and reason required",jiaqianwan2024,23/09/2026
+TC-SPM106-AC03,SPM-106,Published changeable fields,Fresh seeded database and running app (npm run test:prepare).,,,Published changeable fields,jiaqianwan2024,23/09/2026
+TC-SPM106-AC04,SPM-106,Pending visible to both sides,Fresh seeded database and running app (npm run test:prepare).,,,Pending visible to both sides,jiaqianwan2024,23/09/2026
+TC-SPM106-AC05,SPM-106,Only one pending CR,Fresh seeded database and running app (npm run test:prepare).,,,Only one pending CR,jiaqianwan2024,23/09/2026
+TC-SPM106-AC06,SPM-106,Organiser can withdraw,Fresh seeded database and running app (npm run test:prepare).,,,Organiser can withdraw,jiaqianwan2024,23/09/2026
+TC-SPM106-AC07,SPM-106,Organiser notified of the decision,Fresh seeded database and running app (npm run test:prepare).,,,Organiser notified of the decision,jiaqianwan2024,23/09/2026
+TC-SPM106-AC08,SPM-106,Drafts have no change-request action,Fresh seeded database and running app (npm run test:prepare).,,,Drafts have no change-request action,jiaqianwan2024,23/09/2026
+TC-SPM106-AC09,SPM-106,Terminal events cannot raise a CR,Fresh seeded database and running app (npm run test:prepare).,,,Terminal events cannot raise a CR,jiaqianwan2024,23/09/2026
+TC-SPM106-AC10,SPM-106,Confirmed details stay confirmed while pending,Fresh seeded database and running app (npm run test:prepare).,,,Confirmed details stay confirmed while pending,jiaqianwan2024,23/09/2026
+TC-SPM120-AC01,SPM-120,Review only after venue and technical are confirmed / Venue Staff and technical support send their confirmed arrangements; the review opens once both are in (Week 7 change 6),Fresh seeded database and running app (npm run test:prepare).,,,Review only after venue and technical are confirmed / Venue Staff and technical support send their confirmed arrangements; the review opens once both are in (Week 7 change 6),Norven Koh Pei Ming,08/10/2026
+TC-SPM120-AC02,SPM-120,"Officer sees attendance, venue, emergency access, accessibility, placement, crowd movement, restrictions",Fresh seeded database and running app (npm run test:prepare).,,,"Officer sees attendance, venue, emergency access, accessibility, placement, crowd movement, restrictions",Norven Koh Pei Ming,08/10/2026
+TC-SPM120-AC03,SPM-120,"Approve records decision, officer, and time / Approve, reject, or request changes from the Safety Officer dashboard",Fresh seeded database and running app (npm run test:prepare).,,,"Approve records decision, officer, and time / Approve, reject, or request changes from the Safety Officer dashboard",Norven Koh Pei Ming,08/10/2026
+TC-SPM120-AC05,SPM-120,"Reject records reason, no preparation, not cancelled, both notified, resubmit",Fresh seeded database and running app (npm run test:prepare).,,,"Reject records reason, no preparation, not cancelled, both notified, resubmit",Norven Koh Pei Ming,08/10/2026
+TC-SPM120-AC06,SPM-120,Request changes returns to planning and flags arrangements,Fresh seeded database and running app (npm run test:prepare).,,,Request changes returns to planning and flags arrangements,Norven Koh Pei Ming,08/10/2026
+TC-SPM120-AC07,SPM-120,Safety Officer signs in with a pre-created account,Fresh seeded database and running app (npm run test:prepare).,,,Safety Officer signs in with a pre-created account,Norven Koh Pei Ming,08/10/2026
+TC-SPM120-AC08,SPM-120,Other roles get 403 on decisions,Fresh seeded database and running app (npm run test:prepare).,,,Other roles get 403 on decisions,Norven Koh Pei Ming,08/10/2026
+TC-SPM121-AC01,SPM-121,An approved venue booking and reserved equipment confirm the arrangements without moving the event to Confirmed or showing it to attendees,Fresh seeded database and running app (npm run test:prepare).,,,An approved venue booking and reserved equipment confirm the arrangements without moving the event to Confirmed or showing it to attendees,Norven Koh Pei Ming,09/10/2026
+TC-SPM121-AC02,SPM-121,The safety review starts only once every requested venue is approved and every equipment line is reserved or recorded as not required,Fresh seeded database and running app (npm run test:prepare).,,,The safety review starts only once every requested venue is approved and every equipment line is reserved or recorded as not required,Norven Koh Pei Ming,09/10/2026
+TC-SPM121-AC03,SPM-121,"Confirmed, and preparation begins, only after the Safety Officer approves",Fresh seeded database and running app (npm run test:prepare).,,,"Confirmed, and preparation begins, only after the Safety Officer approves",Norven Koh Pei Ming,09/10/2026
+TC-SPM121-AC04,SPM-121,"Confirm unavailable while the safety check is outstanding, rejected, or returned for changes",Fresh seeded database and running app (npm run test:prepare).,,,"Confirm unavailable while the safety check is outstanding, rejected, or returned for changes",Norven Koh Pei Ming,09/10/2026
+TC-SPM121-AC05,SPM-121,The organiser sees the event waiting on the safety review or with safety changes requested,Fresh seeded database and running app (npm run test:prepare).,,,The organiser sees the event waiting on the safety review or with safety changes requested,Norven Koh Pei Ming,09/10/2026
+TC-SPM11-AC01,SPM-11,"Registration succeeds only for confirmed, enabled, in-period events with a place",Fresh seeded database and running app (npm run test:prepare).,,,"Registration succeeds only for confirmed, enabled, in-period events with a place",jiaqianwan2024,23/09/2026
+TC-SPM11-AC02,SPM-11,Mandatory fields block submit with inline validation,Fresh seeded database and running app (npm run test:prepare).,,,Mandatory fields block submit with inline validation,jiaqianwan2024,23/09/2026
+TC-SPM11-AC03,SPM-11,"Success confirms event, date, time, venue, and notifies",Fresh seeded database and running app (npm run test:prepare).,,,"Success confirms event, date, time, venue, and notifies",jiaqianwan2024,23/09/2026
+TC-SPM11-AC04,SPM-11,Remaining places drop by one immediately,Fresh seeded database and running app (npm run test:prepare).,,,Remaining places drop by one immediately,jiaqianwan2024,23/09/2026
+TC-SPM11-AC05,SPM-11,Second registration refused; existing shown,Fresh seeded database and running app (npm run test:prepare).,,,Second registration refused; existing shown,jiaqianwan2024,23/09/2026
+TC-SPM11-AC06,SPM-11,Full event refuses registration and is shown as full,Fresh seeded database and running app (npm run test:prepare).,,,Full event refuses registration and is shown as full,jiaqianwan2024,23/09/2026
+TC-SPM11-AC07,SPM-11,Outside the period is refused with the period stated,Fresh seeded database and running app (npm run test:prepare).,,,Outside the period is refused with the period stated,jiaqianwan2024,23/09/2026
+TC-SPM11-AC08,SPM-11,Last-place race: exactly one succeeds,Fresh seeded database and running app (npm run test:prepare).,,,Last-place race: exactly one succeeds,jiaqianwan2024,23/09/2026
+TC-SPM11-AC09,SPM-11,Server enforces the same rules without the UI,Fresh seeded database and running app (npm run test:prepare).,,,Server enforces the same rules without the UI,jiaqianwan2024,23/09/2026
+TC-SPM11-AC10,SPM-11,Capacity notifies organiser and assigned coordinator,Fresh seeded database and running app (npm run test:prepare).,,,Capacity notifies organiser and assigned coordinator,jiaqianwan2024,23/09/2026
+TC-SPM12-AC01,SPM-12,Withdraw only from own current registration,Fresh seeded database and running app (npm run test:prepare).,,,Withdraw only from own current registration,jiaqianwan2024,23/09/2026
+TC-SPM12-AC02,SPM-12,"Withdraw while not started, completed, or cancelled",Fresh seeded database and running app (npm run test:prepare).,,,"Withdraw while not started, completed, or cancelled",jiaqianwan2024,23/09/2026
+TC-SPM12-AC03,SPM-12,Confirm dialog names the event,Fresh seeded database and running app (npm run test:prepare).,,,Confirm dialog names the event,jiaqianwan2024,23/09/2026
+TC-SPM12-AC04,SPM-12,Status becomes withdrawn; record kept,Fresh seeded database and running app (npm run test:prepare).,,,Status becomes withdrawn; record kept,jiaqianwan2024,23/09/2026
+TC-SPM12-AC05,SPM-12,Place released immediately,Fresh seeded database and running app (npm run test:prepare).,,,Place released immediately,jiaqianwan2024,23/09/2026
+TC-SPM12-AC06,SPM-12,Attendee confirmation and notification,Fresh seeded database and running app (npm run test:prepare).,,,Attendee confirmation and notification,jiaqianwan2024,23/09/2026
+TC-SPM12-AC07,SPM-12,Re-register after withdraw succeeds,Fresh seeded database and running app (npm run test:prepare).,,,Re-register after withdraw succeeds,jiaqianwan2024,23/09/2026
+TC-SPM12-AC08,SPM-12,"Withdraw unavailable after start, complete, or cancel",Fresh seeded database and running app (npm run test:prepare).,,,"Withdraw unavailable after start, complete, or cancel",jiaqianwan2024,23/09/2026
+TC-SPM12-AC09,SPM-12,Organiser and coordinator see the withdrawal,Fresh seeded database and running app (npm run test:prepare).,,,Organiser and coordinator see the withdrawal,jiaqianwan2024,23/09/2026
+TC-SPM89-AC01,SPM-89,Organiser and assigned coordinator see that event only,Fresh seeded database and running app (npm run test:prepare).,,,Organiser and assigned coordinator see that event only,jiaqianwan2024,23/09/2026
+TC-SPM89-AC02,SPM-89,"List shows name, supplied information, time, and status",Fresh seeded database and running app (npm run test:prepare).,,,"List shows name, supplied information, time, and status",jiaqianwan2024,23/09/2026
+TC-SPM89-AC03,SPM-89,"Summary of capacity, registered, withdrawn, remaining",Fresh seeded database and running app (npm run test:prepare).,,,"Summary of capacity, registered, withdrawn, remaining",jiaqianwan2024,23/09/2026
+TC-SPM89-AC04,SPM-89,Withdrawn rows distinguished and filterable,Fresh seeded database and running app (npm run test:prepare).,,,Withdrawn rows distinguished and filterable,jiaqianwan2024,23/09/2026
+TC-SPM89-AC05,SPM-89,Other roles blocked on the server,Fresh seeded database and running app (npm run test:prepare).,,,Other roles blocked on the server,jiaqianwan2024,23/09/2026
+TC-SPM89-AC06,SPM-89,No list when registration is not enabled,Fresh seeded database and running app (npm run test:prepare).,,,No list when registration is not enabled,jiaqianwan2024,23/09/2026
+TC-SPM89-AC07,SPM-89,Empty state shows capacity and period,Fresh seeded database and running app (npm run test:prepare).,,,Empty state shows capacity and period,jiaqianwan2024,23/09/2026
+TC-SPM90-AC01,SPM-90,Assigned coordinator sets period and capacity through Confirmed,Fresh seeded database and running app (npm run test:prepare).,,,Assigned coordinator sets period and capacity through Confirmed,jiaqianwan2024,23/09/2026
+TC-SPM90-AC02,SPM-90,Close after open and not after event start,Fresh seeded database and running app (npm run test:prepare).,,,Close after open and not after event start,jiaqianwan2024,23/09/2026
+TC-SPM90-AC03,SPM-90,Over-venue-capacity warns with both figures,Fresh seeded database and running app (npm run test:prepare).,,,Over-venue-capacity warns with both figures,jiaqianwan2024,23/09/2026
+TC-SPM90-AC04,SPM-90,Capacity below registered count refused,Fresh seeded database and running app (npm run test:prepare).,,,Capacity below registered count refused,jiaqianwan2024,23/09/2026
+TC-SPM90-AC05,SPM-90,"Turning registration off warns, confirms, and notifies",Fresh seeded database and running app (npm run test:prepare).,,,"Turning registration off warns, confirms, and notifies",jiaqianwan2024,23/09/2026
+TC-SPM90-AC06,SPM-90,Organiser sees settings and is notified,Fresh seeded database and running app (npm run test:prepare).,,,Organiser sees settings and is notified,jiaqianwan2024,23/09/2026
+TC-SPM90-AC07,SPM-90,Settings changes written to the activity log,Fresh seeded database and running app (npm run test:prepare).,,,Settings changes written to the activity log,jiaqianwan2024,23/09/2026
+TC-SPM91-AC01,SPM-91,"Browse shows confirmed, enabled, in-period events",Fresh seeded database and running app (npm run test:prepare).,,,"Browse shows confirmed, enabled, in-period events",jiaqianwan2024,23/09/2026
+TC-SPM91-AC02,SPM-91,Card fields include venue and remaining places,Fresh seeded database and running app (npm run test:prepare).,,,Card fields include venue and remaining places,jiaqianwan2024,23/09/2026
+TC-SPM91-AC03,SPM-91,"Detail shows description, access, close, remaining",Fresh seeded database and running app (npm run test:prepare).,,,"Detail shows description, access, close, remaining",jiaqianwan2024,23/09/2026
+TC-SPM91-AC04,SPM-91,"Full events shown as full, register unavailable",Fresh seeded database and running app (npm run test:prepare).,,,"Full events shown as full, register unavailable",jiaqianwan2024,23/09/2026
+TC-SPM91-AC05,SPM-91,Non-open statuses never appear; direct read refused,Fresh seeded database and running app (npm run test:prepare).,,,Non-open statuses never appear; direct read refused,jiaqianwan2024,23/09/2026
+TC-SPM91-AC06,SPM-91,Closed or unopened periods excluded,Fresh seeded database and running app (npm run test:prepare).,,,Closed or unopened periods excluded,jiaqianwan2024,23/09/2026
+TC-SPM91-AC07,SPM-91,Search by name; filter by category and date,Fresh seeded database and running app (npm run test:prepare).,,,Search by name; filter by category and date,jiaqianwan2024,23/09/2026
+TC-SPM91-AC08,SPM-91,"No coordinator, notes, org, or other attendees",Fresh seeded database and running app (npm run test:prepare).,,,"No coordinator, notes, org, or other attendees",jiaqianwan2024,23/09/2026
+TC-SPM91-AC09,SPM-91,Empty state when none are open,Fresh seeded database and running app (npm run test:prepare).,,,Empty state when none are open,jiaqianwan2024,23/09/2026
+TC-SPM92-AC01,SPM-92,Own registrations with event facts and status,Fresh seeded database and running app (npm run test:prepare).,,,Own registrations with event facts and status,jiaqianwan2024,23/09/2026
+TC-SPM92-AC02,SPM-92,"Upcoming first, then past",Fresh seeded database and running app (npm run test:prepare).,,,"Upcoming first, then past",jiaqianwan2024,23/09/2026
+TC-SPM92-AC03,SPM-92,Details come from the current event record,Fresh seeded database and running app (npm run test:prepare).,,,Details come from the current event record,jiaqianwan2024,23/09/2026
+TC-SPM92-AC04,SPM-92,Cancelled events marked cancelled,Fresh seeded database and running app (npm run test:prepare).,,,Cancelled events marked cancelled,jiaqianwan2024,23/09/2026
+TC-SPM92-AC05,SPM-92,"Changed date, time, or venue is flagged",Fresh seeded database and running app (npm run test:prepare).,,,"Changed date, time, or venue is flagged",jiaqianwan2024,23/09/2026
+TC-SPM92-AC06,SPM-92,Open a registration to withdraw when permitted,Fresh seeded database and running app (npm run test:prepare).,,,Open a registration to withdraw when permitted,jiaqianwan2024,23/09/2026
+TC-SPM92-AC07,SPM-92,Only own registrations; no other attendee identity,Fresh seeded database and running app (npm run test:prepare).,,,Only own registrations; no other attendee identity,jiaqianwan2024,23/09/2026
+TC-SPM92-AC08,SPM-92,Empty state points at browsing events,Fresh seeded database and running app (npm run test:prepare).,,,Empty state points at browsing events,jiaqianwan2024,23/09/2026
+TC-SPM105-AC01,SPM-105,Organiser and assigned coordinator see that event only,Fresh seeded database and running app (npm run test:prepare).,,,Organiser and assigned coordinator see that event only,jiaqianwan2024,23/09/2026
+TC-SPM105-AC02,SPM-105,"List shows name, supplied information, time, and status",Fresh seeded database and running app (npm run test:prepare).,,,"List shows name, supplied information, time, and status",jiaqianwan2024,23/09/2026
+TC-SPM105-AC03,SPM-105,Summary plus withdrawn filter,Fresh seeded database and running app (npm run test:prepare).,,,Summary plus withdrawn filter,jiaqianwan2024,23/09/2026
+TC-SPM105-AC04,SPM-105,Other roles blocked on the server,Fresh seeded database and running app (npm run test:prepare).,,,Other roles blocked on the server,jiaqianwan2024,23/09/2026
+TC-SPM105-AC05,SPM-105,No list when registration is not enabled,Fresh seeded database and running app (npm run test:prepare).,,,No list when registration is not enabled,jiaqianwan2024,23/09/2026
+TC-SPM105-AC06,SPM-105,Empty state shows capacity and period,Fresh seeded database and running app (npm run test:prepare).,,,Empty state shows capacity and period,jiaqianwan2024,23/09/2026
+TC-SPM06-AC01,SPM-6,Organiser reply notifies the assigned coordinator,Fresh seeded database and running app (npm run test:prepare).,,,Organiser reply notifies the assigned coordinator,jiaqianwan2024,23/09/2026
+TC-SPM06-AC02,SPM-6,Notification names the event and includes the response,Fresh seeded database and running app (npm run test:prepare).,,,Notification names the event and includes the response,jiaqianwan2024,23/09/2026
+TC-SPM06-AC03,SPM-6,No notify before reply; clarification stays outstanding,Fresh seeded database and running app (npm run test:prepare).,,,No notify before reply; clarification stays outstanding,jiaqianwan2024,23/09/2026
+TC-SPM06-AC04,SPM-6,Late reply still notifies and flags review is over,Fresh seeded database and running app (npm run test:prepare).,,,Late reply still notifies and flags review is over,jiaqianwan2024,23/09/2026
+TC-SPM93-AC01,SPM-93,One notification service creates records,Fresh seeded database and running app (npm run test:prepare).,,,One notification service creates records,jiaqianwan2024,23/09/2026
+TC-SPM93-AC02,SPM-93,"Record fields: recipient, trigger, event, message, link, time, read",Fresh seeded database and running app (npm run test:prepare).,,,"Record fields: recipient, trigger, event, message, link, time, read",jiaqianwan2024,23/09/2026
+TC-SPM93-AC03,SPM-93,"Recipients from event relationships, not role alone",Fresh seeded database and running app (npm run test:prepare).,,,"Recipients from event relationships, not role alone",jiaqianwan2024,23/09/2026
+TC-SPM93-AC04,SPM-93,Triggers declare relationships and are registered,Fresh seeded database and running app (npm run test:prepare).,,,Triggers declare relationships and are registered,jiaqianwan2024,23/09/2026
+TC-SPM93-AC05,SPM-93,Actor excluded from their own action,Fresh seeded database and running app (npm run test:prepare).,,,Actor excluded from their own action,jiaqianwan2024,23/09/2026
+TC-SPM93-AC06,SPM-93,One notification per recipient per occurrence,Fresh seeded database and running app (npm run test:prepare).,,,One notification per recipient per occurrence,jiaqianwan2024,23/09/2026
+TC-SPM93-AC07,SPM-93,Attendees receive only attendee-visible triggers,Fresh seeded database and running app (npm run test:prepare).,,,Attendees receive only attendee-visible triggers,jiaqianwan2024,23/09/2026
+TC-SPM93-AC08,SPM-93,Messages name the event in plain language,Fresh seeded database and running app (npm run test:prepare).,,,Messages name the event in plain language,jiaqianwan2024,23/09/2026
+TC-SPM93-AC09,SPM-93,Delivery failure does not block the action,Fresh seeded database and running app (npm run test:prepare).,,,Delivery failure does not block the action,jiaqianwan2024,23/09/2026
+TC-SPM93-AC10,SPM-93,Notifications persist after complete or cancel,Fresh seeded database and running app (npm run test:prepare).,,,Notifications persist after complete or cancel,jiaqianwan2024,23/09/2026
+TC-SPM93-AC11,SPM-93,"Coverage of resolution, actor, dedupe, attendee scope, failure",Fresh seeded database and running app (npm run test:prepare).,,,"Coverage of resolution, actor, dedupe, attendee scope, failure",jiaqianwan2024,23/09/2026
+TC-SPM94-AC01,SPM-94,Unread count on every screen updates after a read,Fresh seeded database and running app (npm run test:prepare).,,,Unread count on every screen updates after a read,jiaqianwan2024,23/09/2026
+TC-SPM94-AC02,SPM-94,Newest first; unread visually distinct,Fresh seeded database and running app (npm run test:prepare).,,,Newest first; unread visually distinct,jiaqianwan2024,23/09/2026
+TC-SPM94-AC03,SPM-94,Open marks read and navigates,Fresh seeded database and running app (npm run test:prepare).,,,Open marks read and navigates,jiaqianwan2024,23/09/2026
+TC-SPM94-AC04,SPM-94,"Mark one, mark all, filter unread",Fresh seeded database and running app (npm run test:prepare).,,,"Mark one, mark all, filter unread",jiaqianwan2024,23/09/2026
+TC-SPM94-AC05,SPM-94,Stale access shows a clear message,Fresh seeded database and running app (npm run test:prepare).,,,Stale access shows a clear message,jiaqianwan2024,23/09/2026
+TC-SPM94-AC06,SPM-94,"Own notifications only, server enforced",Fresh seeded database and running app (npm run test:prepare).,,,"Own notifications only, server enforced",jiaqianwan2024,23/09/2026
+TC-SPM94-AC07,SPM-94,Empty inbox state,Fresh seeded database and running app (npm run test:prepare).,,,Empty inbox state,jiaqianwan2024,23/09/2026
+TC-SPM94-AC08,SPM-94,List loads a page at a time,Fresh seeded database and running app (npm run test:prepare).,,,List loads a page at a time,jiaqianwan2024,23/09/2026
+TC-SPM94-AC09,SPM-94,"Clear all empties the bell and badge, keeps history",Fresh seeded database and running app (npm run test:prepare).,,,"Clear all empties the bell and badge, keeps history",jiaqianwan2024,26/10/2026
+TC-SPM94-AC10,SPM-94,Remove one hides only that notification from the bell,Fresh seeded database and running app (npm run test:prepare).,,,Remove one hides only that notification from the bell,jiaqianwan2024,26/10/2026
+TC-SPM94-AC11,SPM-94,"Clearing is own-only, server enforced",Fresh seeded database and running app (npm run test:prepare).,,,"Clearing is own-only, server enforced",jiaqianwan2024,26/10/2026
+TC-SPM94-AC12,SPM-94,Mark all read disabled when nothing is unread,Fresh seeded database and running app (npm run test:prepare).,,,Mark all read disabled when nothing is unread,jiaqianwan2024,26/10/2026
+TC-SPM95-AC01,SPM-95,Daily check selects in-lead-time events with outstanding work,Fresh seeded database and running app (npm run test:prepare).,,,Daily check selects in-lead-time events with outstanding work,jiaqianwan2024,23/09/2026
+TC-SPM95-AC02,SPM-95,Assigned coordinator notified with outstanding items,Fresh seeded database and running app (npm run test:prepare).,,,Assigned coordinator notified with outstanding items,jiaqianwan2024,23/09/2026
+TC-SPM95-AC03,SPM-95,Venue and equipment outstanding notify those staff,Fresh seeded database and running app (npm run test:prepare).,,,Venue and equipment outstanding notify those staff,jiaqianwan2024,23/09/2026
+TC-SPM95-AC04,SPM-95,Lead time from one configuration,Fresh seeded database and running app (npm run test:prepare).,,,Lead time from one configuration,jiaqianwan2024,23/09/2026
+TC-SPM95-AC05,SPM-95,One reminder per event per occasion,Fresh seeded database and running app (npm run test:prepare).,,,One reminder per event per occasion,jiaqianwan2024,23/09/2026
+TC-SPM95-AC06,SPM-95,"Ready, completed, cancelled, rejected produce none",Fresh seeded database and running app (npm run test:prepare).,,,"Ready, completed, cancelled, rejected produce none",jiaqianwan2024,23/09/2026
+TC-SPM95-AC07,SPM-95,Unassigned approaching event goes to triage,Fresh seeded database and running app (npm run test:prepare).,,,Unassigned approaching event goes to triage,jiaqianwan2024,23/09/2026
+TC-SPM95-AC08,SPM-95,Check can be run on demand,Fresh seeded database and running app (npm run test:prepare).,,,Check can be run on demand,jiaqianwan2024,23/09/2026
+TC-SPM51-AC01,SPM-51,Firebase credentials never committed,Fresh seeded database and running app (npm run test:prepare).,,,Firebase credentials never committed,jiaqianwan2024,23/09/2026
+TC-SPM51-AC02,SPM-51,Every service verifies the Firebase token,Fresh seeded database and running app (npm run test:prepare).,,,Every service verifies the Firebase token,jiaqianwan2024,23/09/2026
+TC-SPM51-AC03,SPM-51,One Firebase identity maps to one user row,Fresh seeded database and running app (npm run test:prepare).,,,One Firebase identity maps to one user row,jiaqianwan2024,23/09/2026
+TC-SPM51-AC04,SPM-51,"Invalid, expired, and tampered tokens reject the same way",Fresh seeded database and running app (npm run test:prepare).,,,"Invalid, expired, and tampered tokens reject the same way",jiaqianwan2024,23/09/2026
+TC-SGT-AC01,SGT,"Screens show times in Singapore time, whatever the computer's time zone",Fresh seeded database and running app (npm run test:prepare).,,,"Screens show times in Singapore time, whatever the computer's time zone",SoHongYao,19/10/2026
+TC-SGT-AC01b,SGT,"Screens show times in Singapore time, whatever the computer's time zone",Fresh seeded database and running app (npm run test:prepare).,,,"Screens show times in Singapore time, whatever the computer's time zone",SoHongYao,19/10/2026
+TC-SGT-AC02,SGT,A time typed into a form is read as Singapore time and saved as UTC,Fresh seeded database and running app (npm run test:prepare).,,,A time typed into a form is read as Singapore time and saved as UTC,SoHongYao,19/10/2026
+TC-SGT-AC03,SGT,Opening hours and their days are Singapore time in suitability and search,Fresh seeded database and running app (npm run test:prepare).,,,Opening hours and their days are Singapore time in suitability and search,SoHongYao,19/10/2026
+TC-SGT-AC03b,SGT,Opening hours and their days are Singapore time in suitability and search,Fresh seeded database and running app (npm run test:prepare).,,,Opening hours and their days are Singapore time in suitability and search,SoHongYao,19/10/2026
+TC-SGT-AC04,SGT,Times inside messages are written in Singapore time,Fresh seeded database and running app (npm run test:prepare).,,,Times inside messages are written in Singapore time,SoHongYao,19/10/2026
+TC-SGT-AC05,SGT,The database and API keep UTC,Fresh seeded database and running app (npm run test:prepare).,,,The database and API keep UTC,SoHongYao,19/10/2026
+TC-SPM127-AC01,SPM-127,Attendees open only confirmed event pages and their own registrations,Fresh seeded database and running app (npm run test:prepare).,,,Attendees open only confirmed event pages and their own registrations,SoHongYao,23/10/2026
+TC-SPM127-AC01b,SPM-127,Attendees open only confirmed event pages and their own registrations,Fresh seeded database and running app (npm run test:prepare).,,,Attendees open only confirmed event pages and their own registrations,SoHongYao,23/10/2026
+TC-SPM127-AC01c,SPM-127,Attendees open only confirmed event pages and their own registrations,Fresh seeded database and running app (npm run test:prepare).,,,Attendees open only confirmed event pages and their own registrations,SoHongYao,23/10/2026
+TC-SPM127-AC02,SPM-127,"No internal notes, drafts, clarifications or other attendees' details, enforced on the server",Fresh seeded database and running app (npm run test:prepare).,,,"No internal notes, drafts, clarifications or other attendees' details, enforced on the server",SoHongYao,23/10/2026
+TC-SPM127-AC03,SPM-127,Staff-only and organiser-only pages are 403 for an attendee,Fresh seeded database and running app (npm run test:prepare).,,,Staff-only and organiser-only pages are 403 for an attendee,SoHongYao,23/10/2026
+TC-SPM127-AC03b,SPM-127,Staff-only and organiser-only pages are 403 for an attendee,Fresh seeded database and running app (npm run test:prepare).,,,Staff-only and organiser-only pages are 403 for an attendee,SoHongYao,23/10/2026
+TC-SPM127-AC03c,SPM-127,Staff-only and organiser-only pages are 403 for an attendee,Fresh seeded database and running app (npm run test:prepare).,,,Staff-only and organiser-only pages are 403 for an attendee,SoHongYao,23/10/2026
+TC-SPM04-EXTRA01,SPM-4,only technical support can read the queue,Fresh seeded database and running app (npm run test:prepare).,,,only technical support can read the queue,Matthewkhlr,24/10/2026
+TC-SPM04-EXTRA02,SPM-4,the status filter narrows the queue to one equipment state,Fresh seeded database and running app (npm run test:prepare).,,,the status filter narrows the queue to one equipment state,Matthewkhlr,24/10/2026
+TC-SPM04-EXTRA03,SPM-4,an event needing re-verification is flagged on its row,Fresh seeded database and running app (npm run test:prepare).,,,an event needing re-verification is flagged on its row,Matthewkhlr,24/10/2026
+TC-SPM04-EXTRA04,SPM-4,an empty queue says what is excluded,Fresh seeded database and running app (npm run test:prepare).,,,an empty queue says what is excluded,Matthewkhlr,24/10/2026
+TC-SPM04-EXTRA05,SPM-4,the calendar view is still available beside the queue,Fresh seeded database and running app (npm run test:prepare).,,,the calendar view is still available beside the queue,Matthewkhlr,24/10/2026
+TC-SPM112-AC02c,SPM-112,unavailability is judged on the same occupied window,Fresh seeded database and running app (npm run test:prepare).,,,unavailability is judged on the same occupied window,SoHongYao,13/10/2026
+TC-SPM63-AC08b,SPM-63,a withdrawn request is removed from the venue calendar,Fresh seeded database and running app (npm run test:prepare).,,,a withdrawn request is removed from the venue calendar,SoHongYao,16/10/2026
+TC-SPM73-EXTRA01,SPM-73,the queue API leaves completed events out unless includeCompleted is set,Fresh seeded database and running app (npm run test:prepare).,,,the queue API leaves completed events out unless includeCompleted is set,Matthewkhlr,24/10/2026
