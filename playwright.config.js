@@ -16,6 +16,8 @@ export default defineConfig({
     ['list'],
     ...(isCI ? [['github']] : []),
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
+    // test-reports/e2e.jsonl, the raw results behind the test-case CSV (npm run test:report).
+    ['./e2e/support/results-reporter.js'],
   ],
   use: {
     baseURL: 'http://127.0.0.1:5173',

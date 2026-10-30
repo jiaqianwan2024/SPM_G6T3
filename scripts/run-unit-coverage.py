@@ -18,6 +18,8 @@ SERVICES = [
 
 def main() -> int:
     failed = []
+    # Each service appends its results here for the test-case CSV (npm run test:report).
+    (ROOT / "test-reports" / "unit.jsonl").unlink(missing_ok=True)
     for name in SERVICES:
         service = ROOT / "services" / name
         print(f"\n=== {name} ===", flush=True)
@@ -27,8 +29,11 @@ def main() -> int:
                 "-m",
                 "coverage",
                 "run",
-                "-m",
-                "unittest",
+                str(ROOT / "scripts" / "record_unittest.py"),
+                "--suite",
+                "unit",
+                "--group",
+                name,
                 "discover",
                 "-s",
                 "tests/unit",
