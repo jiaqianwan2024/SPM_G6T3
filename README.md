@@ -120,6 +120,14 @@ python scripts/migrate.py
 
 `scripts/migrate.py` waits until each MySQL port is up, runs `alembic upgrade head` in every service, then inserts demo users/venues/events. Re-run it after `git pull` when someone committed a new Alembic revision. Use `--no-seed` to skip demo data.
 
+Acceptance tests leave hundreds of `AUTO-…` events behind. To trim them, run:
+
+```
+python scripts/migrate.py --clean-test-data
+```
+
+It keeps the seeded demo events plus one example event for each status the demo events don't cover, and deletes every other event with its bookings, equipment requests, registrations and notifications. Users, organisations, venues and equipment stay. It shows what it will keep and asks before deleting, then writes a full backup to `backups/` (gitignored) first. Add `--yes` to skip the question. To undo, load the backup: `docker exec -i infra-mysql-1 mysql -uroot -pconnectsphere < backups/<file>.sql`.
+
 If a local database is hopelessly out of date, wipe volumes and start clean:
 
 ```
