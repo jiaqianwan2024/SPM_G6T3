@@ -82,7 +82,16 @@ def _require_deps() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Migrate ConnectSphere MySQL databases.")
     parser.add_argument("--no-seed", action="store_true", help="Skip demo data inserts.")
+    parser.add_argument(
+        "--clean-test-data",
+        action="store_true",
+        help="After seeding, delete events left by tests, keeping the demo events plus one example "
+        "per status. Backs up to backups/ first.",
+    )
+    parser.add_argument("--yes", action="store_true", help="Clean without asking for confirmation.")
     args = parser.parse_args()
+    if args.clean_test_data and args.no_seed:
+        parser.error("--clean-test-data keeps the demo events, so it needs the seed; drop --no-seed.")
     _require_deps()
 
     print(f"waiting for shared MySQL on :{MYSQL_PORT}")
@@ -98,6 +107,10 @@ def main() -> None:
 
         seed_all()
         print("seed complete")
+    if args.clean_test_data:
+        from clean_test_data import clean_test_data
+
+        clean_test_data(assume_yes=args.yes)
     print("migrate complete")
 
 
