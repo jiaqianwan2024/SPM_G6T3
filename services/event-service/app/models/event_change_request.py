@@ -21,6 +21,8 @@ class EventChangeRequest(Base):
     proposedChanges: Mapped[dict | None] = mapped_column("proposed_changes", JSON, nullable=True)
     currentValues: Mapped[dict | None] = mapped_column("current_values", JSON, nullable=True)
     decisionReason: Mapped[str | None] = mapped_column("decision_reason", Text, nullable=True)
+    # SPM-85 AC8: declined, with the organiser asked to raise a narrower request.
+    narrowerRequested: Mapped[bool] = mapped_column("narrower_requested", Boolean, default=False)
     affectsVenue: Mapped[bool] = mapped_column("affects_venue", Boolean, default=False)
     affectsEquipment: Mapped[bool] = mapped_column("affects_equipment", Boolean, default=False)
     affectsRegistration: Mapped[bool] = mapped_column("affects_registration", Boolean, default=False)

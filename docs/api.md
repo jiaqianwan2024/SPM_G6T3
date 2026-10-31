@@ -62,7 +62,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `GET /events/{id}/change-requests` | `organiser` of that event's organisation, `coordinator`, `venue`, `techsupport` (SPM-106) |
 | `POST /events/{id}/change-requests` | `organiser` of that event's organisation (SPM-106) |
 | `POST /events/{id}/change-requests/{crid}/withdraw` | the `organiser` who raised it |
-| `POST /events/{id}/change-requests/{crid}/accept` or `/decline` | `coordinator` assigned to the event |
+| `POST /events/{id}/change-requests/{crid}/accept` or `/decline`; `GET /events/{id}/change-requests/{crid}/impact` | `coordinator` assigned to the event (SPM-106, SPM-85) |
 | `POST /notifications/records` with another user's `userId` | `coordinator`, `venue`, `techsupport` (anyone may name themselves) |
 | `POST /notifications/clear-all`, `POST /notifications/{id}/clear`; `GET /notifications?bell=true` | signed-in caller, their own notifications only; another user's id is 404 (SPM-94). Clearing hides from the bell and marks read; nothing is deleted |
 | `POST /notifications/publish` | another service, sending the `X-Service-Key` header (SPM-93). No user token is used; with no `INTERNAL_SERVICE_KEY` configured every call gets 403 |
@@ -311,7 +311,7 @@ Confirmed arrangements are not clearance to proceed:
 
 ## Change requests (SPM-106)
 
-`GET /events/changeable-fields` lists what an organiser can ask to change: `eventName`, `description`, `purpose`, `category`, `proposedStartAt`, `proposedEndAt`, `expectedAttendance`, `layoutPreference`, `accessibilityNeeds`, `equipmentRequirements`.
+`GET /events/changeable-fields` lists what an organiser can ask to change: `eventName`, `description`, `purpose`, `category`, `proposedStartAt`, `proposedEndAt`, `expectedAttendance`, `layoutPreference`, `accessibilityNeeds`, `equipmentRequirements`, and `equipmentLines` (SPM-85: `[{"equipmentId": "eq1", "quantity": 5}]`, a whole number of at least 1 each; only a change request can alter them, not `PATCH /events/{id}`).
 
 `POST /events/{id}/change-requests` with `{"reason": "Client wants a dinner", "proposedChanges": {"layoutPreference": "Banquet"}}` raises a request (201). Who can raise one:
 
@@ -324,10 +324,25 @@ The reason is required (422). Proposed values follow the same rules as `PATCH /e
 `GET /events/{id}/change-requests` lists requests newest first. Organisers see them for their own organisation's events, staff for any event; attendees get 403.
 
 - `POST …/{crid}/withdraw`: the organiser who raised a pending request takes it back (`withdrawn`). The coordinator is emailed.
-- `POST …/{crid}/decline` with `{"reason": "Keep the original copy"}`: the assigned coordinator says no. The reason is required, and the event is unchanged.
+- `GET …/{crid}/impact` (SPM-85): see [Reviewing a change request](#reviewing-a-change-request-spm-85).
+- `POST …/{crid}/decline` with `{"reason": "Keep the original copy", "askNarrower": false}`: the assigned coordinator says no. The reason is required, and the event is unchanged. `askNarrower: true` (SPM-85 AC8) is how part of a request is agreed: it is still declined, nothing is applied, `narrowerRequested` is true, and the organiser is asked to raise a narrower request.
 - `POST …/{crid}/accept` with `{"reason": "", "confirmSignificantChange": false}`: the assigned coordinator applies the proposed values under the `PATCH /events/{id}` rules. A significant change on an event with confirmed arrangements, or on a confirmed event, returns the same 409 until `confirmSignificantChange` is true. Then the arrangements are flagged (listed in `flaggedArrangements`) and a confirmed event becomes `reconsidering`. Accepting a new date or time tells every registered attendee after the save commits (SPM-86). Values that can no longer be applied are 422.
 
-After accepting or declining, the organiser who raised the request is emailed and notified in-app (`event.change_request`), with the coordinator's reason. Closing a request that is no longer pending is 409. `reviewedBy` and `reviewedAt` say who closed it and when.
+After accepting or declining, the organiser who raised the request is emailed and notified in-app (`event.change_request`), with the coordinator's reason, each arrangement an accepted change flagged for re-checking, and any request for a narrower change. Closing a request that is no longer pending is 409. `reviewedBy` and `reviewedAt` say who closed it and when. The decision is written to `GET /events/{id}/activity-log` as a `kind: "change_request"` entry: `decision` (`accepted` or `declined`), `changes` (each field with `oldValue`, its value when the request was raised, and `newValue`, the value asked for), `changedBy` (the coordinator), `note` (their reason), and `createdAt`. An accepted request's applied fields also appear as `edit` entries.
+
+### Reviewing a change request (SPM-85)
+
+`GET /events/{id}/change-requests/{crid}/impact` tells the assigned coordinator what accepting a pending request would affect. It changes nothing; a request that is no longer pending is 409, and an older one whose values cannot be applied is 422. Each part is read only when the request touches it:
+
+- `venueBookings`: the event's confirmed venue bookings, when the start, end, attendance, layout, or accessibility needs change.
+- `venueSuitability` (AC3): when the start, end, or layout changes, each booked venue's SPM-62 suitability check re-run at the proposed values, with its `verdict` and `reasons`. `null` when none of them changes; `[]` when nothing is booked.
+- `capacity` (AC4): when the attendance or layout changes, each booked venue's `capacity` in the layout the event would have (`layout` is `null` when the venue does not offer it, so its largest capacity applies), the `expectedAttendance`, and `overCapacity`.
+- `equipmentReservations`: reservations still holding stock, of every type when the event moves or its equipment notes change, otherwise only of the types whose quantity changes.
+- `equipmentAvailability` (AC5): for each type whose quantity rises, `currentQuantity`, `proposedQuantity`, `extraQuantity`, `freeQuantity` (free during the event's period, the proposed one if it moves), `heldQuantity` (already reserved for this event in that period), `available`, and `shortfall`.
+- `registrations`: the attendees currently registered, when the start, end, or attendance changes.
+- `unchecked`: the parts (`venue`, `equipment`, `registrations`) whose service could not be reached. Their lists are empty, not clear.
+
+The coordinator's page for this is `/app/events/{id}/change-requests/{crid}`, linked from the pending request on the event page.
 
 ## Editing an event (SPM-71)
 

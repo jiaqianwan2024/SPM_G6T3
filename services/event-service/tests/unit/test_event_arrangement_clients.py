@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -82,3 +83,58 @@ class TestArrangementClients(unittest.TestCase):
                 clients.flag_arrangements("e1", "Start moved", "Bearer token")
 
         self.assertEqual(ctx.exception.status_code, 503)
+
+
+class TestImpactClients(unittest.TestCase):
+    """SPM-85: the reads behind a change request's impact assessment."""
+
+    def test_confirmed_bookings_asks_for_the_events_approved_bookings(self):
+        stub, client = fake_client(reply(200, [BOOKING]))
+        with stub:
+            self.assertEqual(clients.confirmed_bookings("e1", "Bearer token"), [BOOKING])
+
+        request = client.__enter__.return_value.request.call_args
+        self.assertTrue(request.args[1].endswith("/venues/bookings"))
+        self.assertEqual(request.kwargs["params"], {"eventId": "e1", "status": "approved"})
+
+    def test_venue_suitability_sends_the_proposed_values_for_one_venue(self):
+        verdict = {"eventId": "e1", "venueId": "v1", "verdict": "suitable", "reasons": []}
+        stub, client = fake_client(reply(200, verdict))
+        needs = {"startsAt": "2026-12-08T09:00:00", "endsAt": "2026-12-08T17:00:00", "layout": "Banquet", "expectedAttendance": 90}
+        with stub:
+            self.assertEqual(clients.venue_suitability("e1", "v1", needs, "Bearer token"), verdict)
+
+        request = client.__enter__.return_value.request.call_args
+        self.assertEqual(request.args[0], "POST")
+        self.assertTrue(request.args[1].endswith("/venues/suitability"))
+        self.assertEqual(request.kwargs["json"], {"eventId": "e1", "venueId": "v1", **needs})
+
+    def test_equipment_free_reads_the_quantity_free_in_the_period(self):
+        stub, client = fake_client(
+            reply(200, {"equipmentId": "eq1", "availableQuantity": 4, "serviceableQuantity": 6, "reservedQuantity": 2})
+        )
+        with stub:
+            free = clients.equipment_free("eq1", datetime(2026, 12, 1, 9), datetime(2026, 12, 1, 17), "Bearer token")
+
+        self.assertEqual(free, 4)
+        request = client.__enter__.return_value.request.call_args
+        self.assertTrue(request.args[1].endswith("/equipment/availability"))
+        self.assertEqual(
+            request.kwargs["json"],
+            {"equipmentId": "eq1", "startsAt": "2026-12-01T09:00:00", "endsAt": "2026-12-01T17:00:00"},
+        )
+
+    def test_a_failed_read_is_a_503_naming_the_assessment(self):
+        stub, _client = fake_client(reply(500, {}))
+        with stub, self.assertRaises(HTTPException) as ctx:
+            clients.confirmed_bookings("e1", None)
+
+        self.assertEqual(ctx.exception.status_code, 503)
+        self.assertEqual(ctx.exception.detail, clients.IMPACT_UNCHECKED)
+
+    def test_venue_capacity_in_a_layout_or_its_largest(self):
+        venue = {"capacity": 300, "layouts": [{"name": "Theatre", "capacity": 200}]}
+
+        self.assertEqual(clients.venue_capacity_in(venue, "theatre"), {"layout": "theatre", "capacity": 200})
+        self.assertEqual(clients.venue_capacity_in(venue, "Banquet"), {"layout": None, "capacity": 300})
+        self.assertEqual(clients.venue_capacity_in(venue, None), {"layout": None, "capacity": 300})

@@ -249,9 +249,10 @@ SPM-120, Week 7 change 6: the arrangements on their way to a Safety Officer, one
 | reviewed_by | VARCHAR(64) nullable | Who closed it: the deciding coordinator, or the organiser who withdrew |
 | reviewed_at | DATETIME nullable | When it was closed |
 | decision_reason | TEXT nullable | SPM-106: the coordinator's reason, shown to the organiser |
+| narrower_requested | BOOLEAN | SPM-85 AC8: declined with the organiser asked to raise a narrower request. Default false |
 | created_at | DATETIME | |
 
-**Change requests (SPM-106, `POST /events/{id}/change-requests`):** the organiser who filed the event, or a colleague in their organisation, can request a change while the event is `under review`, `changes requested`, `approved`, `planning`, `safety review`, `safety approved`, `preparing`, `prepared`, `confirmed`, or `reconsidering`. Drafts are edited directly, a `submitted` request has no coordinator yet, and finished events take none. Changeable fields are the name, description, purpose, category, start and end, expected attendance, layout, accessibility needs, and equipment requirements. Only fields whose proposed value differs are stored, and a reason is required. An event can have only one `pending` request. The event is untouched while one is pending. Only the organiser who raised a request can withdraw it. The assigned coordinator accepts or declines it; declining needs a reason. Accepting applies the proposed values with the SPM-71 edit rules, which write `event_field_changes`, flag arrangements, and move a confirmed event to `reconsidering`. The `0005` migration added `current_values` and `decision_reason`.
+**Change requests (SPM-106, `POST /events/{id}/change-requests`):** the organiser who filed the event, or a colleague in their organisation, can request a change while the event is `under review`, `changes requested`, `approved`, `planning`, `safety review`, `safety approved`, `preparing`, `prepared`, `confirmed`, or `reconsidering`. Drafts are edited directly, a `submitted` request has no coordinator yet, and finished events take none. Changeable fields are the name, description, purpose, category, start and end, expected attendance, layout, accessibility needs, equipment requirements, and equipment lines (SPM-85). Only fields whose proposed value differs are stored, and a reason is required. An event can have only one `pending` request. The event is untouched while one is pending. Only the organiser who raised a request can withdraw it. The assigned coordinator accepts or declines it; declining needs a reason. Accepting applies the proposed values with the SPM-71 edit rules, which write `event_field_changes`, flag arrangements, and move a confirmed event to `reconsidering`. The `0005` migration added `current_values` and `decision_reason`. SPM-85: before deciding, `GET /events/{id}/change-requests/{crid}/impact` reads the affected arrangements from venue-service, equipment-service, and registration-service without storing anything. A decided request is listed in the activity log as `kind: change_request`, built from this row. The `0015` migration added `narrower_requested`.
 
 ### event_status_history
 
@@ -676,6 +677,8 @@ erDiagram
     boolean affects_registration
     string reviewed_by FK
     datetime reviewed_at
+    text decision_reason
+    boolean narrower_requested
     datetime created_at
   }
 

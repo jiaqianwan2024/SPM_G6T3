@@ -35,7 +35,9 @@ from app.core.sgt import to_sgt
 from app.orchestration.clients import (
     affected_arrangements,
     booked_venue_capacities,
+    confirmed_bookings,
     current_registration_count,
+    equipment_free,
     equipment_names,
     event_bookings,
     equipment_requests_for,
@@ -43,6 +45,7 @@ from app.orchestration.clients import (
     flag_arrangements,
     flag_technical_arrangements,
     flag_venue_arrangements,
+    HOLDING_RESERVATION_STATUSES,
     list_users,
     organisation_names,
     preview_equipment_reschedule,
@@ -62,17 +65,22 @@ from app.orchestration.clients import (
     reschedule_venues,
     send_notification,
     users_with_roles,
+    venue_capacity_in,
     venue_details,
+    venue_suitability,
 )
 from app.schemas.event import (
     CHANGEABLE_FIELDS,
+    ActivityFieldChange,
     AffectedArrangement,
     ChangeableFieldsOut,
     ChangeRequestAccept,
     ChangeRequestCreate,
     check_registration_window,
     ChangeRequestDecline,
+    ChangeRequestImpactOut,
     ChangeRequestOut,
+    ChangeRequestUpdate,
     ClarificationCreate,
     ClarificationEntryOut,
     ClarificationOut,
@@ -99,6 +107,12 @@ from app.schemas.event import (
     RequirementOptionsOut,
     EventUpdate,
     EventUpdateOut,
+    ImpactBookingOut,
+    ImpactCapacityOut,
+    ImpactEquipmentOut,
+    ImpactRegistrationOut,
+    ImpactReservationOut,
+    ImpactSuitabilityOut,
     RegistrationAccessOut,
     RegistrationSettingsOut,
     RegistrationSettingsUpdate,
@@ -195,6 +209,10 @@ SIGNIFICANT_FIELDS = (
     "accessibilityNeeds",
     "equipmentRequirements",
 )
+# SPM-85 AC5: equipment lines only change through an accepted change request, never
+# a coordinator's edit, so they are not published with SPM-71's list. Changing them
+# can still invalidate an equipment reservation.
+SIGNIFICANT_ON_ACCEPT = SIGNIFICANT_FIELDS + ("equipmentLines",)
 FIELD_LABELS = {
     "eventName": "Name",
     "description": "Description",
@@ -208,6 +226,7 @@ FIELD_LABELS = {
     "layoutPreference": "Layout",
     "accessibilityNeeds": "Accessibility needs",
     "equipmentRequirements": "Equipment requirements",
+    "equipmentLines": "Equipment",
     # SPM-68: a clarification can name any field of the request.
     "venueRequirements": "Venue requirements",
     "registrationEnabled": "Registration",
@@ -263,7 +282,12 @@ CHANGE_REQUEST_STATUSES = (
 PENDING = "pending"
 # Which arrangements a change can unsettle, so the coordinator sees it at a glance.
 AFFECTS_VENUE = ("proposedStartAt", "proposedEndAt", "expectedAttendance", "layoutPreference", "accessibilityNeeds")
-AFFECTS_EQUIPMENT = ("proposedStartAt", "proposedEndAt", "equipmentRequirements")
+AFFECTS_EQUIPMENT = ("proposedStartAt", "proposedEndAt", "equipmentRequirements", "equipmentLines")
+SCHEDULE_FIELDS = ("proposedStartAt", "proposedEndAt")
+# SPM-85 AC3: a change to any of these re-runs each booked venue's suitability check.
+SUITABILITY_FIELDS = ("proposedStartAt", "proposedEndAt", "layoutPreference")
+# SPM-85 AC4: a change to either of these compares attendance with each booked venue's capacity.
+CAPACITY_FIELDS = ("expectedAttendance", "layoutPreference")
 AFFECTS_REGISTRATION = ("proposedStartAt", "proposedEndAt", "expectedAttendance")
 
 
@@ -273,7 +297,21 @@ def _as_text(value) -> str | None:
         return None
     if isinstance(value, datetime):
         return value.isoformat()
+    if isinstance(value, list):
+        return _lines_text(value)
     return str(value)
+
+
+def _lines_text(lines: list) -> str:
+    """Equipment lines as "2 x eq1, 1 x eq2", the way the event page lists them."""
+    return ", ".join(f"{line['quantity']} x {line['equipmentId']}" for line in lines) or "none"
+
+
+def _stored(event: Event, field: str):
+    """A field's value on the event, with equipment lines in the one shape every comparison uses."""
+    if field == "equipmentLines":
+        return _equipment_line_dicts(event.equipmentLines)
+    return getattr(event, field)
 
 
 def _json_value(value):
@@ -305,7 +343,43 @@ def _change_request_out(row: EventChangeRequest, flagged: list[dict] = ()) -> Ch
         reviewedBy=row.reviewedBy,
         reviewedAt=row.reviewedAt,
         decisionReason=row.decisionReason,
+        narrowerRequested=bool(row.narrowerRequested),
         flaggedArrangements=[AffectedArrangement(**arrangement) for arrangement in flagged],
+    )
+
+
+def _proposed_update(change_request: EventChangeRequest, **extra) -> ChangeRequestUpdate:
+    """A change request's proposed values as an edit. Older rows held free text
+    ("shifted earlier"), so values that no longer validate are a 422."""
+    try:
+        return ChangeRequestUpdate(**(change_request.proposedChanges or {}), **extra)
+    except ValidationError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="This request's proposed values cannot be applied. Decline it and ask for a new one.",
+        )
+
+
+def _decision_entry(row: EventChangeRequest) -> EventActivityOut:
+    """SPM-85 AC9: a decided change request in the activity log: the decision, each
+    field with its value when the request was raised and the value asked for, who
+    decided, and when. An accepted request's applied fields are also logged as edits."""
+    current = row.currentValues or {}
+    note = row.decisionReason or ""
+    if row.narrowerRequested:
+        note = f"{note} A narrower request was asked for.".strip()
+    return EventActivityOut(
+        historyId=row.changeRequestId,
+        eventId=row.eventId,
+        kind="change_request",
+        decision=row.status,
+        changes=[
+            ActivityFieldChange(field=field, oldValue=_as_text(current.get(field)), newValue=_as_text(value))
+            for field, value in (row.proposedChanges or {}).items()
+        ],
+        changedBy=row.reviewedBy,
+        note=note,
+        createdAt=row.reviewedAt,
     )
 
 
@@ -1169,8 +1243,8 @@ class EventService(BaseService):
     def get_activity_log(
         self, event_id: str, authorization: str | None = None, caller: dict | None = None
     ) -> list[EventActivityOut]:
-        """Status changes, field edits, and coordinator assignments, oldest
-        first. An edit or assignment and the status change it caused share a
+        """Status changes, field edits, coordinator assignments, reschedules,
+        and change request decisions, oldest first. An edit or assignment and the status change it caused share a
         timestamp, so the cause is listed first."""
         event = self._require_event(event_id)
         if caller is not None:
@@ -1232,8 +1306,14 @@ class EventService(BaseService):
             )
             for row in self.reschedule_dao.list_by_event(event_id)
         ]
+        decisions = [
+            _decision_entry(row)
+            for row in self.change_request_dao.list_by_event(event_id)
+            if row.status in ("accepted", "declined") and row.reviewedAt is not None and row.reviewedBy
+        ]
         return sorted(
-            assignments + edits + reschedules + changes, key=lambda entry: (entry.createdAt, entry.kind == "status")
+            assignments + edits + reschedules + decisions + changes,
+            key=lambda entry: (entry.createdAt, entry.kind == "status"),
         )
 
     @staticmethod
@@ -1286,11 +1366,10 @@ class EventService(BaseService):
         re-verification. The caller commits."""
         if event.status in LOCKED_STATUSES:
             raise conflict(f"This event is {event.status}, so it can no longer be edited")
-        changes = {
-            field: value
-            for field, value in data.changed_values().items()
-            if _differs(getattr(event, field), value)
-        }
+        values = data.changed_values()
+        if "equipmentLines" in values:
+            values["equipmentLines"] = _equipment_line_dicts(values["equipmentLines"])
+        changes = {field: value for field, value in values.items() if _differs(_stored(event, field), value)}
         start = changes.get("proposedStartAt", event.proposedStartAt)
         end = changes.get("proposedEndAt", event.proposedEndAt)
         if start and end and end <= start:
@@ -1301,7 +1380,7 @@ class EventService(BaseService):
         if not changes:
             return [], False
 
-        significant = [field for field in SIGNIFICANT_FIELDS if field in changes]
+        significant = [field for field in SIGNIFICANT_ON_ACCEPT if field in changes]
         flagged: list[dict] = []
         if significant:
             summary = self._change_summary(event, changes, significant)
@@ -1342,7 +1421,7 @@ class EventService(BaseService):
                     changeId=str(uuid4()),
                     eventId=event.eventId,
                     field=field,
-                    oldValue=_as_text(getattr(event, field)),
+                    oldValue=_as_text(_stored(event, field)),
                     newValue=_as_text(value),
                     changedBy=changed_by,
                     createdAt=now,
@@ -1748,10 +1827,13 @@ class EventService(BaseService):
             )
         if self.change_request_dao.has_with_status(event.eventId, PENDING):
             raise conflict("This event already has a pending change request. Withdraw it before requesting another.")
+        requested = dict(data.proposedChanges)
+        if "equipmentLines" in requested:
+            requested["equipmentLines"] = _equipment_line_dicts(requested["equipmentLines"])
         proposed = {
             field: value
-            for field, value in data.proposedChanges.items()
-            if _differs(_json_value(getattr(event, field)), value)
+            for field, value in requested.items()
+            if _differs(_json_value(_stored(event, field)), value)
         }
         if not proposed:
             raise HTTPException(
@@ -1769,7 +1851,7 @@ class EventService(BaseService):
             status=PENDING,
             summary=data.reason,
             proposedChanges=proposed,
-            currentValues={field: _json_value(getattr(event, field)) for field in proposed},
+            currentValues={field: _json_value(_stored(event, field)) for field in proposed},
             affectsVenue=any(field in proposed for field in AFFECTS_VENUE),
             affectsEquipment=any(field in proposed for field in AFFECTS_EQUIPMENT),
             affectsRegistration=any(field in proposed for field in AFFECTS_REGISTRATION),
@@ -1850,20 +1932,14 @@ class EventService(BaseService):
         significant change touching confirmed arrangements, or a confirmed
         event, is 409 until confirmed; then the arrangements are flagged for
         re-verification and a confirmed event becomes reconsidering. Every
-        applied field is logged. The organiser is told, with any reason."""
+        applied field is logged, and so is the decision (SPM-85 AC9). The
+        organiser is told, with any reason and each arrangement flagged
+        (SPM-85 AC6)."""
         event = self._require_event(event_id)
         _require_assigned_coordinator(event, coordinator_id, "accept a change request")
         change_request = self._require_change_request(event.eventId, change_request_id)
         self._require_pending(change_request)
-        try:
-            update = EventUpdate(
-                **(change_request.proposedChanges or {}), confirmSignificantChange=data.confirmSignificantChange
-            )
-        except ValidationError:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="This request's proposed values cannot be applied. Decline it and ask for a new one.",
-            )
+        update = _proposed_update(change_request, confirmSignificantChange=data.confirmSignificantChange)
         flagged, schedule_changed = self._apply_changes(event, update, coordinator_id, authorization)
         self._close_change_request(change_request, "accepted", coordinator_id, data.reason.strip() or None)
         self.db.commit()
@@ -1871,7 +1947,7 @@ class EventService(BaseService):
         self._publish_withdrawn_reviews(coordinator_id, authorization)
         if schedule_changed:
             self._tell_registered_attendees(event, "schedule", authorization)
-        self._notify_decision(event, change_request, authorization)
+        self._notify_decision(event, change_request, authorization, flagged)
         return _change_request_out(change_request, flagged)
 
     def decline_change_request(
@@ -1883,15 +1959,189 @@ class EventService(BaseService):
         authorization: str | None = None,
     ) -> ChangeRequestOut:
         """SPM-106 AC7: the assigned coordinator says no, with a reason the
-        organiser is told. The event is unchanged."""
+        organiser is told. The event is unchanged.
+
+        SPM-85 AC8: a request is never partly applied. To accept only some of
+        it, the coordinator declines it with `askNarrower`, and the organiser
+        is asked to raise a narrower one."""
         event = self._require_event(event_id)
         _require_assigned_coordinator(event, coordinator_id, "decline a change request")
         change_request = self._require_change_request(event.eventId, change_request_id)
         self._close_change_request(change_request, "declined", coordinator_id, data.reason)
+        change_request.narrowerRequested = data.askNarrower
         self.db.commit()
         self.db.refresh(change_request)
         self._notify_decision(event, change_request, authorization)
         return _change_request_out(change_request)
+
+    def assess_change_request(
+        self, event_id: str, change_request_id: str, coordinator_id: str, authorization: str | None = None
+    ) -> ChangeRequestImpactOut:
+        """SPM-85 AC2 to AC5: before deciding, what accepting a pending request
+        would unsettle. Each part is read only when the request touches it:
+        confirmed venue bookings, re-run suitability (AC3) and capacity (AC4);
+        equipment reservations and raised quantities (AC5); and current
+        registrations. A part that cannot be read is named in `unchecked`
+        instead of failing the rest. Nothing is changed."""
+        event = self._require_event(event_id)
+        _require_assigned_coordinator(event, coordinator_id, "assess a change request")
+        change_request = self._require_change_request(event.eventId, change_request_id)
+        self._require_pending(change_request)
+        proposed = _proposed_update(change_request).changed_values()
+        if "equipmentLines" in proposed:
+            proposed["equipmentLines"] = _equipment_line_dicts(proposed["equipmentLines"])
+        # The event as it would be once accepted.
+        after = {
+            field: proposed[field] if field in proposed else _stored(event, field)
+            for field in (*SCHEDULE_FIELDS, "layoutPreference", "expectedAttendance", "equipmentLines")
+        }
+        impact = ChangeRequestImpactOut(changeRequestId=change_request.changeRequestId, eventId=event.eventId)
+        parts = (
+            ("venue", AFFECTS_VENUE, self._venue_impact),
+            ("equipment", AFFECTS_EQUIPMENT, self._equipment_impact),
+            ("registrations", AFFECTS_REGISTRATION, self._registration_impact),
+        )
+        for part, fields, assess in parts:
+            if not any(field in proposed for field in fields):
+                continue
+            try:
+                found = assess(event, proposed, after, authorization)
+            except HTTPException as exc:
+                if exc.status_code != status.HTTP_503_SERVICE_UNAVAILABLE:
+                    raise
+                impact.unchecked.append(part)
+                continue
+            for name, value in found.items():
+                setattr(impact, name, value)
+        return impact
+
+    @staticmethod
+    def _venue_impact(event: Event, proposed: dict, after: dict, authorization: str | None) -> dict:
+        """SPM-85 AC2 to AC4 for each confirmed venue booking."""
+        bookings = confirmed_bookings(event.eventId, authorization)
+        venues = {row["venueId"]: venue_details(row["venueId"], authorization) for row in bookings}
+        found = {
+            "venueBookings": [
+                ImpactBookingOut(
+                    bookingId=row["bookingId"],
+                    venueId=row["venueId"],
+                    venueName=venues[row["venueId"]]["name"],
+                    startsAt=row["startsAt"],
+                    endsAt=row["endsAt"],
+                )
+                for row in bookings
+            ]
+        }
+        if any(field in proposed for field in SUITABILITY_FIELDS):
+            needs = {
+                "startsAt": _as_text(after["proposedStartAt"]),
+                "endsAt": _as_text(after["proposedEndAt"]),
+                "layout": after["layoutPreference"],
+                "expectedAttendance": after["expectedAttendance"],
+            }
+            suitability = []
+            for row in bookings:
+                checked = venue_suitability(event.eventId, row["venueId"], needs, authorization)
+                suitability.append(
+                    ImpactSuitabilityOut(
+                        bookingId=row["bookingId"],
+                        venueName=venues[row["venueId"]]["name"],
+                        verdict=checked["verdict"],
+                        reasons=[reason["message"] for reason in checked.get("reasons", [])],
+                    )
+                )
+            found["venueSuitability"] = suitability
+        if any(field in proposed for field in CAPACITY_FIELDS):
+            capacity = []
+            for row in bookings:
+                held = venue_capacity_in(venues[row["venueId"]], after["layoutPreference"])
+                capacity.append(
+                    ImpactCapacityOut(
+                        bookingId=row["bookingId"],
+                        venueName=venues[row["venueId"]]["name"],
+                        layout=held["layout"],
+                        capacity=held["capacity"],
+                        expectedAttendance=after["expectedAttendance"],
+                        overCapacity=after["expectedAttendance"] > held["capacity"],
+                    )
+                )
+            found["capacity"] = capacity
+        return found
+
+    @staticmethod
+    def _equipment_impact(event: Event, proposed: dict, after: dict, authorization: str | None) -> dict:
+        """SPM-85 AC2 and AC5. A move or new equipment notes touch every
+        reservation; new quantities touch only the types that change. A raised
+        quantity is available when the units free during the event's period,
+        plus those this event already holds then, cover it."""
+        names = equipment_names(authorization)
+        reservations = [
+            row
+            for row in equipment_reservations_for(event.eventId, authorization)
+            if row["status"] in HOLDING_RESERVATION_STATUSES
+        ]
+        current = {line["equipmentId"]: line["quantity"] for line in _stored(event, "equipmentLines")}
+        wanted = {line["equipmentId"]: line["quantity"] for line in after["equipmentLines"]}
+        if any(field in proposed for field in (*SCHEDULE_FIELDS, "equipmentRequirements")):
+            touched = reservations
+        else:
+            changed = {key for key in current.keys() | wanted.keys() if current.get(key) != wanted.get(key)}
+            touched = [row for row in reservations if row["equipmentId"] in changed]
+
+        def name_of(equipment_id: str, row: dict | None = None) -> str:
+            return (row or {}).get("equipmentName") or names.get(equipment_id) or equipment_id
+
+        found = {
+            "equipmentReservations": [
+                ImpactReservationOut(
+                    reservationId=row["reservationId"],
+                    equipmentId=row["equipmentId"],
+                    equipmentName=name_of(row["equipmentId"], row),
+                    quantity=row["quantity"],
+                )
+                for row in touched
+            ]
+        }
+        raised = [(key, quantity) for key, quantity in wanted.items() if quantity > current.get(key, 0)]
+        if raised:
+            start, end = after["proposedStartAt"], after["proposedEndAt"]
+            availability = []
+            for equipment_id, quantity in raised:
+                held = sum(
+                    row["quantity"]
+                    for row in reservations
+                    if row["equipmentId"] == equipment_id
+                    and _naive_utc(datetime.fromisoformat(row["startsAt"])) < end
+                    and _naive_utc(datetime.fromisoformat(row["endsAt"])) > start
+                )
+                free = equipment_free(equipment_id, start, end, authorization)
+                availability.append(
+                    ImpactEquipmentOut(
+                        equipmentId=equipment_id,
+                        equipmentName=name_of(equipment_id),
+                        currentQuantity=current.get(equipment_id, 0),
+                        proposedQuantity=quantity,
+                        extraQuantity=quantity - current.get(equipment_id, 0),
+                        heldQuantity=held,
+                        freeQuantity=free,
+                        available=free + held >= quantity,
+                        shortfall=max(quantity - free - held, 0),
+                    )
+                )
+            found["equipmentAvailability"] = availability
+        return found
+
+    @staticmethod
+    def _registration_impact(event: Event, proposed: dict, after: dict, authorization: str | None) -> dict:
+        """SPM-85 AC2: the attendees currently registered."""
+        return {
+            "registrations": [
+                ImpactRegistrationOut(
+                    userId=row.get("userId"), attendeeName=row["attendeeName"], attendeeEmail=row["attendeeEmail"]
+                )
+                for row in registered_attendees(event.eventId, authorization)
+            ]
+        }
 
     def _require_change_request(self, event_id: str, change_request_id: str) -> EventChangeRequest:
         return self._require(
@@ -1912,8 +2162,12 @@ class EventService(BaseService):
         change_request.reviewedAt = datetime.utcnow()
         change_request.decisionReason = reason
 
-    def _notify_decision(self, event: Event, change_request: EventChangeRequest, authorization: str | None) -> None:
-        """SPM-106 AC7: email and in-app notice to whoever raised it. Best effort."""
+    def _notify_decision(
+        self, event: Event, change_request: EventChangeRequest, authorization: str | None, flagged: list[dict] = ()
+    ) -> None:
+        """SPM-106 AC7: email and in-app notice to whoever raised it, naming
+        each arrangement an accepted change flagged (SPM-85 AC6) or asking for
+        a narrower request (SPM-85 AC8). Best effort."""
         outcome = change_request.status
         title = f"Your change request for {event.eventName} was {outcome}"
         body = (
@@ -1924,6 +2178,10 @@ class EventService(BaseService):
             body += f" Reason: {change_request.decisionReason}"
         if outcome == "accepted":
             body += " The event now shows the new details."
+        if flagged:
+            body += " These arrangements will be re-checked: " + "; ".join(row["summary"] for row in flagged) + "."
+        if change_request.narrowerRequested:
+            body += " Your coordinator could accept part of it: please raise a new request with only that part."
         requester = self._recipient(self._directory(authorization), change_request.requestedBy, event)
         if requester is not None:
             send_notification(requester["email"], title, body, authorization)

@@ -31,14 +31,17 @@ test.describe('SPM-85 Review and decide a change request', () => {
     await expect(panel.getByTestId('change-current')).toBeVisible()
     await expect(panel.getByTestId('change-proposed')).toBeVisible()
     await expect(panel).toContainText(/New AV change|reason/i)
+    await expect(page.getByTestId('change-request-impact')).toBeVisible()
   })
 
   test('TC-SPM85-AC02 before deciding, the coordinator sees an impact assessment of venue, equipment, and registration', async () => {
     const impact = await eventApi('GET', '/e1/change-requests/cr-new/impact', 'EC-01')
     expect(impact.status).toBe(200)
-    expect(JSON.stringify(impact.body)).toMatch(/venue|booking|v1|Marina/i)
-    expect(JSON.stringify(impact.body)).toMatch(/equipment|reservation|eq/i)
-    expect(JSON.stringify(impact.body)).toMatch(/registration|attendee/i)
+    expect(Array.isArray(impact.body.venueBookings)).toBe(true)
+    expect(Array.isArray(impact.body.equipmentReservations)).toBe(true)
+    expect(Array.isArray(impact.body.registrations)).toBe(true)
+    // cr-new only changes the equipment notes, so the equipment part is read and nothing is left unchecked.
+    expect(impact.body.unchecked).toEqual([])
   })
 
   test('TC-SPM85-AC03 a date, time, or layout change re-runs venue suitability and shows the verdict', async () => {
@@ -52,7 +55,11 @@ test.describe('SPM-85 Review and decide a change request', () => {
       'EC-01',
     )
     expect(impact.status).toBe(200)
-    expect(impact.body.venueSuitability || impact.body.suitabilityVerdict).toBeTruthy()
+    // Re-run for every booked venue: a list (empty when nothing is booked yet), never null.
+    expect(Array.isArray(impact.body.venueSuitability)).toBe(true)
+    for (const row of impact.body.venueSuitability) {
+      expect(['suitable', 'suitable with warnings', 'not suitable']).toContain(row.verdict)
+    }
   })
 
   test('TC-SPM85-AC04 raising attendance above booked layout capacity names both figures', async () => {
@@ -65,7 +72,11 @@ test.describe('SPM-85 Review and decide a change request', () => {
       'EC-01',
     )
     expect(impact.status).toBe(200)
-    expect(JSON.stringify(impact.body)).toMatch(/500|capacity|attendance/)
+    expect(Array.isArray(impact.body.capacity)).toBe(true)
+    for (const row of impact.body.capacity) {
+      expect(row.expectedAttendance).toBe(500)
+      expect(row.overCapacity).toBe(500 > row.capacity)
+    }
   })
 
   test('TC-SPM85-AC05 raising an equipment quantity reports whether the extra units are available', async () => {
@@ -79,7 +90,10 @@ test.describe('SPM-85 Review and decide a change request', () => {
       'EC-01',
     )
     expect(impact.status).toBe(200)
-    expect(JSON.stringify(impact.body)).toMatch(/available|shortfall|equipment/i)
+    const [line] = impact.body.equipmentAvailability
+    expect(line).toMatchObject({ equipmentId: 'eq1', currentQuantity: 0, proposedQuantity: 20, extraQuantity: 20 })
+    expect(line.available).toBe(line.shortfall === 0)
+    expect(line.shortfall).toBe(Math.max(20 - line.freeQuantity - line.heldQuantity, 0))
   })
 
   test('TC-SPM85-AC06 accepting applies the proposed values, records the decision, and notifies the organiser', async ({
@@ -140,10 +154,15 @@ test.describe('SPM-85 Review and decide a change request', () => {
       { reason: 'Please raise attendance only; name stays.', askNarrower: true },
     )
     expect(declined.status).toBe(200)
+    expect(declined.body).toMatchObject({ status: 'declined', narrowerRequested: true })
     const stored = await eventApi('GET', `/${event.eventId}`, 'EC-01')
     expect(stored.body.eventName).not.toBe('New name')
     expect(stored.body.expectedAttendance).not.toBe(200)
-    expect(declined.body.partialApply).toBeFalsy()
+    const narrower = await raiseChangeRequest(event.eventId, 'EO-01', {
+      reason: 'AUTO-SPM85 narrower',
+      proposedChanges: { expectedAttendance: 200 },
+    })
+    expect(narrower.status).toBe(201)
   })
 
   test('TC-SPM85-AC09 the decision, fields, previous and new values, decider, and time are in the activity log', async () => {
@@ -157,7 +176,11 @@ test.describe('SPM-85 Review and decide a change request', () => {
     )
     const log = await eventApi('GET', `/${event.eventId}/activity-log`, 'EC-01')
     expect(log.status).toBe(200)
-    expect(JSON.stringify(log.body)).toMatch(/purpose|Logged purpose|u2/)
-    expect(JSON.stringify(log.body)).toMatch(/previous|old|new/)
+    const decision = log.body.find((entry) => entry.kind === 'change_request')
+    expect(decision).toMatchObject({ decision: 'accepted', changedBy: 'u2' })
+    expect(decision.createdAt).toBeTruthy()
+    expect(decision.changes).toEqual([
+      { field: 'purpose', oldValue: 'Acceptance test event.', newValue: 'Logged purpose' },
+    ])
   })
 })
