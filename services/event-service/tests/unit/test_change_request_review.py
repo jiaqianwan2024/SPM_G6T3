@@ -10,7 +10,7 @@ from app.main import app
 from app.models.event_field_change import EventFieldChange
 from app.schemas.event import ChangeRequestCreate, ChangeRequestDecline
 from shared.auth.deps import require_authenticated_user
-from shared.exceptions.http import service_unavailable
+from shared.exceptions.http import forbidden, service_unavailable
 from shared.testing.cases import ServiceTestCase
 from tests.unit.support import insert_event
 from tests.unit.test_event_change_requests import (
@@ -161,6 +161,15 @@ class TestImpactAssessment(ReviewCase):
         self.assertEqual((impact.venueBookings, impact.venueSuitability), ([], None))
         self.assertEqual([row.reservationId for row in impact.equipmentReservations], ["rsv-1"])
         self.assertEqual(len(impact.registrations), 1)
+
+    def test_any_other_refusal_is_passed_on_rather_than_called_unchecked(self):
+        self.clients["bookings"].side_effect = forbidden("Not your event")
+        self.event()
+        raised = self.raise_(proposedStartAt=START + timedelta(hours=1))
+
+        error = self.refused(self.assess, raised.changeRequestId)
+
+        self.assertEqual((error.status_code, error.detail), (403, "Not your event"))
 
     def test_only_the_assigned_coordinator_and_only_while_pending(self):
         self.event()
