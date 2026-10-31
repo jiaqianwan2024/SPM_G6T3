@@ -23,12 +23,11 @@ test.describe('SPM-56 Event Organiser dashboard', () => {
     await expect(page.getByTestId('organiser-section-awaiting-review')).toContainText(/awaiting review/i)
     await expect(page.getByTestId('organiser-event-e6')).toBeVisible()
     await expect(page.getByTestId('organiser-event-e6')).toContainText('Unassigned Client Brief')
-    await expect(page.getByTestId('organiser-section-confirmed')).toBeVisible()
-    await expect(page.getByTestId('organiser-section-confirmed')).toContainText(/confirmed/i)
-    await expect(page.getByTestId('organiser-event-e1')).toBeVisible()
-    await expect(page.getByTestId('organiser-section-cancelled')).toBeVisible()
-    await expect(page.getByTestId('organiser-section-cancelled')).toContainText(/cancelled/i)
-    await expect(page.getByTestId('organiser-event-e8')).toBeVisible()
+    // Settled events (confirmed, cancelled) live under My Events, not on the dashboard.
+    await expect(page.getByTestId('organiser-section-confirmed')).toHaveCount(0)
+    await expect(page.getByTestId('organiser-section-cancelled')).toHaveCount(0)
+    await expect(page.getByTestId('organiser-event-e1')).toHaveCount(0)
+    await expect(page.getByTestId('organiser-event-e8')).toHaveCount(0)
     await expect(page.getByTestId('organiser-section-submitted')).toHaveCount(0)
     await expect(page.getByTestId('organiser-section-planning')).toHaveCount(0)
     const headings = page.locator('[data-testid^="organiser-section-"] h2, [data-testid^="organiser-section-"] h3')
@@ -44,15 +43,17 @@ test.describe('SPM-56 Event Organiser dashboard', () => {
     await expect(page.getByTestId('organiser-section-change-requests')).toBeVisible()
     const pending = page.getByTestId('organiser-change-pending')
     await expect(pending).toHaveCount(2)
-    await expect(pending).toContainText('New AV change')
-    await expect(pending).toContainText('Old date change')
+    await expect(pending.filter({ hasText: 'New AV change' })).toHaveCount(1)
+    await expect(pending.filter({ hasText: 'Old date change' })).toHaveCount(1)
     const outcomes = page.getByTestId('organiser-change-outcome')
-    await expect(outcomes.first()).toBeVisible()
-    await expect(outcomes).toContainText('Venue date moved')
+    await expect(outcomes.filter({ hasText: 'Venue date moved' }).first()).toBeVisible()
   })
 
-  test('TC-SPM56-AC04 confirmed upcoming events show venue, date, and time', async ({ page }) => {
+  test('TC-SPM56-AC04 confirmed events are listed under My Events with venue, date, and time', async ({
+    page,
+  }) => {
     await login(page, account('EO-01'))
+    await page.locator('.nav-item').getByText('My Events', { exact: true }).click()
     const item = page.getByTestId('organiser-event-e1')
     await expect(item).toBeVisible()
     await expect(item).toContainText('AI in Events Summit')
@@ -61,11 +62,10 @@ test.describe('SPM-56 Event Organiser dashboard', () => {
     await expect(item.getByTestId('organiser-event-e1-time')).toBeVisible()
   })
 
-  test('TC-SPM56-AC05 new event request is available from the dashboard', async ({ page }) => {
+  test('TC-SPM56-AC05 new event request is one click away from the dashboard', async ({ page }) => {
     await login(page, account('EO-01'))
-    const start = page.getByTestId('organiser-new-request')
-    await expect(start).toBeVisible()
-    await start.click()
+    await expect(page.getByTestId('organiser-new-request')).toHaveCount(0)
+    await page.locator('.nav-item').getByText('New Request', { exact: true }).click()
     await expect(page.locator('#eventName')).toBeVisible()
   })
 
@@ -73,6 +73,7 @@ test.describe('SPM-56 Event Organiser dashboard', () => {
     page,
   }) => {
     await login(page, account('EO-01'))
+    await page.locator('.nav-item').getByText('My Events', { exact: true }).click()
     await expect(page.getByTestId('organiser-event-e7')).toBeVisible()
     await expect(page.getByTestId('organiser-event-e7')).toContainText('Colleague Town Hall')
     await expect(page.getByTestId('organiser-event-e5')).toHaveCount(0)
@@ -97,8 +98,6 @@ test.describe('SPM-56 Event Organiser dashboard', () => {
     await login(page, account('EO-04'))
     await expect(page.getByTestId('organiser-needs-reply-empty')).toBeVisible()
     await expect(page.getByTestId('organiser-awaiting-review-empty')).toBeVisible()
-    await expect(page.getByTestId('organiser-confirmed-empty')).toBeVisible()
-    await expect(page.getByTestId('organiser-cancelled-empty')).toBeVisible()
     await expect(page.getByTestId('organiser-change-requests-empty')).toBeVisible()
     const firstRequest = page.getByTestId('organiser-empty-first-request')
     await expect(firstRequest).toBeVisible()

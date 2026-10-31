@@ -170,6 +170,8 @@ def _refresh_demo_windows(conn, now: datetime, day: timedelta) -> None:
         ("e2", now + 21 * day, timedelta(hours=4), now - 2 * day, now + 10 * day),
         ("e4", now + 45 * day, timedelta(hours=2), now + 2 * day, now + 20 * day),
     ]
+    # The organiser's list shows this as the event's location.
+    conn.execute(text("UPDATE events SET preferred_location = 'Marina Hall A' WHERE event_id = 'e1'"))
     for event_id, start, length, opens, closes in schedules:
         conn.execute(
             text(

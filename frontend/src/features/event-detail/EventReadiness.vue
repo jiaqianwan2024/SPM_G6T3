@@ -37,7 +37,7 @@
           </label>
           <label>
             Due (SGT)
-            <input v-model="draft.dueAt" type="datetime-local" data-testid="readiness-create-due" />
+            <input v-model="draft.dueAt" type="datetime-local" :min="sgtMinInput()" data-testid="readiness-create-due" />
           </label>
           <label class="wide">
             Note
@@ -167,7 +167,7 @@
           </label>
           <label>
             Due (SGT)
-            <input v-model="edit.dueAt" type="datetime-local" data-testid="readiness-edit-due" />
+            <input v-model="edit.dueAt" type="datetime-local" :min="sgtMinInput(toLocalInput(row.dueAt))" data-testid="readiness-edit-due" />
           </label>
           <label>
             Attachment name
@@ -221,7 +221,7 @@ import { getEventReservations } from '../../api/equipmentService.js'
 import { getUsers } from '../../api/userService.js'
 import { getVenueBookings } from '../../api/venueService.js'
 import { session } from '../../store/session.js'
-import { formatSgt, fromSgtInput, toSgtInput } from '../../utils/datetime.js'
+import { formatSgt, fromSgtInput, sgtMinInput, toSgtInput } from '../../utils/datetime.js'
 
 const STATUSES = ['outstanding', 'in_progress', 'confirmed']
 
@@ -289,7 +289,8 @@ function message(err, fallback) {
   return fallback
 }
 
-// Due dates are typed and shown in Singapore time, and sent as UTC.
+// Due dates are typed and shown in Singapore time, and sent as UTC. A new due date
+// starts at today; an existing one that has passed stays allowed when its line is edited.
 function toIso(value) {
   return fromSgtInput(value) || null
 }

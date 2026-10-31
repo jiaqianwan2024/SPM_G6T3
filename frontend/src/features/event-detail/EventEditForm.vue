@@ -61,11 +61,11 @@
         <div class="row">
           <div class="col">
             <label for="edit-start">Starts (SGT)</label>
-            <input id="edit-start" v-model="form.proposedStartAt" type="datetime-local" />
+            <input id="edit-start" v-model="form.proposedStartAt" type="datetime-local" :min="startMin" />
           </div>
           <div class="col">
             <label for="edit-end">Ends (SGT)</label>
-            <input id="edit-end" v-model="form.proposedEndAt" type="datetime-local" />
+            <input id="edit-end" v-model="form.proposedEndAt" type="datetime-local" :min="laterInput(endMin, form.proposedStartAt)" />
           </div>
         </div>
 
@@ -106,7 +106,7 @@ import { computed, reactive, ref } from 'vue'
 import { updateEvent } from '../../api/eventService.js'
 import { EVENT_CATEGORIES, LAYOUT_TYPES } from '../../config/eventFields.js'
 import { eventStatusLabel } from '../../config/eventStatus.js'
-import { fromSgtInput, toSgtInput } from '../../utils/datetime.js'
+import { fromSgtInput, laterInput, sgtMinInput, toSgtInput } from '../../utils/datetime.js'
 
 const props = defineProps({
   event: { type: Object, required: true },
@@ -140,6 +140,10 @@ const original = {
   equipmentRequirements: props.event.equipmentRequirements || '',
 }
 const form = reactive({ ...original })
+// A new date cannot be in the past. The saved one stays allowed, so an event that has
+// already started can still be edited without moving it.
+const startMin = sgtMinInput(original.proposedStartAt)
+const endMin = sgtMinInput(original.proposedEndAt)
 const saving = ref(false)
 const error = ref('')
 const pending = ref(null)
@@ -165,6 +169,7 @@ const hasChanges = computed(() => Object.keys(changes.value).length > 0)
 function validate() {
   if (!form.eventName) return 'Event name is required.'
   if (!form.proposedStartAt || !form.proposedEndAt) return 'Start and end are both required.'
+  if (form.proposedStartAt < startMin || form.proposedEndAt < endMin) return 'Pick dates from today onwards.'
   if (new Date(form.proposedEndAt) <= new Date(form.proposedStartAt)) return 'The end must be after the start.'
   if (!Number.isInteger(form.expectedAttendance) || form.expectedAttendance < 0) {
     return 'Enter an attendance of 0 or more.'

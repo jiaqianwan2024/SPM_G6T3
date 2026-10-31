@@ -30,6 +30,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `GET /events/mine` | `organiser`: their client organisation's events at any stage, colleagues' included, with only their own drafts and nothing discarded (SPM-47) |
 | `GET /events/{id}`, `/activity-log`, `/readiness`, `/readiness-items/{item}`; `GET /equipment/reservations/summary` | An `organiser` only for their own organisation's events, else 403 "You can only open your own organisation's events." (SPM-47); staff for any event. Event lists are limited to the organiser's organisation |
 | `GET /events/{id}/attendee-card` | Staff and organisers for any event; an `attendee` only for a `confirmed` event or one they hold a registration for (SPM-127), else 403. Public fields only, including `registrationEnabled` and the registration period |
+| `GET /registrations/counts?eventIds=e1,e2` | Registered attendees for several events in one call: `{"counts": {"e1": 2, "e2": 0}}`. event-service uses it for every event list, instead of one `/registrations/count` call per event |
 | `GET /registrations/mine/event-ids` | The signed-in user: ids of the events they hold a registration for (SPM-127). It never calls event-service, so the two services cannot loop |
 | `GET /users`; `GET /equipment`, `/equipment/{id}`, `/equipment/{id}/activity-log`, `/equipment/reservations/summary` | Any role except `attendee` (SPM-127, 403) |
 | `GET /events/upcoming/technical` | `techsupport` |
@@ -306,6 +307,8 @@ Confirmed arrangements are not clearance to proceed:
 - The safety review starts only after the arrangement check above passes.
 - The event becomes `confirmed`, and preparation can begin, only through `POST /events/{id}/confirm` after the Safety Officer approves.
 - While the review is pending, rejected, or returned for changes, Confirm returns 409 with a `safety` gap.
+
+`GET /events/mine/change-requests` (organiser only) returns the change requests on every event the organiser has, newest first, in one call. The dashboard uses it instead of asking event by event.
 
 `GET /events/mine` gives each of the organiser's events a `safetyReviewStatus`: the latest review's status (`pending`, `approved`, `rejected`, `changes_requested`, `superseded`), or `null` if the event was never submitted. The organiser's list uses it to show an event that is waiting on the review or was sent back with safety changes requested.
 

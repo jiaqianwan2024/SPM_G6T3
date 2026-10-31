@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
 
-// Carries "edit this draft" from DraftsList.vue to CreateEvent.vue, and
+// Carries "edit this draft" from MyEvents.vue to CreateEvent.vue, and
 // "is the New Request form dirty" from CreateEvent.vue to DashboardView.vue's
 // tab switcher — the two are siblings under a tab switcher, not a route, so
 // there's no navigation guard to hook; this is the same hand-rolled reactive

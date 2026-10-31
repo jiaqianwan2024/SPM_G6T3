@@ -1,35 +1,16 @@
 <template>
   <div class="organiser-dashboard">
-    <p v-if="loading" class="status-line">Loading your events…</p>
-    <UiAlert v-else-if="error" tone="danger">{{ error }}</UiAlert>
+    <p v-if="loading" class="status-line full">Loading your events…</p>
+    <UiAlert v-else-if="error" class="full" tone="danger">{{ error }}</UiAlert>
 
     <template v-else>
-      <div class="top">
-        <StatGrid class="stats">
-          <StatCard label="Needs your reply" :value="needsReply.length" hint="Open clarifications" />
-          <StatCard label="Awaiting review" :value="awaitingReview.length" />
-          <StatCard label="Confirmed" :value="confirmed.length" />
-          <StatCard label="Pending changes" :value="pendingChanges.length" />
-        </StatGrid>
-        <UiButton data-testid="organiser-new-request" @click="$emit('open-tab', 'New Request')">
-          New request
-        </UiButton>
-      </div>
-
-      <UiCard v-if="!events.length" class="first" data-testid="organiser-first-request-card">
-        <p class="first-title">Create your first request to get started.</p>
-        <p class="first-hint">Tell us what you're planning and a coordinator will pick it up.</p>
-        <UiButton data-testid="organiser-empty-first-request" @click="$emit('open-tab', 'New Request')">
-          Create your first request
-        </UiButton>
-      </UiCard>
-
       <SectionBlock title="Needs your reply" :count="needsReply.length" data-testid="organiser-section-needs-reply">
-        <UiEmptyState v-if="!needsReply.length" title="Nothing needs your reply"
-                      hint="When a coordinator asks a question, it shows up here first."
-                      data-testid="organiser-needs-reply-empty" />
+        <p v-if="extrasLoading" class="status-line">Checking for replies…</p>
+        <p v-else-if="!needsReply.length" class="quiet" data-testid="organiser-needs-reply-empty">
+          Nothing needs your reply. When a coordinator asks a question, it shows up here first.
+        </p>
         <ul v-else class="items">
-          <li v-for="item in needsReply" :key="item.event.eventId">
+          <li v-for="item in preview('reply', needsReply)" :key="item.event.eventId">
             <button type="button" class="item attention" :data-testid="`organiser-needs-reply-${item.event.eventId}`"
                     @click="open(item.event.eventId)">
               <span class="item-title">{{ item.event.eventName || 'Untitled event' }}</span>
@@ -40,123 +21,129 @@
             </button>
           </li>
         </ul>
+        <ShowMore v-if="!extrasLoading" :limit="PREVIEW_COUNT" label="replies" :total="needsReply.length" :open="expanded.reply" @toggle="toggle('reply')" />
       </SectionBlock>
 
-      <SectionBlock title="Awaiting review" :count="awaitingReview.length" data-testid="organiser-section-awaiting-review">
-        <UiEmptyState v-if="!awaitingReview.length" title="No requests awaiting review"
-                      hint="Submitted requests wait here until a coordinator decides."
-                      data-testid="organiser-awaiting-review-empty" />
-        <EventList v-else :events="awaitingReview" @open="open" />
-      </SectionBlock>
-
-      <SectionBlock v-if="inPreparation.length" title="In preparation" :count="inPreparation.length"
-                    data-testid="organiser-section-in-preparation">
-        <EventList :events="inPreparation" @open="open" />
-      </SectionBlock>
-
-      <SectionBlock title="Confirmed" :count="confirmed.length" data-testid="organiser-section-confirmed">
-        <UiEmptyState v-if="!confirmed.length" title="No confirmed events yet"
-                      hint="Once venue, equipment and safety are settled, your event appears here."
-                      data-testid="organiser-confirmed-empty" />
-        <EventList v-else :events="confirmed" @open="open" />
+      <SectionBlock v-if="needsAttention.length" title="Needs attention" :count="needsAttention.length"
+                    data-testid="organiser-section-needs-attention">
+        <EventList :events="preview('attention', needsAttention)" @open="open" />
+        <ShowMore :limit="PREVIEW_COUNT" label="events" :total="needsAttention.length" :open="expanded.attention" @toggle="toggle('attention')" />
       </SectionBlock>
 
       <SectionBlock title="Change requests" :count="pendingChanges.length" data-testid="organiser-section-change-requests">
-        <UiEmptyState v-if="!pendingChanges.length && !changeOutcomes.length" title="No change requests"
-                      hint="Ask for a change from an event's page once it is under review or confirmed."
-                      data-testid="organiser-change-requests-empty" />
-        <template v-else>
-          <h4 class="sub">Pending</h4>
-          <p v-if="!pendingChanges.length" class="muted">Nothing pending.</p>
-          <ul v-else class="items">
-            <li v-for="c in pendingChanges" :key="c.changeRequestId">
-              <button type="button" class="item" data-testid="organiser-change-pending" @click="open(c.eventId)">
-                <span class="item-title">{{ c.reason }}</span>
-                <span class="item-meta">{{ eventName(c.eventId) }} · waiting for the coordinator</span>
-              </button>
-            </li>
-          </ul>
-          <h4 class="sub">Recent outcomes</h4>
-          <p v-if="!changeOutcomes.length" class="muted">No decisions yet.</p>
-          <ul v-else class="items">
-            <li v-for="c in changeOutcomes" :key="c.changeRequestId">
-              <button type="button" class="item" data-testid="organiser-change-outcome" @click="open(c.eventId)">
-                <span class="item-title">{{ c.reason }}</span>
-                <span class="item-meta">
-                  {{ eventName(c.eventId) }} · {{ outcomeLabel(c.status) }}
-                  <template v-if="c.decisionReason"> — {{ c.decisionReason }}</template>
-                </span>
-              </button>
-            </li>
-          </ul>
-        </template>
+        <p v-if="extrasLoading" class="status-line">Checking for change requests…</p>
+        <p v-else-if="!pendingChanges.length && !changeOutcomes.length" class="quiet"
+           data-testid="organiser-change-requests-empty">
+          No change requests. Ask for a change from an event's page once it is under review or confirmed.
+        </p>
+        <ul v-else class="items">
+          <li v-for="c in pendingChanges" :key="c.changeRequestId">
+            <button type="button" class="item" data-testid="organiser-change-pending" @click="open(c.eventId)">
+              <span class="item-title">{{ c.reason }}</span>
+              <span class="item-meta">{{ eventName(c.eventId) }} · waiting for the coordinator</span>
+            </button>
+          </li>
+          <li v-for="c in preview('outcomes', changeOutcomes)" :key="c.changeRequestId">
+            <button type="button" class="item" data-testid="organiser-change-outcome" @click="open(c.eventId)">
+              <span class="item-title">{{ c.reason }}</span>
+              <span class="item-meta">
+                {{ eventName(c.eventId) }} · {{ outcomeLabel(c.status) }}
+                <template v-if="c.decisionReason"> — {{ c.decisionReason }}</template>
+              </span>
+            </button>
+          </li>
+        </ul>
+        <ShowMore v-if="!extrasLoading" :limit="PREVIEW_COUNT" :total="changeOutcomes.length" :open="expanded.outcomes" label="past decisions"
+                  @toggle="toggle('outcomes')" />
       </SectionBlock>
 
-      <SectionBlock title="Cancelled" :count="cancelled.length" data-testid="organiser-section-cancelled">
-        <UiEmptyState v-if="!cancelled.length" title="No cancelled events"
-                      data-testid="organiser-cancelled-empty" />
-        <EventList v-else :events="cancelled" @open="open" />
-      </SectionBlock>
-
-      <SectionBlock v-if="past.length" title="Completed or closed" :count="past.length"
-                    data-testid="organiser-section-past">
-        <EventList :events="past" @open="open" />
+      <SectionBlock title="Awaiting review" :count="awaitingReview.length" data-testid="organiser-section-awaiting-review">
+        <p v-if="extrasLoading && !awaitingReview.length" class="status-line">Loading requests…</p>
+        <UiEmptyState v-else-if="!awaitingReview.length && !events.length" title="No requests awaiting review"
+                      hint="Create your first request to get started."
+                      data-testid="organiser-awaiting-review-empty">
+          <UiButton data-testid="organiser-empty-first-request" @click="$emit('open-tab', 'New Request')">
+            Create your first request
+          </UiButton>
+        </UiEmptyState>
+        <p v-else-if="!awaitingReview.length" class="quiet" data-testid="organiser-awaiting-review-empty">
+          No requests awaiting review. Submitted requests wait here until a coordinator decides.
+        </p>
+        <EventList v-else :events="preview('awaiting', awaitingReview)" @open="open" />
+        <ShowMore :limit="PREVIEW_COUNT" label="requests" :total="awaitingReview.length" :open="expanded.awaiting" @toggle="toggle('awaiting')" />
       </SectionBlock>
     </template>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  getChangeRequests,
   getClarifications,
+  getMyChangeRequests,
   getMyEvents,
 } from '../../api/eventService.js'
-import { IN_REVIEW_EVENT_STATUSES } from '../../config/eventStatus.js'
+import { EVENT_STAGES } from '../../config/eventStatus.js'
 import SectionBlock from '../../components/layout/SectionBlock.vue'
-import StatCard from '../../components/layout/StatCard.vue'
-import StatGrid from '../../components/layout/StatGrid.vue'
 import UiAlert from '../../components/ui/UiAlert.vue'
 import UiButton from '../../components/ui/UiButton.vue'
-import UiCard from '../../components/ui/UiCard.vue'
 import UiEmptyState from '../../components/ui/UiEmptyState.vue'
 import EventList from './OrganiserEventList.vue'
+import ShowMore from './OrganiserShowMore.vue'
 
 defineEmits(['open-tab'])
 
 const router = useRouter()
 
-// Events in each group, by plain-language stage. "draft" lives on the Drafts tab.
-const AWAITING_STATUSES = ['submitted', 'under review', 'changes requested']
-const PREPARATION_STATUSES = ['approved', 'planning', 'safety review', 'safety approved', 'preparing', 'prepared']
-// A reconsidering event is still a confirmed one (see config/eventStatus.js).
-const CONFIRMED_STATUSES = ['confirmed', 'reconsidering']
-const PAST_STATUSES = ['completed', 'rejected']
+// Events in each group, by plain-language stage. "draft" lives under My Events.
+const stageStatuses = (key) => EVENT_STAGES.find((stage) => stage.key === key).statuses
+const AWAITING_STATUSES = stageStatuses('in-review')
+const PREPARATION_STATUSES = stageStatuses('in-preparation')
 
 const events = ref([])
 const clarifications = ref({}) // eventId -> open clarifications
 const changeRequests = ref([])
 const loading = ref(true)
+const extrasLoading = ref(true) // clarifications and change requests arrive after the event list
 const error = ref('')
 
+// The dashboard previews each list. Showing the rest is one click, so it never floods the page.
+const PREVIEW_COUNT = 3
+const expanded = reactive({ reply: false, attention: false, outcomes: false, awaiting: false })
+const toggle = (key) => { expanded[key] = !expanded[key] }
+const preview = (key, list) => (expanded[key] ? list : list.slice(0, PREVIEW_COUNT))
+
+const bySoonestStart = (a, b) => new Date(a.proposedStartAt || 8.64e15) - new Date(b.proposedStartAt || 8.64e15)
+
 const byStatus = (statuses) => events.value.filter((event) => statuses.includes(event.status))
-const startTime = (event) => new Date(event.proposedStartAt || 8.64e15).getTime()
+
+// A confirmed event whose arrangements are being reconsidered, and a rejected request
+// whose date has not passed: both are easy to miss from My Events alone.
+const needsAttention = computed(() => [
+  ...byStatus(['reconsidering']),
+  ...byStatus(['rejected']).filter((event) => !event.proposedStartAt || new Date(event.proposedStartAt) > new Date()),
+])
+
+// An open clarification on an event still in review or preparation is waiting on the organiser.
+// One on an event that has already left review (confirmed, closed) is not shown here.
+const awaitsReply = (event) =>
+  event.hasOpenClarifications && [...AWAITING_STATUSES, ...PREPARATION_STATUSES].includes(event.status)
 
 const needsReply = computed(() =>
-  byStatus(IN_REVIEW_EVENT_STATUSES)
+  events.value
     .map((event) => ({ event, clarifications: clarifications.value[event.eventId] || [] }))
     .filter((item) => item.clarifications.length),
 )
 const needsReplyIds = computed(() => new Set(needsReply.value.map((item) => item.event.eventId)))
+// Still being reviewed or prepared: one "Awaiting review" list, review stages first. An event with an
+// open clarification belongs under Needs your reply instead; until those threads load, the event's own
+// flag says which, so nothing jumps between the two lists.
 const awaitingReview = computed(() =>
-  byStatus(AWAITING_STATUSES).filter((event) => !needsReplyIds.value.has(event.eventId)),
+  [...byStatus(AWAITING_STATUSES), ...byStatus(PREPARATION_STATUSES)]
+    .filter((event) => (extrasLoading.value ? !awaitsReply(event) : !needsReplyIds.value.has(event.eventId)))
+    .sort(bySoonestStart),
 )
-const inPreparation = computed(() => byStatus(PREPARATION_STATUSES))
-const confirmed = computed(() => [...byStatus(CONFIRMED_STATUSES)].sort((a, b) => startTime(a) - startTime(b)))
-const cancelled = computed(() => byStatus(['cancelled']))
-const past = computed(() => byStatus(PAST_STATUSES))
 
 const pendingChanges = computed(() => changeRequests.value.filter((c) => c.status === 'pending'))
 const changeOutcomes = computed(() =>
@@ -176,19 +163,23 @@ function open(eventId) {
   router.push(`/app/events/${eventId}`)
 }
 
-// The two lookups are per event, so one slow or failed event doesn't blank the dashboard.
+// The event list shows as soon as it arrives. The clarification and change-request lookups fill in
+// afterwards, and a failed lookup doesn't blank the dashboard.
 async function load() {
   loading.value = true
+  extrasLoading.value = true
   error.value = ''
   try {
     const { data } = await getMyEvents()
     events.value = data
+    loading.value = false
 
-    const inReview = data.filter((event) => IN_REVIEW_EVENT_STATUSES.includes(event.status))
-    const changeable = data.filter((event) => event.status !== 'draft')
-    const [clarificationResults, changeResults] = await Promise.all([
+    // Only events that say they have an open clarification need their thread fetched, and all
+    // change requests come in one call, so the number of requests doesn't grow with the events.
+    const inReview = data.filter(awaitsReply)
+    const [clarificationResults, changeResult] = await Promise.all([
       Promise.allSettled(inReview.map((event) => getClarifications(event.eventId))),
-      Promise.allSettled(changeable.map((event) => getChangeRequests(event.eventId))),
+      getMyChangeRequests().catch(() => ({ data: [] })),
     ])
 
     const openByEvent = {}
@@ -198,11 +189,12 @@ async function load() {
       if (list.length) openByEvent[inReview[i].eventId] = list
     })
     clarifications.value = openByEvent
-    changeRequests.value = changeResults.flatMap((r) => (r.status === 'fulfilled' ? r.value.data : []))
+    changeRequests.value = changeResult.data
   } catch (err) {
     error.value = err.response?.data?.detail || 'Could not load your dashboard. Please try again.'
   } finally {
     loading.value = false
+    extrasLoading.value = false
   }
 }
 
@@ -210,23 +202,33 @@ onMounted(load)
 </script>
 
 <style scoped>
-.organiser-dashboard { display: flex; flex-direction: column; gap: var(--space-5); }
+/* One column on narrow screens; on wide ones the sections sit two abreast so no card
+   stretches across the whole page and no half of the page is left empty. */
+.organiser-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-5) var(--space-6);
+  /* Every card here, in either column and in OrganiserEventList, is this tall, so rows line up. */
+  --card-height: 84px;
+}
+@media (min-width: 1100px) {
+  .organiser-dashboard { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.full { grid-column: 1 / -1; }
 .status-line { margin: 0; color: var(--muted); font-size: var(--fs-sm); }
+.quiet { margin: 0; color: var(--muted); font-size: var(--fs-sm); }
 
-.top { display: flex; align-items: flex-start; gap: var(--space-5); flex-wrap: wrap; }
-.stats { flex: 1 1 520px; }
-
-.first { text-align: center; }
-.first-title { margin: 0; color: var(--text); font-size: var(--fs-lg); }
-.first-hint { margin: var(--space-2) 0 var(--space-4); color: var(--muted); font-size: var(--fs-sm); }
 
 .items { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
 .item {
   width: 100%;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: var(--space-1);
-  padding: var(--space-4) var(--space-5);
+  min-height: var(--card-height);
+  padding: var(--space-3) var(--space-5);
   text-align: left;
   font: inherit;
   color: var(--body);
@@ -242,7 +244,4 @@ onMounted(load)
 .item-title { color: var(--text); font-size: var(--fs-md); font-weight: 500; }
 .item-body { font-size: var(--fs-sm); }
 .item-meta { font-size: var(--fs-xs); color: var(--muted); }
-
-.sub { margin: var(--space-3) 0 var(--space-2); font-size: var(--fs-sm); font-weight: 500; color: var(--muted); }
-.muted { margin: 0 0 var(--space-3); font-size: var(--fs-sm); color: var(--muted); }
 </style>

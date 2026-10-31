@@ -8,6 +8,18 @@ class AttendeeRegistrationDAO(BaseDAO):
     def get(self, registration_id: str) -> AttendeeRegistration | None:
         return self.db.get(AttendeeRegistration, registration_id)
 
+    def registered_counts(self, event_ids: list[str]) -> dict[str, int]:
+        """Registered attendees per event in one query. Events with none are absent."""
+        if not event_ids:
+            return {}
+        rows = (
+            self.db.query(AttendeeRegistration.eventId, func.count(AttendeeRegistration.attendeeRegistrationId))
+            .filter(AttendeeRegistration.eventId.in_(event_ids), AttendeeRegistration.status == "registered")
+            .group_by(AttendeeRegistration.eventId)
+            .all()
+        )
+        return {event_id: count for event_id, count in rows}
+
     def list_for_event(self, event_id: str) -> list[AttendeeRegistration]:
         return (
             self.db.query(AttendeeRegistration)

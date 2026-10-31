@@ -1,25 +1,12 @@
 <template>
   <ul class="events">
     <li v-for="event in events" :key="event.eventId">
-      <button type="button" class="event" :data-testid="`organiser-event-${event.eventId}`"
+      <button type="button" class="event-row" :data-testid="`organiser-event-${event.eventId}`"
               @click="$emit('open', event.eventId)">
-        <span class="top">
-          <span class="name">{{ event.eventName || 'Untitled event' }}</span>
-          <StatusPill :status="event.status" :data-testid="`organiser-event-${event.eventId}-status`" />
-        </span>
-        <span class="facts">
-          <span>
-            <span class="label">Venue</span>
-            <span :data-testid="`organiser-event-${event.eventId}-venue`">{{ event.preferredLocation || '—' }}</span>
-          </span>
-          <span>
-            <span class="label">Date</span>
-            <span :data-testid="`organiser-event-${event.eventId}-date`">{{ eventDateLabel(event) }}</span>
-          </span>
-          <span>
-            <span class="label">Time</span>
-            <span :data-testid="`organiser-event-${event.eventId}-time`">{{ eventTimeLabel(event) }}</span>
-          </span>
+        <span class="name">{{ event.eventName || 'Untitled event' }}</span>
+        <span class="date" :data-testid="`organiser-event-${event.eventId}-date`">{{ eventDateLabel(event) }}</span>
+        <span class="status-pill" :data-testid="`organiser-event-${event.eventId}-status`">
+          {{ eventStatusLabel(event.status) }}
         </span>
       </button>
     </li>
@@ -27,21 +14,24 @@
 </template>
 
 <script setup>
-import StatusPill from '../../components/ui/StatusPill.vue'
-import { eventDateLabel, eventTimeLabel } from '../../utils/eventSchedule.js'
+import { eventStatusLabel } from '../../config/eventStatus.js'
+import { eventDateLabel } from '../../utils/eventSchedule.js'
 
 defineProps({ events: { type: Array, required: true } })
 defineEmits(['open'])
 </script>
 
 <style scoped>
+/* One line per event. The full card, with category, time and location, is under My Events. */
 .events { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
-.event {
+.event-row {
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: var(--card-height, auto);
+  padding: var(--space-3) var(--space-5);
   text-align: left;
   font: inherit;
   color: var(--body);
@@ -51,11 +41,33 @@ defineEmits(['open'])
   cursor: pointer;
   transition: border-color .3s var(--ease-out), background .3s var(--ease-out);
 }
-.event:hover { border-color: rgba(167, 139, 250, .4); background: var(--glass-strong); }
-.event:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
-.name { font: 500 var(--fs-lg) var(--font); color: var(--text); }
-.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-3); font-size: var(--fs-sm); }
-.facts > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.label { font-size: var(--fs-xs); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.event-row:hover { border-color: rgba(167, 139, 250, .35); background: var(--glass-strong); }
+.event-row:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--text);
+}
+.date { font-size: var(--fs-sm); color: var(--muted); white-space: nowrap; }
+.status-pill {
+  font-size: 11px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--halo);
+  background: rgba(124, 77, 255, .18);
+  border: 1px solid rgba(167, 139, 250, .3);
+  border-radius: 999px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .event-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .date { grid-column: 1; grid-row: 2; }
+  .status-pill { grid-column: 2; grid-row: 1; }
+}
 </style>

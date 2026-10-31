@@ -122,7 +122,8 @@ def get_event_service(db: Session = Depends(get_db)) -> EventService:
     "",
     response_model=list[EventOut],
     summary="List events",
-    description="Every event, including rejected ones. `registeredCount` is fetched from registration-service.",
+    description="Every event, including rejected ones, except drafts. An organiser gets only their own "
+    "organisation's events (SPM-47, SPM-56). `registeredCount` is fetched from registration-service.",
 )
 def list_events(
     authorization: str | None = Depends(forwarded_bearer),
@@ -288,6 +289,22 @@ def list_my_events(
 
 
 @router.get(
+    "/mine/change-requests",
+    response_model=list[ChangeRequestOut],
+    summary="Change requests on my events",
+    description="SPM-56. Organiser only. Every change request on the events the caller's organisation can see, "
+    "newest first, in one call for the dashboard. The per-event list is `/events/{id}/change-requests`.",
+    responses=error_responses(403),
+)
+def list_my_change_requests(
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    organiser = current_organiser(authorization)
+    return service.list_my_change_requests(organiser["userId"], organiser.get("organisationId"))
+
+
+@router.get(
     "/assigned",
     response_model=list[EventOut],
     summary="My assigned events",
@@ -422,8 +439,9 @@ def get_open_for_registration(
     "/{event_id}",
     response_model=EventOut,
     summary="Get event",
-    description="Single event plus live `registeredCount` from registration-service.",
-    responses=error_responses(404),
+    description="Single event plus live `registeredCount` from registration-service. An organiser can open "
+    "only their own organisation's events (403 otherwise, SPM-47). Attendees get 403.",
+    responses=error_responses(403, 404),
 )
 def get_event(
     event_id: str = Path(..., description="Event id, e.g. `e1`."),

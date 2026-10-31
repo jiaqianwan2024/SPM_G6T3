@@ -124,6 +124,7 @@ export const updateRegistrationSettings = (eventId, settings, confirmations = {}
 // SPM-106: change requests, newest first, each with { status, reason,
 // proposedChanges, currentValues, decisionReason }. Organisers (their
 // organisation's events) and staff only.
+export const getMyChangeRequests = () => axiosClient.get("/events/mine/change-requests");
 export const getChangeRequests = (eventId) => axiosClient.get(`/events/${eventId}/change-requests`);
 
 // Organiser only. proposedChanges maps field -> proposed value; a reason is required.

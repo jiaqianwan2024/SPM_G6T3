@@ -1,11 +1,73 @@
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 from app.core.config import settings
 from tests.unit.support import EventCase, draft_payload, event_create, insert_event
 
 
 class TestEventListings(EventCase):
+    def test_my_events_include_colleagues_submitted_events_but_not_their_drafts(self):
+        insert_event(self.db, eventId="e-mine", organiserId="u1", organisationId="org-1", status="confirmed")
+        insert_event(self.db, eventId="e-colleague", organiserId="u8", organisationId="org-1", status="confirmed")
+        insert_event(self.db, eventId="e-colleague-draft", organiserId="u8", organisationId="org-1", status="draft")
+        insert_event(self.db, eventId="e-foreign", organiserId="u7", organisationId="org-2", status="confirmed")
+
+        with_org = {row.eventId for row in self.service.list_my_events("u1", None, "org-1")}
+        without_org = {row.eventId for row in self.service.list_my_events("u1")}
+
+        self.assertEqual(with_org, {"e-mine", "e-colleague"})
+        self.assertEqual(without_org, {"e-mine"})
+
+    def test_the_full_list_for_an_organiser_stays_inside_their_organisation_and_has_no_drafts(self):
+        insert_event(self.db, eventId="e-mine", organiserId="u1", organisationId="org-1", status="confirmed")
+        insert_event(self.db, eventId="e-my-draft", organiserId="u1", organisationId="org-1", status="draft")
+        insert_event(self.db, eventId="e-colleague", organiserId="u8", organisationId="org-1", status="submitted")
+        insert_event(self.db, eventId="e-foreign", organiserId="u7", organisationId="org-2", status="confirmed")
+
+        caller = {"userId": "u1", "role": "organiser", "organisationId": "org-1"}
+        listed = {row.eventId for row in self.service.list_events(None, caller)}
+
+        self.assertEqual(listed, {"e-mine", "e-colleague"})
+
+    def test_an_organiser_can_open_only_their_own_organisations_event(self):
+        insert_event(self.db, eventId="e-own", organiserId="u1", organisationId="org-1", status="confirmed")
+        insert_event(self.db, eventId="e-foreign", organiserId="u7", organisationId="org-2", status="confirmed")
+        caller = {"userId": "u1", "role": "organiser", "organisationId": "org-1"}
+
+        self.assertEqual(self.service.get_event("e-own", None, caller).eventId, "e-own")
+        with self.assertRaises(HTTPException) as refused:
+            self.service.get_event("e-foreign", None, caller)
+        self.assertEqual(refused.exception.status_code, 403)
+        self.assertEqual(self.service.get_event("e-foreign", None, {"role": "coordinator"}).eventId, "e-foreign")
+
+    def test_a_list_reads_every_registration_count_in_one_call(self):
+        one = self.service.create_event(event_create(eventName="One"), "org-1", "o1")
+        two = self.service.create_event(event_create(eventName="Two"), "org-1", "o1")
+        batch = {one.eventId: 4, two.eventId: 0}
+        with (
+            patch("app.services.event_service.registration_counts", return_value=batch) as counts,
+            patch("app.services.event_service.registration_count") as single,
+        ):
+            rows = {row.eventId: row.registeredCount for row in self.service.list_my_events("org-1")}
+
+        self.assertEqual(rows[one.eventId], 4)
+        self.assertEqual(rows[two.eventId], 0)
+        counts.assert_called_once()
+        single.assert_not_called()
+
+    def test_a_list_falls_back_to_one_count_per_event_when_the_batch_fails(self):
+        event = self.service.create_event(event_create(eventName="Fallback"), "org-1", "o1")
+        with (
+            patch("app.services.event_service.registration_counts", return_value=None),
+            patch("app.services.event_service.registration_count", return_value=7) as single,
+        ):
+            rows = {row.eventId: row.registeredCount for row in self.service.list_my_events("org-1")}
+
+        self.assertEqual(rows[event.eventId], 7)
+        single.assert_called()
+
     def test_lists_filter_by_status_and_owner(self):
         submitted = self.service.create_event(event_create(eventName="Submitted"), "org-1", "o1")
         draft = self.service.create_draft(draft_payload(), "org-1", "o1")

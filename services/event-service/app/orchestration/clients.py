@@ -62,6 +62,33 @@ def registration_count(event_id: str, authorization: str | None = None) -> int:
     return 0
 
 
+def registration_counts(event_ids: list[str], authorization: str | None = None) -> dict[str, int] | None:
+    """Registered attendees for several events in ONE call (a list of events used to make one
+    call per event). None means the batch could not be read, so the caller can fall back to
+    per-event counts; the best-effort rule of registration_count() still applies there."""
+    if not event_ids:
+        return {}
+    start = time.perf_counter()
+    headers = {"Authorization": authorization} if authorization else {}
+    try:
+        response = _registration_client.get(
+            f"{settings.registration_service_url}/registrations/counts",
+            params={"eventIds": ",".join(event_ids)},
+            headers=headers,
+        )
+        if response.status_code == 200:
+            counts = response.json().get("counts", {})
+            return {event_id: int(counts.get(event_id, 0)) for event_id in event_ids}
+        logger.info("registration_counts got status %s", response.status_code)
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
+        logger.info("registration_counts raised %r", exc)
+    finally:
+        logger.info(
+            "registration_counts(%d events) took %.3fs", len(event_ids), time.perf_counter() - start
+        )
+    return None
+
+
 def organisation_names(authorization: str | None = None) -> dict[str, str]:
     """organisationId -> name, for display (e.g. the coordinator review queue).
 
