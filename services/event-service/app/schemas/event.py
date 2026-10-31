@@ -356,14 +356,22 @@ class ClarificationOut(BaseModel):
     )
 
 
+class ActivityFieldChange(BaseModel):
+    field: str
+    oldValue: str | None = None
+    newValue: str | None = None
+
+
 class EventActivityOut(BaseModel):
     """One activity-log entry: a status change, one field edited (SPM-71 AC5),
-    a coordinator assignment (SPM-66 AC4), or a reschedule (SPM-87 AC9: the old
-    and new period in `oldValue` and `newValue`, the reason in `note`)."""
+    a coordinator assignment (SPM-66 AC4), a reschedule (SPM-87 AC9: the old
+    and new period in `oldValue` and `newValue`, the reason in `note`), or a
+    change request decided (SPM-85 AC9: `decision`, each field in `changes`,
+    the coordinator's reason in `note`)."""
 
     historyId: str
     eventId: str
-    kind: Literal["status", "edit", "assignment", "reschedule"] = "status"
+    kind: Literal["status", "edit", "assignment", "reschedule", "change_request"] = "status"
     fromStatus: str | None = None
     toStatus: str | None = None
     field: str | None = Field(
@@ -377,6 +385,10 @@ class EventActivityOut(BaseModel):
     )
     changedBy: str
     note: str = ""
+    decision: Literal["accepted", "declined"] | None = Field(default=None, description="On `change_request` entries.")
+    changes: list[ActivityFieldChange] = Field(
+        default=[], description="On `change_request` entries: each field asked for, with its previous and proposed value."
+    )
     createdAt: datetime
 
 
@@ -658,12 +670,15 @@ CHANGEABLE_FIELDS = (
     "layoutPreference",
     "accessibilityNeeds",
     "equipmentRequirements",
+    # SPM-85 AC5: each equipment type with its quantity, so a raise can be checked against stock.
+    "equipmentLines",
 )
 
 
 class ChangeRequestCreate(BaseModel):
     """SPM-106 AC2: the fields to change with their proposed values, and why.
-    Proposed values follow the same rules as a coordinator's edit (SPM-71)."""
+    Proposed values follow the same rules as a coordinator's edit (SPM-71),
+    plus equipment lines, which only a change request can alter."""
 
     reason: str = Field(min_length=1, max_length=2000)
     proposedChanges: dict[str, Any] = Field(min_length=1, description="Field name -> proposed value.")
@@ -680,7 +695,7 @@ class ChangeRequestCreate(BaseModel):
         if unknown:
             raise ValueError(f"These fields cannot be changed by request: {', '.join(unknown)}")
         try:
-            update = EventUpdate(**value)
+            update = ChangeRequestUpdate(**value)
         except ValidationError as exc:
             raise ValueError("; ".join(f"{'.'.join(map(str, e['loc'])) or 'value'}: {e['msg']}" for e in exc.errors()))
         # Stored as JSON, so datetimes become ISO strings in naive UTC.
@@ -701,6 +716,11 @@ class ChangeRequestAccept(BaseModel):
 
 class ChangeRequestDecline(BaseModel):
     reason: str = Field(min_length=1, max_length=2000, description="Why the change was declined; shown to the organiser.")
+    askNarrower: bool = Field(
+        default=False,
+        description="SPM-85 AC8: the coordinator would accept part of the request. Nothing is applied; the "
+        "organiser is asked to raise a narrower one.",
+    )
 
     @field_validator("reason")
     @classmethod
@@ -726,6 +746,9 @@ class ChangeRequestOut(BaseModel):
     reviewedBy: str | None = Field(default=None, description="Who closed it: the deciding coordinator, or the organiser who withdrew.")
     reviewedAt: datetime | None = None
     decisionReason: str | None = None
+    narrowerRequested: bool = Field(
+        default=False, description="SPM-85 AC8: declined with a request for a narrower change."
+    )
     flaggedArrangements: list[AffectedArrangement] = Field(
         default=[], description="On accept: venue bookings and equipment reservations now marked for re-verification."
     )
@@ -746,6 +769,99 @@ class ChangeRequestOut(BaseModel):
                 "affectsRegistration": False,
             }
         }
+    )
+
+
+class ImpactBookingOut(BaseModel):
+    """SPM-85 AC2: a confirmed venue booking the change would affect."""
+
+    bookingId: str
+    venueId: str
+    venueName: str
+    startsAt: datetime
+    endsAt: datetime
+
+
+class ImpactSuitabilityOut(BaseModel):
+    """SPM-85 AC3: a booked venue's suitability check re-run against the proposed values."""
+
+    bookingId: str
+    venueName: str
+    verdict: Literal["suitable", "suitable with warnings", "not suitable"]
+    reasons: list[str] = Field(default=[], description="Failures first, then warnings.")
+
+
+class ImpactCapacityOut(BaseModel):
+    """SPM-85 AC4: a booked venue's capacity in the layout the event would have, against the attendance it would expect."""
+
+    bookingId: str
+    venueName: str
+    layout: str | None = Field(
+        description="The layout the capacity is for; null when the venue does not offer it, so its largest capacity applies."
+    )
+    capacity: int
+    expectedAttendance: int
+    overCapacity: bool
+
+
+class ImpactReservationOut(BaseModel):
+    """SPM-85 AC2: an equipment reservation the change would affect."""
+
+    reservationId: str
+    equipmentId: str
+    equipmentName: str
+    quantity: int
+
+
+class ImpactEquipmentOut(BaseModel):
+    """SPM-85 AC5: an equipment type whose quantity the request raises, and whether the extra can be had."""
+
+    equipmentId: str
+    equipmentName: str
+    currentQuantity: int
+    proposedQuantity: int
+    extraQuantity: int = Field(description="proposedQuantity - currentQuantity.")
+    heldQuantity: int = Field(
+        description="Units this event already reserves during its period (the proposed one if the request moves it)."
+    )
+    freeQuantity: int = Field(description="Units no reservation holds during that period.")
+    available: bool = Field(description="freeQuantity + heldQuantity covers proposedQuantity.")
+    shortfall: int = Field(description="Units still missing; 0 when available.")
+
+
+class ImpactRegistrationOut(BaseModel):
+    """SPM-85 AC2: a current registration the change would affect."""
+
+    userId: str | None = None
+    attendeeName: str
+    attendeeEmail: str
+
+
+class ChangeRequestImpactOut(BaseModel):
+    """SPM-85 AC2 to AC5: what accepting a pending change request would unsettle. Nothing is changed."""
+
+    changeRequestId: str
+    eventId: str
+    venueBookings: list[ImpactBookingOut] = Field(
+        default=[], description="Confirmed bookings, when the request changes the date, time, attendance, layout, or access."
+    )
+    venueSuitability: list[ImpactSuitabilityOut] | None = Field(
+        default=None, description="AC3: one per booked venue when the date, time, or layout changes; null otherwise."
+    )
+    capacity: list[ImpactCapacityOut] | None = Field(
+        default=None, description="AC4: one per booked venue when the attendance or layout changes; null otherwise."
+    )
+    equipmentReservations: list[ImpactReservationOut] = Field(
+        default=[], description="Reservations of the types the request changes, or all of them when it moves the event."
+    )
+    equipmentAvailability: list[ImpactEquipmentOut] | None = Field(
+        default=None, description="AC5: one per equipment type whose quantity rises; null when no quantity rises."
+    )
+    registrations: list[ImpactRegistrationOut] = Field(
+        default=[], description="Current registrations, when the request changes the date, time, or attendance."
+    )
+    unchecked: list[Literal["venue", "equipment", "registrations"]] = Field(
+        default=[], description="Parts that could not be read right now. Their lists are empty, not clear."
     )
 
 
@@ -980,6 +1096,14 @@ class EquipmentLineIn(BaseModel):
         if isinstance(value, bool) or isinstance(value, float):
             raise ValueError("quantity must be a whole number of at least 1")
         return value
+
+
+class ChangeRequestUpdate(EventUpdate):
+    """SPM-85 AC5: a change request's proposed values. On top of what the
+    coordinator can edit, an organiser can ask for different equipment
+    quantities; an empty list asks for no equipment."""
+
+    equipmentLines: list[EquipmentLineIn] = Field(default_factory=list)
 
 
 class OrganiserDraftPatch(BaseModel):

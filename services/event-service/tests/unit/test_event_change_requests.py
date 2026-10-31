@@ -177,6 +177,7 @@ class TestChangeableFields(ChangeRequestCase):
             [
                 "eventName", "description", "purpose", "category", "proposedStartAt", "proposedEndAt",
                 "expectedAttendance", "layoutPreference", "accessibilityNeeds", "equipmentRequirements",
+                "equipmentLines",
             ],
         )
 

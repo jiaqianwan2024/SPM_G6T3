@@ -22,6 +22,7 @@ from app.schemas.event import (
     ChangeRequestAccept,
     ChangeRequestCreate,
     ChangeRequestDecline,
+    ChangeRequestImpactOut,
     ChangeRequestOut,
     ClarificationCreate,
     ClarificationOut,
@@ -1051,6 +1052,28 @@ def withdraw_change_request(
     return service.withdraw_change_request(event_id, change_request_id, caller, authorization)
 
 
+@router.get(
+    "/{event_id}/change-requests/{change_request_id}/impact",
+    response_model=ChangeRequestImpactOut,
+    summary="Change request impact assessment",
+    description="Assigned coordinator only (SPM-85 AC2 to AC5), while the request is pending (409 after). Names the "
+    "confirmed venue bookings, equipment reservations, and registrations the change would affect; re-runs each "
+    "booked venue's suitability check when the date, time, or layout changes (`venueSuitability`); compares the "
+    "attendance with each booked venue's capacity in the layout (`capacity`); and says whether a raised equipment "
+    "quantity is available for the event's period (`equipmentAvailability`). A part that cannot be read right now "
+    "is listed in `unchecked`. Nothing is changed. 422 for an older request whose values cannot be applied.",
+    responses=error_responses(403, 404, 409, 422),
+)
+def assess_change_request(
+    event_id: str = Path(..., description="Event id, e.g. `e1`."),
+    change_request_id: str = Path(..., description="Change request id."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    return service.assess_change_request(event_id, change_request_id, caller["userId"], authorization)
+
+
 @router.post(
     "/{event_id}/change-requests/{change_request_id}/accept",
     response_model=ChangeRequestOut,
@@ -1077,7 +1100,8 @@ def accept_change_request(
     response_model=ChangeRequestOut,
     summary="Decline a change request",
     description="Assigned coordinator only (SPM-106 AC7). A reason is required; the organiser is notified "
-    "with it. The event is unchanged.",
+    "with it. The event is unchanged. To accept only part of a request, decline it with `askNarrower: true` and "
+    "the organiser is asked to raise a narrower one (SPM-85 AC8); nothing is ever partly applied.",
     responses=error_responses(403, 404, 409),
 )
 def decline_change_request(
@@ -1129,7 +1153,9 @@ def discard_event(
     response_model=list[EventActivityOut],
     summary="Event activity log",
     description="Every recorded status change (`kind: status`) and field edit (`kind: edit`, with the "
-    "field and its previous and new values) for this event, with who made it and when. Oldest first.",
+    "field and its previous and new values) for this event, with who made it and when. A decided change request "
+    "is a `kind: change_request` entry with the `decision`, each field's previous and proposed value in "
+    "`changes`, the deciding coordinator, and the time (SPM-85 AC9). Oldest first.",
     responses=error_responses(404),
 )
 def get_activity_log(

@@ -347,16 +347,59 @@ def booked_venue_capacities(event_id: str, layout: str | None, authorization: st
         venue = _arrangement_rows(
             "GET", f"{settings.venue_service_url}/venues/{booking['venueId']}", authorization, VENUE_UNREACHABLE
         )
-        by_layout = {row["name"].lower(): row["capacity"] for row in venue.get("layouts", [])}
-        in_layout = by_layout.get(layout.lower()) if layout else None
-        capacities.append(
-            {
-                "venueName": venue["name"],
-                "layout": layout if in_layout is not None else None,
-                "capacity": in_layout if in_layout is not None else venue["capacity"],
-            }
-        )
+        capacities.append({"venueName": venue["name"], **venue_capacity_in(venue, layout)})
     return capacities
+
+
+def venue_capacity_in(venue: dict, layout: str | None) -> dict:
+    """How many a venue holds in a layout, as {"layout", "capacity"}. Without a
+    layout, or one the venue does not offer, the venue's largest layout applies
+    (layout None), as in the suitability check (SPM-62)."""
+    by_layout = {row["name"].lower(): row["capacity"] for row in venue.get("layouts", [])}
+    in_layout = by_layout.get(layout.lower()) if layout else None
+    if in_layout is None:
+        return {"layout": None, "capacity": venue["capacity"]}
+    return {"layout": layout, "capacity": in_layout}
+
+
+# SPM-85: the impact assessment only reads, and each part says when it could not.
+IMPACT_UNCHECKED = "This part of the impact assessment could not be checked right now."
+
+
+def confirmed_bookings(event_id: str, authorization: str | None) -> list[dict]:
+    """SPM-85 AC2: the event's approved venue bookings."""
+    return _arrangement_rows(
+        "GET",
+        f"{settings.venue_service_url}/venues/bookings",
+        authorization,
+        IMPACT_UNCHECKED,
+        params={"eventId": event_id, "status": "approved"},
+    )
+
+
+def venue_suitability(event_id: str, venue_id: str, needs: dict, authorization: str | None) -> dict:
+    """SPM-85 AC3: the SPM-62 suitability check for one venue, with `needs`
+    (startsAt, endsAt, layout, expectedAttendance) standing in for the event's
+    own values. The event's own bookings never clash with it."""
+    return _arrangement_rows(
+        "POST",
+        f"{settings.venue_service_url}/venues/suitability",
+        authorization,
+        IMPACT_UNCHECKED,
+        json={"eventId": event_id, "venueId": venue_id, **needs},
+    )
+
+
+def equipment_free(equipment_id: str, starts_at: datetime, ends_at: datetime, authorization: str | None) -> int:
+    """SPM-85 AC5: serviceable units of a type that no reservation holds during the period."""
+    body = _arrangement_rows(
+        "POST",
+        f"{settings.equipment_service_url}/equipment/availability",
+        authorization,
+        IMPACT_UNCHECKED,
+        json={"equipmentId": equipment_id, "startsAt": starts_at.isoformat(), "endsAt": ends_at.isoformat()},
+    )
+    return int(body["availableQuantity"])
 
 
 # SPM-120: a safety review is only submitted once the venue and equipment it
