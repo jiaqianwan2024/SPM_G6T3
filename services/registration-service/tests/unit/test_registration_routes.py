@@ -73,6 +73,21 @@ class TestRegistrationRoutes(ServiceTestCase):
         app.dependency_overrides.clear()
         super().tearDown()
 
+    def test_counts_for_several_events_in_one_call(self):
+        make_window(self.db)
+        self.client.post(
+            "/registrations",
+            headers={"Authorization": "Bearer token"},
+            json={"eventId": "e1", "name": "Amy Wong", "email": "amy@example.com"},
+        )
+
+        counted = self.client.get("/registrations/counts", params={"eventIds": "e1, e2,e1"})
+        single = self.client.get("/registrations/count", params={"eventId": "e1"})
+
+        self.assertEqual(counted.status_code, 200)
+        self.assertEqual(counted.json(), {"counts": {"e1": single.json()["count"], "e2": 0}})
+        self.assertEqual(self.client.get("/registrations/counts", params={"eventIds": ""}).json(), {"counts": {}})
+
     def test_post_and_get_registrations(self):
         make_window(self.db)
 

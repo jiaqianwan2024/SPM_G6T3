@@ -168,6 +168,29 @@ class TestCurrentProposedAndReason(ChangeRequestCase):
         self.assertEqual(moved.currentValues["proposedStartAt"], "2026-12-01T09:00:00")
 
 
+class TestMyChangeRequests(ChangeRequestCase):
+    """SPM-56: the dashboard reads every change request of the organiser's events in one call."""
+
+    def test_lists_the_change_requests_on_the_callers_events_only(self):
+        self.event(event_id="e1")
+        self.event(event_id="e2")
+        self.event(event_id="e-other", organiserId="org-2")
+        self.raise_(event_id="e1", reason="First")
+        self.raise_(event_id="e2", reason="Second")
+        other = self.service.raise_change_request(
+            "e-other",
+            ChangeRequestCreate(reason="Not mine", proposedChanges={"description": "Updated"}),
+            {**ORGANISER, "organisationId": "org-2", "userId": "org-2"},
+            "Bearer token",
+        )
+
+        mine = self.service.list_my_change_requests("org-1")
+
+        self.assertEqual({row.eventId for row in mine}, {"e1", "e2"})
+        self.assertNotIn(other.changeRequestId, {row.changeRequestId for row in mine})
+        self.assertEqual(self.service.list_my_change_requests("nobody"), [])
+
+
 class TestChangeableFields(ChangeRequestCase):
     """AC3."""
 
@@ -517,3 +540,10 @@ class TestChangeRequestRoutes(ServiceTestCase):
         accepted = self.post(f"/{third}/accept", {})
         self.assertEqual((accepted.status_code, accepted.json()["status"]), (200, "accepted"))
         self.assertEqual(self.client.get("/events/e1", headers=HEADERS).json()["description"], "z")
+
+    def test_my_change_requests_route_lists_the_organisers_requests(self):
+        self.post("", {"reason": "Tweak", "proposedChanges": {"description": "x"}})
+        with patch("app.routers.event.current_organiser", return_value=ORGANISER):
+            mine = self.client.get("/events/mine/change-requests", headers=HEADERS)
+        self.assertEqual(mine.status_code, 200)
+        self.assertEqual([row["eventId"] for row in mine.json()], ["e1"])

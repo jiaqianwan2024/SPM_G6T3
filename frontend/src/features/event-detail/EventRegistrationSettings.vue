@@ -30,6 +30,7 @@
               id="registration-opens"
               v-model="form.registrationOpensAt"
               type="datetime-local"
+              :min="opensMin"
               :disabled="!canEdit"
               data-testid="registration-opens"
             />
@@ -40,6 +41,7 @@
               id="registration-closes"
               v-model="form.registrationClosesAt"
               type="datetime-local"
+              :min="laterInput(closesMin, form.registrationOpensAt)"
               :max="eventStartInput"
               :disabled="!canEdit"
               data-testid="registration-closes"
@@ -105,7 +107,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { getEvent, updateRegistrationSettings } from '../../api/eventService.js'
 import { REGISTRATION_SETUP_STATUSES } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
-import { formatSgt, fromSgtInput, toSgtInput } from '../../utils/datetime.js'
+import { formatSgt, fromSgtInput, laterInput, sgtMinInput, toSgtInput } from '../../utils/datetime.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -115,6 +117,9 @@ const loading = ref(true)
 const loadError = ref('')
 const form = reactive({ registrationEnabled: false, registrationOpensAt: '', registrationClosesAt: '', capacity: 0 })
 let original = {}
+// New dates start at today; a saved one that has passed (registration already open) stays allowed.
+const opensMin = ref(sgtMinInput())
+const closesMin = ref(sgtMinInput())
 const warnings = ref([])
 const saving = ref(false)
 const error = ref('')
@@ -157,6 +162,8 @@ function fill(data) {
     capacity: data.capacity ?? 0,
   })
   original = { ...form }
+  opensMin.value = sgtMinInput(form.registrationOpensAt)
+  closesMin.value = sgtMinInput(form.registrationClosesAt)
 }
 
 // Changed fields only, so an untouched date is never logged as edited. The
@@ -177,6 +184,9 @@ function validate() {
   const { registrationOpensAt: opens, registrationClosesAt: closes } = form
   // Like the server, only a period being changed is checked.
   if (opens === original.registrationOpensAt && closes === original.registrationClosesAt) return ''
+  if ((opens && opens < opensMin.value) || (closes && closes < closesMin.value)) {
+    return 'Pick registration dates from today onwards.'
+  }
   if (opens && closes && closes <= opens) return 'Registration must close after it opens.'
   if (closes && eventStartInput.value && closes > eventStartInput.value) {
     return 'Registration must close no later than the event starts.'

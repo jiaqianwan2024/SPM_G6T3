@@ -48,8 +48,11 @@
       <ReviewQueue v-else-if="activeTab === 'Review Queue'" />
       <CoordinatorAssignments v-else-if="activeTab === 'Assignments'" />
       <SafetyReviews v-else-if="activeTab === 'Safety Reviews'" />
-      <DraftsList v-else-if="activeTab === 'Drafts'" @edit-draft="activeTab = 'New Request'" />
-      <MyEvents v-else-if="activeTab === 'My Events'" @create="activeTab = 'New Request'" />
+      <MyEvents
+        v-else-if="activeTab === 'My Events'"
+        @create="activeTab = 'New Request'"
+        @edit-draft="activeTab = 'New Request'"
+      />
       <MyRegistrations v-else-if="activeTab === 'My Registrations'" />
 
       <div class="not-built" v-else>
@@ -83,7 +86,6 @@ import EquipmentCatalogue from '../features/equipment-catalogue/EquipmentCatalog
 import AssignedEvents from '../features/assigned-events/AssignedEvents.vue'
 import ReviewQueue from '../features/review-queue/ReviewQueue.vue'
 import CoordinatorAssignments from '../features/assignments/CoordinatorAssignments.vue'
-import DraftsList from '../features/drafts/DraftsList.vue'
 import MyEvents from '../features/my-events/MyEvents.vue'
 import MyRegistrations from '../features/my-registrations/MyRegistrations.vue'
 import SafetyDashboard from '../features/safety-reviews/SafetyDashboard.vue'

@@ -71,6 +71,7 @@
           :id="`change-${field}`"
           v-model="proposed[field]"
           type="datetime-local"
+          :min="field === 'proposedEndAt' ? laterInput(today, proposed.proposedStartAt) : today"
           :data-testid="`change-request-value-${field}`"
         />
         <input
@@ -181,7 +182,7 @@ import { getChangeRequests, raiseChangeRequest, withdrawChangeRequest } from '..
 import { CHANGEABLE_FIELDS, EVENT_CATEGORIES, LAYOUT_TYPES, fieldLabel } from '../../config/eventFields.js'
 import { CHANGE_REQUEST_STATUSES } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
-import { formatSgt, fromSgtInput, toSgtInput } from '../../utils/datetime.js'
+import { formatSgt, fromSgtInput, laterInput, sgtMinInput, toSgtInput } from '../../utils/datetime.js'
 import ChangeRequestDecision from './ChangeRequestDecision.vue'
 import { DATETIME_FIELDS as DATETIMES, errorText, formatChangeValue } from './changeRequestValues.js'
 
@@ -225,6 +226,8 @@ const showPanel = computed(
 
 // datetime-local inputs need "YYYY-MM-DDTHH:mm" in Singapore time; the API returns UTC ISO strings.
 const toInputDatetime = (iso) => toSgtInput(iso)
+// A proposed new date cannot be in the past.
+const today = sgtMinInput()
 
 const formatValue = (field, value) => formatChangeValue(field, value, equipmentNames.value)
 
@@ -287,6 +290,9 @@ function validate() {
   if (!Object.keys(proposed).length) return 'Choose at least one thing to change.'
   if (!reason.value.trim()) return 'Say why the change is needed.'
   if ('eventName' in proposed && !String(proposed.eventName).trim()) return 'The event needs a name.'
+  if (DATETIMES.some((field) => field in proposed && proposed[field] && proposed[field] < today)) {
+    return 'Pick dates from today onwards.'
+  }
   if ('expectedAttendance' in proposed && (!Number.isInteger(proposed.expectedAttendance) || proposed.expectedAttendance < 0)) {
     return 'Enter an attendance of 0 or more.'
   }

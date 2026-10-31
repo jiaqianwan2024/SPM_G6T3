@@ -2,7 +2,7 @@
 export const roles = {
   organiser: {
     label: 'Event Organiser',
-    tabs: ['Dashboard', 'My Events', 'New Request', 'Drafts'],
+    tabs: ['Dashboard', 'My Events', 'New Request'],
     cards: [
       { title: 'Drafts awaiting submission', sub: '3 requests saved but not yet sent' },
       { title: 'Pending coordinator review', sub: '2 requests under review' },
@@ -12,7 +12,7 @@ export const roles = {
   },
   coordinator: {
     label: 'Event Coordinator',
-    tabs: ['Dashboard', 'Assigned Events', 'Review Queue', 'Venue Catalogue', 'Venue Calendar', 'Venue Requests', 'Reports'],
+    tabs: ['Dashboard', 'Assigned Events', 'Review Queue', 'Venue Catalogue', 'Venue Calendar'],
     // The Dashboard tab is CoordinatorHome (own events, change requests, re-verification), not cards.
     cards: []
   },
@@ -44,7 +44,7 @@ export const roles = {
   },
   attendee: {
     label: 'Attendee',
-    tabs: ['Dashboard', 'Browse Events', 'My Registrations', 'Waiting List'],
+    tabs: ['Dashboard', 'Browse Events', 'My Registrations'],
     // The Dashboard tab is AttendeeHome (live registrations and open events), not cards.
     cards: []
   }

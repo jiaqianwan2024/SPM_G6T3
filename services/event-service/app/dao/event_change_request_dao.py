@@ -12,6 +12,17 @@ class EventChangeRequestDAO(BaseDAO):
             .all()
         )
 
+    def list_by_events(self, event_ids: list[str]) -> list[EventChangeRequest]:
+        """Newest first, across several events in one query."""
+        if not event_ids:
+            return []
+        return (
+            self.db.query(EventChangeRequest)
+            .filter(EventChangeRequest.eventId.in_(event_ids))
+            .order_by(EventChangeRequest.createdAt.desc())
+            .all()
+        )
+
     def get_for_event(self, event_id: str, change_request_id: str) -> EventChangeRequest | None:
         return (
             self.db.query(EventChangeRequest)

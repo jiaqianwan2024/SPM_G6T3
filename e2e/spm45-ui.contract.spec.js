@@ -50,7 +50,7 @@ test.describe('SPM-45 Role-Based Feature Access Control (UI)', () => {
     const event = await approvedEvent(THEATRE_EVENT)
     await login(page, account('EC-01'))
 
-    await expect(tab(page, 'Venue Requests')).toBeVisible()
+    await expect(tab(page, 'Venue Requests')).toHaveCount(0)
     await expect(tab(page, 'Booking Requests')).toHaveCount(0)
     await expect(tab(page, 'Assignments')).toHaveCount(0) // the Lead's tab (SPM-117)
 
