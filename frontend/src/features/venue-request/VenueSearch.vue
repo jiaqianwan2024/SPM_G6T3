@@ -6,11 +6,11 @@
     <div class="fields">
       <label>
         Starts (SGT)
-        <input v-model="startsAt" type="datetime-local" data-testid="venue-search-starts" />
+        <input v-model="startsAt" type="datetime-local" :min="today" data-testid="venue-search-starts" />
       </label>
       <label>
         Ends (SGT)
-        <input v-model="endsAt" type="datetime-local" data-testid="venue-search-ends" />
+        <input v-model="endsAt" type="datetime-local" :min="laterInput(today, startsAt)" data-testid="venue-search-ends" />
       </label>
       <label>
         Expected attendance
@@ -73,7 +73,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { fromSgtInput, toSgtInput } from '../../utils/datetime.js'
+import { fromSgtInput, laterInput, sgtMinInput, toSgtInput } from '../../utils/datetime.js'
 import { searchVenues } from '../../api/venueService.js'
 
 const props = defineProps({
@@ -87,6 +87,9 @@ const emit = defineEmits(['results'])
 function toInput(iso) {
   return toSgtInput(iso)
 }
+
+// A venue is booked for a time to come, so the search starts at today.
+const today = sgtMinInput()
 
 function toUtc(value) {
   return fromSgtInput(value) || undefined

@@ -36,12 +36,13 @@
           <div class="row">
             <div class="col">
               <label for="proposedStartAt">Starts (SGT) <span class="req">*</span></label>
-              <input id="proposedStartAt" v-model="form.proposedStartAt" type="datetime-local" />
+              <input id="proposedStartAt" v-model="form.proposedStartAt" type="datetime-local" :min="today" />
               <p v-if="submitted && !form.proposedStartAt" class="field-error">Start date is required.</p>
+              <p v-else-if="submitted && startInPast" class="field-error">Pick a start from today onwards.</p>
             </div>
             <div class="col">
               <label for="proposedEndAt">Ends (SGT) <span class="req">*</span></label>
-              <input id="proposedEndAt" v-model="form.proposedEndAt" type="datetime-local" />
+              <input id="proposedEndAt" v-model="form.proposedEndAt" type="datetime-local" :min="laterInput(today, form.proposedStartAt)" />
               <p v-if="submitted && !form.proposedEndAt" class="field-error">End date is required.</p>
               <p v-else-if="submitted && endBeforeStart" class="field-error">
                 End must be after the start.
@@ -101,16 +102,10 @@
               <p class="hint">
                 Optional. Leave anything blank and the coordinator will be told it is still to be set.
               </p>
-              <div class="row">
-                <div class="col">
-                  <label for="registrationOpensAt">Opens</label>
-                  <input id="registrationOpensAt" v-model="form.registrationOpensAt" type="datetime-local" data-testid="registration-opens" />
-                </div>
-                <div class="col">
-                  <label for="registrationClosesAt">Closes</label>
-                  <input id="registrationClosesAt" v-model="form.registrationClosesAt" type="datetime-local" data-testid="registration-closes" />
-                </div>
-              </div>
+              <label for="registrationOpensAt">Opens</label>
+              <input id="registrationOpensAt" v-model="form.registrationOpensAt" type="datetime-local" :min="today" data-testid="registration-opens" />
+              <label for="registrationClosesAt">Closes</label>
+              <input id="registrationClosesAt" v-model="form.registrationClosesAt" type="datetime-local" :min="laterInput(today, form.registrationOpensAt)" data-testid="registration-closes" />
               <p v-if="closeNotAfterOpen" class="field-error" data-testid="registration-close-error">
                 Registration must close after it opens.
               </p>
@@ -214,7 +209,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { createEvent, getEvent, getRequirementOptions, saveDraft, submitDraft, updateDraft } from '../../api/eventService.js'
 import { EVENT_CATEGORIES } from '../../config/eventFields.js'
 import { consumeEditingId, setDirty } from '../../store/draftEditor.js'
-import { fromSgtInput, toSgtInput } from '../../utils/datetime.js'
+import { fromSgtInput, laterInput, sgtMinInput, toSgtInput } from '../../utils/datetime.js'
 
 const categories = EVENT_CATEGORIES
 const layouts = ref(['No preference', 'Theatre', 'Boardroom', 'Classroom', 'Banquet'])
@@ -244,6 +239,9 @@ function blankForm() {
     capacity: null
   }
 }
+
+// A request cannot be for a date that has passed, so the pickers start at today.
+const today = sgtMinInput()
 
 // datetime-local inputs need "YYYY-MM-DDTHH:mm" in Singapore time; the API returns
 // UTC ISO strings (or null, for a draft that never got that far).
@@ -310,6 +308,8 @@ const endBeforeStart = computed(
     new Date(form.proposedEndAt) <= new Date(form.proposedStartAt)
 )
 
+const startInPast = computed(() => !!form.proposedStartAt && form.proposedStartAt < today)
+
 // SPM-81 AC4/AC5: mirrors the server's registration-period rules.
 const closeNotAfterOpen = computed(
   () =>
@@ -342,6 +342,7 @@ const isValid = computed(
     !!form.eventName &&
     !!form.proposedStartAt &&
     !!form.proposedEndAt &&
+    !startInPast.value &&
     !endBeforeStart.value &&
     isValidAttendance.value &&
     form.registrationEnabled !== null &&
@@ -570,6 +571,16 @@ onUnmounted(() => {
 .checks input { width: auto; height: auto; margin: 0; }
 .registration .wide { flex-basis: 100%; }
 .registration-details { flex-basis: 100%; }
+/* The details are ordinary stacked fields, not radio options: undo the .checks styling above. */
+.registration-details label {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.registration-details input { width: 100%; height: 42px; margin: 0 0 16px; }
 .registration-details .hint, .field-note { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
 .capacity-warning {
   font-size: 13px;

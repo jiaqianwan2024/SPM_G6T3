@@ -89,3 +89,7 @@ class RegistrationRosterOut(BaseModel):
 
 class RegistrationCountOut(BaseModel):
     count: int
+
+
+class RegistrationCountsOut(BaseModel):
+    counts: dict[str, int]

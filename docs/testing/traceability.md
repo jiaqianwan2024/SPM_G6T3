@@ -28,11 +28,11 @@
 | SPM-55 | Lists obey coordinator access rules | TC-SPM55-AC06 | `e2e/spm55.spec.js` | Automated |
 | SPM-55 | Empty states say there is nothing to do | TC-SPM55-AC07 | `e2e/spm55.spec.js` | Automated |
 | SPM-56 | Open clarifications shown first | TC-SPM56-AC01 | `e2e/spm56.spec.js` | Automated |
-| SPM-56 | Events grouped by plain-language stage | TC-SPM56-AC02 | `e2e/spm56.spec.js` | Automated |
+| SPM-56 | Events still in review or preparation grouped as Awaiting review; settled events are not on the dashboard | TC-SPM56-AC02 | `e2e/spm56.spec.js` | Automated |
 | SPM-56 | Pending change requests and outcomes | TC-SPM56-AC03 | `e2e/spm56.spec.js` | Automated |
-| SPM-56 | Confirmed events show venue, date, time | TC-SPM56-AC04 | `e2e/spm56.spec.js` | Automated |
-| SPM-56 | New event request from the dashboard | TC-SPM56-AC05 | `e2e/spm56.spec.js` | Automated |
-| SPM-56 | Org-scoped list including colleagues, server enforced | TC-SPM56-AC06 | `e2e/spm56.spec.js` | Automated |
+| SPM-56 | Confirmed events show venue, date, time (under My Events) | TC-SPM56-AC04 | `e2e/spm56.spec.js` | Automated |
+| SPM-56 | New event request one click from the dashboard (New Request tab) | TC-SPM56-AC05 | `e2e/spm56.spec.js` | Automated |
+| SPM-56 | Org-scoped list including colleagues, server enforced (checked under My Events) | TC-SPM56-AC06 | `e2e/spm56.spec.js` | Automated |
 | SPM-56 | Empty states and first-request prompt | TC-SPM56-AC07 | `e2e/spm56.spec.js` | Automated |
 | SPM-57 | Pending booking requests with event, requested venue, and requested date and time | TC-SPM57-AC01 | `e2e/spm57.spec.js`; `services/venue-service/tests/unit/test_venue_dashboard.py` | Automated (API and UI) |
 | SPM-57 | A long queue is grouped by venue; the venue, event name and event date filters narrow every section and its count | TC-SPM57-AC01b | `e2e/spm57.spec.js` | Automated (UI); boundary at 7 days for the date filter |

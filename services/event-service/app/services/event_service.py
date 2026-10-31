@@ -61,6 +61,7 @@ from app.orchestration.clients import (
     restore_venue_after_failed_cancellation,
     ReleaseFailed,
     registration_count,
+    registration_counts,
     reschedule_equipment,
     reschedule_venues,
     send_notification,
@@ -729,6 +730,7 @@ def _to_out(
     authorization: str | None = None,
     org_names: dict[str, str] | None = None,
     out_type: type[EventOut] = EventOut,
+    registered_count: int | None = None,
     **extra,
 ) -> EventOut:
     if org_names is None:
@@ -765,7 +767,9 @@ def _to_out(
         coordinatorId=row.coordinatorId,
         organiserContact=row.organiserContact or "",
         dateNear=_date_near(row.proposedStartAt),
-        registeredCount=registration_count(row.eventId, authorization),
+        registeredCount=(
+            registered_count if registered_count is not None else registration_count(row.eventId, authorization)
+        ),
         confirmedBy=row.confirmedBy,
         confirmedAt=row.confirmedAt,
         cancellationReason=row.cancellationReason,
@@ -783,11 +787,16 @@ def _to_out_list(
 
     organisation_names() is fetched ONCE here and passed to every _to_out()
     call, rather than letting each one fetch it - same reasoning as the
-    registration_count() fix: one network call per list, not one per row.
+    registration_count() fix: one network call per list, not one per row. The counts
+    follow the same rule, in one batch call to registration-service.
     """
     org_names = organisation_names(authorization)
     start = time.perf_counter()
-    result = [_to_out(row, authorization, org_names) for row in rows]
+    # One batch call for every row. If it fails, each row asks for its own count, as before.
+    counts = registration_counts([row.eventId for row in rows], authorization) or {}
+    result = [
+        _to_out(row, authorization, org_names, registered_count=counts.get(row.eventId)) for row in rows
+    ]
     logger.info(
         "%s _to_out (incl. registration_count) took %.3fs total for %d rows",
         label,
@@ -1201,6 +1210,12 @@ class EventService(BaseService):
         rows = self.event_dao.list_drafts_by_organiser(organiser_id)
         return _to_out_list(rows, authorization, "list_my_drafts")
 
+    def _overview_rows(self, organiser_id: str, organisation_id: str | None) -> list[Event]:
+        """The rows of the organiser's overview (see `list_my_events`)."""
+        if organisation_id:
+            return self.event_dao.list_organisation_overview(organisation_id, organiser_id)
+        return self.event_dao.list_by_organiser_excluding_statuses(organiser_id, ["discarded"])
+
     def list_my_events(
         self, organiser_id: str, authorization: str | None = None, organisation_id: str | None = None
     ) -> list[EventOut]:
@@ -1209,10 +1224,7 @@ class EventService(BaseService):
         nothing discarded. An organiser with no organisation sees just their own events.
         SPM-121: each carries its latest safety review status, so the organiser can
         see an event waiting on the review or sent back for safety changes."""
-        if organisation_id:
-            rows = self.event_dao.list_organisation_overview(organisation_id, organiser_id)
-        else:
-            rows = self.event_dao.list_by_organiser_excluding_statuses(organiser_id, ["discarded"])
+        rows = self._overview_rows(organiser_id, organisation_id)
         events = _to_out_list(rows, authorization, "list_my_events")
         latest = self.safety_dao.latest_status_by_event([row.eventId for row in rows])
         for event in events:
@@ -1801,6 +1813,12 @@ class EventService(BaseService):
         event = self._require_event(event_id)
         _require_organiser_or_staff(event, caller, "change requests")
         return [_change_request_out(row) for row in self.change_request_dao.list_by_event(event.eventId)]
+
+    def list_my_change_requests(self, organiser_id: str, organisation_id: str | None = None) -> list[ChangeRequestOut]:
+        """SPM-56: the change requests on every event the caller organises, newest first, in one
+        call, so the dashboard does not ask event by event."""
+        rows = self._overview_rows(organiser_id, organisation_id)
+        return [_change_request_out(row) for row in self.change_request_dao.list_by_events([r.eventId for r in rows])]
 
     def raise_change_request(
         self, event_id: str, data: ChangeRequestCreate, caller: dict, authorization: str | None = None

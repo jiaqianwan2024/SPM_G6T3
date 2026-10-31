@@ -76,8 +76,8 @@
           <dt>Serviceable</dt><dd>{{ selected.serviceableQuantity }}</dd>
         </dl>
         <form class="availability" @submit.prevent="checkWindow">
-          <label>From (SGT)<input v-model="windowStart" type="datetime-local" required /></label>
-          <label>Until (SGT)<input v-model="windowEnd" type="datetime-local" required /></label>
+          <label>From (SGT)<input v-model="windowStart" type="datetime-local" :min="today" required /></label>
+          <label>Until (SGT)<input v-model="windowEnd" type="datetime-local" :min="laterInput(today, windowStart)" required /></label>
           <button type="submit" class="btn btn-ghost small">Check available</button>
           <p v-if="availableForWindow !== null" class="available-result">{{ availableForWindow }} available in this period</p>
         </form>
@@ -98,7 +98,7 @@ import {
   updateEquipment,
 } from '../../api/equipmentService.js'
 import { session } from '../../store/session.js'
-import { fromSgtInput } from '../../utils/datetime.js'
+import { fromSgtInput, laterInput, sgtMinInput } from '../../utils/datetime.js'
 import EquipmentForm from './EquipmentForm.vue'
 import EquipmentActivityLog from './EquipmentActivityLog.vue'
 import RequestAvailability from './RequestAvailability.vue'
@@ -209,6 +209,9 @@ async function onSave(payload) {
     error.value = 'Unable to save this equipment. Please try again.'
   }
 }
+
+// Availability is checked for a period to come, so the window starts at today.
+const today = sgtMinInput()
 
 async function checkWindow() {
   if (!selected.value) return

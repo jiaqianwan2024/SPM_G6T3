@@ -2,7 +2,7 @@
 export const roles = {
   organiser: {
     label: 'Event Organiser',
-    tabs: ['Dashboard', 'My Events', 'New Request', 'Drafts'],
+    tabs: ['Dashboard', 'My Events', 'New Request'],
     cards: [
       { title: 'Drafts awaiting submission', sub: '3 requests saved but not yet sent' },
       { title: 'Pending coordinator review', sub: '2 requests under review' },

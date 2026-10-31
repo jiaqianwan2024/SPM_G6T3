@@ -103,6 +103,22 @@ export function toSgtInput(value) {
   return `${sgtDay(date)}T${pad(p.hours)}:${pad(p.minutes)}`
 }
 
+// The earliest a datetime-local input may offer: midnight today, Singapore time.
+// `kept` is a value already saved on the record. When it is earlier than today it
+// stays allowed, so opening an old record does not make the form invalid.
+export function sgtMinInput(kept = '', now = new Date()) {
+  const today = `${sgtDay(now)}T00:00`
+  return kept && kept < today ? kept : today
+}
+
+// The later of two datetime-local values ("" counts as unset), for an end that may
+// not come before its start or before today.
+export function laterInput(a, b) {
+  if (!a) return b || ''
+  if (!b) return a
+  return a > b ? a : b
+}
+
 // A datetime-local value typed in Singapore time, as the server stores it: UTC
 // without a zone marker ("YYYY-MM-DDTHH:mm:ss"), which every service accepts.
 export function fromSgtInput(value) {

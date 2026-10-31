@@ -44,10 +44,10 @@ export function account(id) {
 }
 
 export const expectedTabs = {
-  'EO-01': ['Dashboard', 'My Events', 'New Request', 'Drafts'],
-  'EO-02': ['Dashboard', 'My Events', 'New Request', 'Drafts'],
-  'EO-03': ['Dashboard', 'My Events', 'New Request', 'Drafts'],
-  'EO-04': ['Dashboard', 'My Events', 'New Request', 'Drafts'],
+  'EO-01': ['Dashboard', 'My Events', 'New Request'],
+  'EO-02': ['Dashboard', 'My Events', 'New Request'],
+  'EO-03': ['Dashboard', 'My Events', 'New Request'],
+  'EO-04': ['Dashboard', 'My Events', 'New Request'],
   'EC-01': [
     'Dashboard',
     'Assigned Events',

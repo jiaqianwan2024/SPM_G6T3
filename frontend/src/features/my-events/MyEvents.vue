@@ -37,18 +37,19 @@
       <p v-if="dateRangeInvalid" class="hint">The From date is after the To date.</p>
 
       <div class="flags">
-        <button type="button" class="flag" :class="{ active: !statusFilter }" @click="statusFilter = ''">
+        <button type="button" class="flag" :class="{ active: !stageFilter }" @click="stageFilter = ''">
           All <span>{{ narrowed.length }}</span>
         </button>
         <button
           v-for="flag in flags"
-          :key="flag.status"
+          :key="flag.key"
           type="button"
           class="flag"
-          :class="{ active: statusFilter === flag.status, empty: flag.count === 0 }"
-          @click="toggleStatus(flag.status)"
+          :class="{ active: stageFilter === flag.key, empty: flag.count === 0 }"
+          :data-testid="`organiser-stage-${flag.key}`"
+          @click="toggleStage(flag.key)"
         >
-          {{ eventStatusLabel(flag.status) }} <span>{{ flag.count }}</span>
+          {{ flag.label }} <span>{{ flag.count }}</span>
         </button>
       </div>
 
@@ -86,8 +87,14 @@
               <dd :data-testid="`organiser-event-${event.eventId}-venue`">{{ event.preferredLocation || '—' }}</dd>
             </div>
           </dl>
-          <p v-if="safetyNote(event)" class="safety-note" :data-testid="`organiser-event-${event.eventId}-safety`">
-            {{ safetyNote(event) }}
+          <div v-if="event.status === 'draft'" class="draft-actions">
+            <button type="button" class="btn btn-outline" :data-testid="`organiser-event-${event.eventId}-edit`"
+                    @click.stop="edit(event.eventId)">
+              Edit draft
+            </button>
+          </div>
+          <p v-if="eventSafetyNote(event)" class="safety-note" :data-testid="`organiser-event-${event.eventId}-safety`">
+            {{ eventSafetyNote(event) }}
           </p>
         </div>
       </div>
@@ -99,29 +106,12 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getMyEvents } from '../../api/eventService.js'
-import { SAFETY_SUBMITTABLE_STATUSES, eventStatusLabel } from '../../config/eventStatus.js'
+import { editDraft } from '../../store/draftEditor.js'
+import { EVENT_STAGES, eventSafetyNote, eventStatusLabel } from '../../config/eventStatus.js'
 import { formatSgtDate, formatSgtTime, sgtDay } from '../../utils/datetime.js'
 
 const router = useRouter()
-const emit = defineEmits(['create'])
-
-const STATUS_ORDER = [
-  'draft',
-  'submitted',
-  'under review',
-  'changes requested',
-  'approved',
-  'planning',
-  'safety review',
-  'safety approved',
-  'preparing',
-  'prepared',
-  'reconsidering',
-  'confirmed',
-  'rejected',
-  'cancelled',
-  'completed',
-]
+const emit = defineEmits(['create', 'edit-draft'])
 
 const events = ref([])
 const loading = ref(true)
@@ -130,7 +120,7 @@ const query = ref('')
 const category = ref('')
 const fromDate = ref('')
 const toDate = ref('')
-const statusFilter = ref('')
+const stageFilter = ref('')
 
 const categories = computed(() =>
   [...new Set(events.value.map((event) => event.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
@@ -139,7 +129,7 @@ const dateRangeInvalid = computed(
   () => Boolean(fromDate.value && toDate.value && fromDate.value > toDate.value),
 )
 const filtersActive = computed(
-  () => Boolean(query.value.trim() || category.value || fromDate.value || toDate.value || statusFilter.value),
+  () => Boolean(query.value.trim() || category.value || fromDate.value || toDate.value || stageFilter.value),
 )
 
 const narrowed = computed(() => {
@@ -156,34 +146,27 @@ const narrowed = computed(() => {
   })
 })
 
-const flags = computed(() => {
-  // SPM-70 AC6: Rejected is always offered, so an organiser knows where a rejected request will be.
-  const counts = new Map([['rejected', 0], ...events.value.map((event) => [event.status, 0])])
-  for (const event of narrowed.value) {
-    counts.set(event.status, (counts.get(event.status) || 0) + 1)
-  }
-  return [...counts.entries()]
-    .map(([status, count]) => ({ status, count }))
-    .sort((a, b) => statusRank(a.status) - statusRank(b.status) || a.status.localeCompare(b.status))
-})
+// Every stage is always offered, so an organiser knows where a rejected (Closed) request will be (SPM-70 AC6).
+const flags = computed(() =>
+  EVENT_STAGES.map((stage) => ({
+    ...stage,
+    count: narrowed.value.filter((event) => stage.statuses.includes(event.status)).length,
+  })),
+)
 
 const visible = computed(() => {
-  if (!statusFilter.value) return narrowed.value
-  return narrowed.value.filter((event) => event.status === statusFilter.value)
+  if (!stageFilter.value) return narrowed.value
+  const stage = EVENT_STAGES.find((item) => item.key === stageFilter.value)
+  return narrowed.value.filter((event) => stage.statuses.includes(event.status))
 })
-
-function statusRank(status) {
-  const index = STATUS_ORDER.indexOf(status)
-  return index === -1 ? STATUS_ORDER.length : index
-}
 
 // The Singapore date, which is what the date filters hold.
 function startDay(value) {
   return sgtDay(value)
 }
 
-function toggleStatus(status) {
-  statusFilter.value = statusFilter.value === status ? '' : status
+function toggleStage(key) {
+  stageFilter.value = stageFilter.value === key ? '' : key
 }
 
 function clearFilters() {
@@ -191,25 +174,13 @@ function clearFilters() {
   category.value = ''
   fromDate.value = ''
   toDate.value = ''
-  statusFilter.value = ''
+  stageFilter.value = ''
 }
 
 function lifecycle(status) {
   if (status === 'draft') return 'draft'
   if (status === 'submitted') return 'submitted'
   return status
-}
-
-// SPM-121 AC5: an event back in planning after its safety review says why.
-// One waiting on the review already reads so from its status.
-const SAFETY_NOTES = {
-  changes_requested: 'Safety changes requested',
-  rejected: 'Safety review rejected',
-}
-
-function safetyNote(event) {
-  if (!SAFETY_SUBMITTABLE_STATUSES.includes(event.status)) return ''
-  return SAFETY_NOTES[event.safetyReviewStatus] || ''
 }
 
 function datePart(value) {
@@ -244,6 +215,11 @@ function open(eventId) {
   router.push(`/app/events/${eventId}`)
 }
 
+function edit(eventId) {
+  editDraft(eventId)
+  emit('edit-draft')
+}
+
 function create() {
   emit('create')
 }
@@ -265,6 +241,7 @@ onMounted(load)
 </script>
 
 <style scoped>
+.draft-actions { display: flex; justify-content: flex-end; }
 .my-events { display: flex; flex-direction: column; gap: 16px; width: 100%; }
 .empty-note { font-size: 14px; color: var(--muted); margin: 0; }
 .hint { margin: 0; font-size: 13px; color: #ffc66d; }

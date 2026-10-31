@@ -280,7 +280,7 @@ const manyNotifications = Array.from({ length: 12 }, (_, i) => ({
   body: `Update ${i + 1} for the Partner Networking Night event.`,
   createdAt: `2026-10-${String(25 - (i % 20)).padStart(2, '0')}T09:15:00Z`,
 }))
-const navTabs = ['Dashboard', 'My Events', 'New Request', 'Drafts']
+const navTabs = ['Dashboard', 'My Events', 'New Request']
 const manyTabs = ['Dashboard', 'Upcoming Events', 'Venue Catalogue', 'Venue Calendar', 'Equipment Catalogue', 'Reservations', 'My Assignments', 'Maintenance Status']
 const navTab = ref('Dashboard')
 const manyTab = ref('Dashboard')

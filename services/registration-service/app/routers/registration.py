@@ -12,6 +12,7 @@ from app.schemas.registration import (
     AttendeeOut,
     RegisterRequest,
     RegistrationCountOut,
+    RegistrationCountsOut,
     RegistrationRosterOut,
 )
 from app.services.registration_service import RegistrationService
@@ -118,6 +119,24 @@ def registered_count(
     service: RegistrationService = Depends(get_registration_service),
 ):
     return RegistrationCountOut(count=service.registered_count(eventId))
+
+
+@router.get(
+    "/counts",
+    response_model=RegistrationCountsOut,
+    summary="Count current registrations for several events",
+    description=(
+        "Same figure as `/count`, for a comma-separated list of event ids in one call, so a list of "
+        "events does not need one request per event. Every id asked for is in the answer, with 0 when "
+        "nobody is registered. Does not return names or other registration details."
+    ),
+)
+def registered_counts(
+    eventIds: str = Query(..., description="Comma-separated event ids, e.g. `e1,e2`."),
+    service: RegistrationService = Depends(get_registration_service),
+):
+    ids = list(dict.fromkeys(part.strip() for part in eventIds.split(",") if part.strip()))
+    return RegistrationCountsOut(counts=service.registered_counts(ids))
 
 
 @router.get(

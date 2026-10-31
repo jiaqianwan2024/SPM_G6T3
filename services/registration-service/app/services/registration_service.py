@@ -155,6 +155,10 @@ class RegistrationService(BaseService):
     def list_for_event(self, event_id: str) -> list[AttendeeRegistration]:
         return self.registration_dao.list_for_event(event_id)
 
+    def registered_counts(self, event_ids: list[str]) -> dict[str, int]:
+        counts = self.registration_dao.registered_counts(event_ids)
+        return {event_id: counts.get(event_id, 0) for event_id in event_ids}
+
     def registered_count(self, event_id: str) -> int:
         return len(self.list_for_event(event_id))
 

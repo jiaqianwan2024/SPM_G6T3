@@ -9,6 +9,33 @@ const LABELS = {
   'safety approved': 'Safety approved',
 }
 
+// The organiser's five plain-language stages. My Events filters by these and the
+// dashboard groups by them, so both screens use the same words. The status itself
+// stays visible as the pill on each event.
+export const EVENT_STAGES = [
+  { key: 'drafts', label: 'Drafts', statuses: ['draft'] },
+  { key: 'in-review', label: 'In review', statuses: ['submitted', 'under review', 'changes requested'] },
+  {
+    key: 'in-preparation',
+    label: 'In preparation',
+    statuses: ['approved', 'planning', 'safety review', 'safety approved', 'preparing', 'prepared'],
+  },
+  { key: 'confirmed', label: 'Confirmed', statuses: ['confirmed', 'reconsidering'] },
+  { key: 'closed', label: 'Closed', statuses: ['completed', 'rejected', 'cancelled'] },
+]
+
+// SPM-121 AC5: an event back in planning after its safety review says why.
+// One waiting on the review already reads so from its status.
+const SAFETY_NOTES = {
+  changes_requested: 'Safety changes requested',
+  rejected: 'Safety review rejected',
+}
+
+export function eventSafetyNote(event) {
+  if (!SAFETY_SUBMITTABLE_STATUSES.includes(event.status)) return ''
+  return SAFETY_NOTES[event.safetyReviewStatus] || ''
+}
+
 export const eventStatusLabel = (status) => LABELS[status] || String(status || 'Unknown')
 
 // Colour tone for a status pill: success | warning | danger | info | neutral.

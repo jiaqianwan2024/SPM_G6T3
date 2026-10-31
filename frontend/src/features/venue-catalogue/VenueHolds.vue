@@ -44,6 +44,7 @@
             <input
               v-model="expiry[request.bookingId]"
               type="datetime-local"
+              :min="today"
               :data-testid="`venue-hold-until-${request.bookingId}`"
             />
           </label>
@@ -68,7 +69,7 @@
 <script setup>
 import { onMounted, reactive, ref, watch } from 'vue'
 import { getVenueBookings, placeVenueHold, releaseVenueHold } from '../../api/venueService.js'
-import { fromSgtInput } from '../../utils/datetime.js'
+import { fromSgtInput, sgtMinInput } from '../../utils/datetime.js'
 
 const props = defineProps({ venueId: { type: String, required: true } })
 
@@ -120,9 +121,16 @@ function replace(updated) {
   requests.value = requests.value.map((row) => (row.bookingId === updated.bookingId ? updated : row))
 }
 
+// A hold has to expire in the future (the server refuses one that does not).
+const today = sgtMinInput()
+
 async function place(request) {
-  busyId.value = request.bookingId
   errors[request.bookingId] = ''
+  if (expiry[request.bookingId] < today) {
+    errors[request.bookingId] = 'Pick a hold expiry from today onwards.'
+    return
+  }
+  busyId.value = request.bookingId
   try {
     // datetime-local has no timezone; it is read as Singapore time and sent as UTC.
     const { data } = await placeVenueHold(request.bookingId, fromSgtInput(expiry[request.bookingId]))
