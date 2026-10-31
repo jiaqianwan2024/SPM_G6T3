@@ -39,8 +39,28 @@
           New {{ fieldLabel(field).toLowerCase() }}
           <span class="now">now: {{ formatValue(field, event[field]) }}</span>
         </label>
+        <!-- SPM-85 AC5: each equipment type and how many, so the coordinator can check the stock. -->
+        <div v-if="field === 'equipmentLines'" :id="`change-${field}`" class="lines" data-testid="change-request-value-equipmentLines">
+          <div v-for="(line, index) in proposed.equipmentLines" :key="index" class="line">
+            <select v-model="line.equipmentId" :data-testid="`change-request-line-type-${index}`">
+              <option value="" disabled>Type</option>
+              <option v-for="item in catalogue" :key="item.equipmentId" :value="item.equipmentId">{{ item.name }}</option>
+            </select>
+            <input
+              v-model.number="line.quantity"
+              type="number"
+              min="1"
+              step="1"
+              :data-testid="`change-request-line-quantity-${index}`"
+            />
+            <button type="button" class="btn btn-ghost small" @click="proposed.equipmentLines.splice(index, 1)">Remove</button>
+          </div>
+          <button type="button" class="btn btn-outline small" data-testid="change-request-add-line" @click="addLine">
+            Add equipment
+          </button>
+        </div>
         <textarea
-          v-if="LONG_TEXT.includes(field)"
+          v-else-if="LONG_TEXT.includes(field)"
           :id="`change-${field}`"
           v-model="proposed[field]"
           rows="2"
@@ -123,54 +143,21 @@
         </button>
       </div>
 
-      <div v-if="isAssignedCoordinator" class="decision">
-        <label for="change-decision-reason">Reason for the organiser</label>
-        <textarea
-          id="change-decision-reason"
-          v-model="decisionReason"
-          rows="2"
-          maxlength="2000"
-          placeholder="Required to decline; optional to accept"
-          data-testid="change-request-decision-reason"
-        ></textarea>
-        <div v-if="acceptWarning" class="warning" data-testid="change-request-accept-warning">
-          <p>{{ acceptWarning.message }}</p>
-          <ul v-if="acceptWarning.arrangements?.length">
-            <li v-for="arrangement in acceptWarning.arrangements" :key="arrangement.id">{{ arrangement.summary }}</li>
-          </ul>
-        </div>
-        <div class="form-actions">
-          <button
-            type="button"
-            class="btn btn-outline small"
-            :disabled="busy || !decisionReason.trim()"
-            data-testid="change-request-decline"
-            @click="decline"
-          >
-            Decline
-          </button>
-          <button
-            v-if="!acceptWarning"
-            type="button"
-            class="btn btn-solid small"
-            :disabled="busy"
-            data-testid="change-request-accept"
-            @click="accept(false)"
-          >
-            Accept and apply
-          </button>
-          <button
-            v-else
-            type="button"
-            class="btn btn-solid small"
-            :disabled="busy"
-            data-testid="change-request-accept-confirm"
-            @click="accept(true)"
-          >
-            Apply anyway
-          </button>
-        </div>
-      </div>
+      <template v-if="isAssignedCoordinator">
+        <!-- SPM-85 AC2: see what the change would affect before deciding. -->
+        <router-link
+          class="review-link"
+          :to="`/app/events/${event.eventId}/change-requests/${pending.changeRequestId}`"
+          data-testid="change-request-review-link"
+        >
+          Review the impact on venue, equipment and registrations →
+        </router-link>
+        <ChangeRequestDecision
+          :event-id="event.eventId"
+          :change-request-id="pending.changeRequestId"
+          @decided="onDecided"
+        />
+      </template>
       <p v-if="actionError" class="form-error">{{ actionError }}</p>
     </div>
 
@@ -179,7 +166,8 @@
       <strong>Change request {{ outcome.status }}</strong> {{ formatSgt(outcome.reviewedAt) }}
       ({{ Object.keys(outcome.proposedChanges).map(fieldLabel).join(', ').toLowerCase() }})<template
         v-if="outcome.decisionReason"
-      >. Reason: {{ outcome.decisionReason }}</template>
+      >. Reason: {{ outcome.decisionReason }}</template><template v-if="outcome.narrowerRequested"
+        >. The coordinator could agree to part of it: raise a new request with only that part.</template>
     </p>
 
     <p v-if="!requests.length && !raising && !loadError" class="empty-note">No changes have been requested.</p>
@@ -188,24 +176,20 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import {
-  acceptChangeRequest,
-  declineChangeRequest,
-  getChangeRequests,
-  raiseChangeRequest,
-  withdrawChangeRequest,
-} from '../../api/eventService.js'
+import { getEquipmentList } from '../../api/equipmentService.js'
+import { getChangeRequests, raiseChangeRequest, withdrawChangeRequest } from '../../api/eventService.js'
 import { CHANGEABLE_FIELDS, EVENT_CATEGORIES, LAYOUT_TYPES, fieldLabel } from '../../config/eventFields.js'
 import { CHANGE_REQUEST_STATUSES } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
 import { formatSgt, fromSgtInput, toSgtInput } from '../../utils/datetime.js'
+import ChangeRequestDecision from './ChangeRequestDecision.vue'
+import { DATETIME_FIELDS as DATETIMES, errorText, formatChangeValue } from './changeRequestValues.js'
 
 const props = defineProps({ event: { type: Object, required: true } })
 // Accepting changes the event, so the page re-reads it.
 const emit = defineEmits(['changed'])
 
 const LONG_TEXT = ['description', 'purpose', 'accessibilityNeeds', 'equipmentRequirements']
-const DATETIMES = ['proposedStartAt', 'proposedEndAt']
 // Cleared, these go to the API as null rather than "".
 const CLEARABLE = ['category', 'layoutPreference']
 
@@ -218,10 +202,11 @@ const proposed = reactive({})
 const reason = ref('')
 const saving = ref(false)
 const formError = ref('')
-const decisionReason = ref('')
-const acceptWarning = ref(null)
 const busy = ref(false)
 const actionError = ref('')
+// The equipment catalogue, to pick types and show their names (SPM-85 AC5).
+const catalogue = ref([])
+const equipmentNames = computed(() => Object.fromEntries(catalogue.value.map((item) => [item.equipmentId, item.name])))
 
 // Newest first, so these are the latest of each.
 const pending = computed(() => requests.value.find((row) => row.status === 'pending'))
@@ -241,19 +226,16 @@ const showPanel = computed(
 // datetime-local inputs need "YYYY-MM-DDTHH:mm" in Singapore time; the API returns UTC ISO strings.
 const toInputDatetime = (iso) => toSgtInput(iso)
 
-function formatValue(field, value) {
-  if (value === null || value === undefined || value === '') return 'Not set'
-  if (DATETIMES.includes(field)) {
-    return formatSgt(value) || String(value)
-  }
-  return String(value)
-}
+const formatValue = (field, value) => formatChangeValue(field, value, equipmentNames.value)
 
-function errorText(err, fallback) {
-  const detail = err.response?.data?.detail
-  if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) return detail.map((item) => item.msg).join(' ')
-  return detail?.message || fallback
+async function loadCatalogue() {
+  try {
+    const { data } = await getEquipmentList()
+    catalogue.value = data || []
+  } catch {
+    // Without the catalogue, equipment shows by id and new types cannot be picked.
+    catalogue.value = []
+  }
 }
 
 async function load() {
@@ -279,16 +261,23 @@ function openRaise() {
 function toggleField(field) {
   if (field in proposed) {
     delete proposed[field]
+  } else if (field === 'equipmentLines') {
+    proposed[field] = (props.event.equipmentLines || []).map((line) => ({ ...line }))
   } else {
     const current = props.event[field]
     proposed[field] = DATETIMES.includes(field) ? toInputDatetime(current) : current ?? ''
   }
 }
 
+function addLine() {
+  proposed.equipmentLines.push({ equipmentId: '', quantity: 1, technicalNotes: '' })
+}
+
 function payload() {
   const changes = {}
   for (const [field, value] of Object.entries(proposed)) {
     if (DATETIMES.includes(field)) changes[field] = fromSgtInput(value) || value
+    else if (field === 'equipmentLines') changes[field] = value.filter((line) => line.equipmentId)
     else changes[field] = CLEARABLE.includes(field) && value === '' ? null : value
   }
   return changes
@@ -300,6 +289,10 @@ function validate() {
   if ('eventName' in proposed && !String(proposed.eventName).trim()) return 'The event needs a name.'
   if ('expectedAttendance' in proposed && (!Number.isInteger(proposed.expectedAttendance) || proposed.expectedAttendance < 0)) {
     return 'Enter an attendance of 0 or more.'
+  }
+  const lines = proposed.equipmentLines || []
+  if (lines.some((line) => line.equipmentId && !(Number.isInteger(line.quantity) && line.quantity >= 1))) {
+    return 'Each equipment quantity must be a whole number of at least 1.'
   }
   return ''
 }
@@ -319,45 +312,25 @@ async function submitRaise() {
   }
 }
 
-async function act(action, fallback) {
+async function withdraw() {
   busy.value = true
   actionError.value = ''
   try {
-    await action()
-    acceptWarning.value = null
-    decisionReason.value = ''
+    await withdrawChangeRequest(props.event.eventId, pending.value.changeRequestId)
     await load()
   } catch (err) {
-    const detail = err.response?.data?.detail
-    if (err.response?.status === 409 && detail?.requiresConfirmation) {
-      acceptWarning.value = detail
-    } else {
-      actionError.value = errorText(err, fallback)
-    }
+    actionError.value = errorText(err, 'Could not withdraw the request.')
   } finally {
     busy.value = false
   }
 }
 
-function withdraw() {
-  return act(() => withdrawChangeRequest(props.event.eventId, pending.value.changeRequestId), 'Could not withdraw the request.')
+async function onDecided(decision) {
+  if (decision === 'accepted') emit('changed')
+  await load()
 }
 
-function decline() {
-  return act(
-    () => declineChangeRequest(props.event.eventId, pending.value.changeRequestId, decisionReason.value),
-    'Could not decline the request.',
-  )
-}
-
-function accept(confirm) {
-  return act(async () => {
-    await acceptChangeRequest(props.event.eventId, pending.value.changeRequestId, decisionReason.value, confirm)
-    emit('changed')
-  }, 'Could not accept the request.')
-}
-
-onMounted(load)
+onMounted(() => Promise.all([load(), loadCatalogue()]))
 </script>
 
 <style scoped>
@@ -425,18 +398,22 @@ input:focus, textarea:focus { outline: none; border-color: rgba(167, 139, 250, .
 .reason { font-size: 13px; color: var(--body); margin: 0 0 8px; line-height: 1.5; }
 .reason span { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-right: 8px; }
 
-.decision { border-top: 1px solid var(--hairline); padding-top: 12px; margin-top: 4px; }
-.warning {
-  font-size: 13px;
-  line-height: 1.6;
-  color: #FFD9A8;
-  background: rgba(255, 170, 80, .08);
-  border: 1px solid rgba(255, 196, 120, .3);
+.review-link { display: inline-block; font-size: 13px; color: var(--halo); margin: 4px 0 12px; text-decoration: none; }
+.review-link:hover { text-decoration: underline; }
+
+.lines { margin-bottom: 12px; }
+.line { display: grid; grid-template-columns: minmax(0, 1fr) 90px auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+.line input[type='number'] { margin-bottom: 0; }
+select {
+  height: 42px;
+  border: 1px solid var(--hairline);
+  background: rgba(255, 255, 255, .03);
   border-radius: var(--radius);
-  padding: 10px 14px;
-  margin-bottom: 12px;
+  padding: 0 10px;
+  font-size: 14px;
+  color: var(--text);
+  font-family: var(--font);
 }
-.warning p, .warning ul { margin: 0; }
 
 .outcome { font-size: 13px; line-height: 1.6; color: var(--body); margin: 0 0 8px; }
 .outcome.declined strong { color: #FF8A76; }

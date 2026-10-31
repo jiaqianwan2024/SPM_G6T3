@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import EventDetail from '../features/event-detail/EventDetail.vue'
+import ChangeRequestReview from '../features/event-detail/ChangeRequestReview.vue'
 import EventRegistrations from '../features/event-detail/EventRegistrations.vue'
 import EventRegistrationSettings from '../features/event-detail/EventRegistrationSettings.vue'
 import RegistrationDetail from '../features/my-registrations/RegistrationDetail.vue'
@@ -43,6 +44,12 @@ const router = createRouter({
       path: '/app/events/:id',
       name: 'event-detail',
       component: EventDetail,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/app/events/:id/change-requests/:changeRequestId',
+      name: 'change-request-review',
+      component: ChangeRequestReview,
       meta: { requiresAuth: true }
     },
     {

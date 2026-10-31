@@ -139,8 +139,15 @@ export const withdrawChangeRequest = (eventId, changeRequestId) =>
 export const acceptChangeRequest = (eventId, changeRequestId, reason = "", confirmSignificantChange = false) =>
   axiosClient.post(`/events/${eventId}/change-requests/${changeRequestId}/accept`, { reason, confirmSignificantChange });
 
-export const declineChangeRequest = (eventId, changeRequestId, reason) =>
-  axiosClient.post(`/events/${eventId}/change-requests/${changeRequestId}/decline`, { reason });
+// SPM-85 AC8: askNarrower declines it and asks the organiser for a narrower request.
+export const declineChangeRequest = (eventId, changeRequestId, reason, askNarrower = false) =>
+  axiosClient.post(`/events/${eventId}/change-requests/${changeRequestId}/decline`, { reason, askNarrower });
+
+// SPM-85 AC2 to AC5: assigned coordinator only, while pending. What accepting would
+// affect: venueBookings, venueSuitability, capacity, equipmentReservations,
+// equipmentAvailability, registrations, and the parts left `unchecked`.
+export const getChangeRequestImpact = (eventId, changeRequestId) =>
+  axiosClient.get(`/events/${eventId}/change-requests/${changeRequestId}/impact`);
 
 // SPM-68: clarification threads — the question, then every reply, each with
 // { authorName, authorRole, createdAt }. Organisers (their organisation's
