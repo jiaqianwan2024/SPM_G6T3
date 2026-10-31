@@ -540,3 +540,10 @@ class TestChangeRequestRoutes(ServiceTestCase):
         accepted = self.post(f"/{third}/accept", {})
         self.assertEqual((accepted.status_code, accepted.json()["status"]), (200, "accepted"))
         self.assertEqual(self.client.get("/events/e1", headers=HEADERS).json()["description"], "z")
+
+    def test_my_change_requests_route_lists_the_organisers_requests(self):
+        self.post("", {"reason": "Tweak", "proposedChanges": {"description": "x"}})
+        with patch("app.routers.event.current_organiser", return_value=ORGANISER):
+            mine = self.client.get("/events/mine/change-requests", headers=HEADERS)
+        self.assertEqual(mine.status_code, 200)
+        self.assertEqual([row["eventId"] for row in mine.json()], ["e1"])
