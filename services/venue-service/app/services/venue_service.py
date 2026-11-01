@@ -354,6 +354,23 @@ class VenueService(BaseService):
     def get_venue(self, venue_id: str) -> VenueOut:
         return _to_out(self._require_venue(venue_id))
 
+    def catalogue_options(self) -> dict[str, list[str]]:
+        """SPM-80: every layout, facility and accessibility feature the active
+        venues offer, each once (the first spelling met wins), in catalogue
+        order. Event-service publishes these as the organiser's choices."""
+        seen = {"layouts": {}, "facilities": {}, "accessibility": {}}
+        for venue in self.list_venues():
+            offered = {
+                "layouts": [layout.name for layout in venue.layouts],
+                "facilities": venue.facilities,
+                "accessibility": venue.accessibility,
+            }
+            for kind, names in offered.items():
+                for name in names:
+                    if name.strip():
+                        seen[kind].setdefault(name.strip().casefold(), name.strip())
+        return {kind: list(names.values()) for kind, names in seen.items()}
+
     def create_venue(self, data: VenueCreate, caller: dict) -> VenueOut:
         row = VenueInfo(
             venueId=str(uuid4()),
@@ -568,7 +585,7 @@ class VenueService(BaseService):
                 status_code=422,
                 detail="The end time must be after the start time.",
             )
-        layout = layout.strip() if layout and layout.strip() else None
+        layout = suitability.wanted_layout(layout)
         filters = venue_search.SearchFilters(
             starts_at=starts_at,
             ends_at=ends_at,

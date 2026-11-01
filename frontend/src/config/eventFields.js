@@ -29,11 +29,6 @@ export const CHANGEABLE_FIELDS = [
   'expectedAttendance', 'layoutPreference', 'accessibilityNeeds', 'equipmentRequirements', 'equipmentLines',
 ]
 
+// The categories event-service accepts; forms read them from /events/requirement-options and
+// fall back to this copy only while it cannot be read.
 export const EVENT_CATEGORIES = ['Conference', 'Workshop', 'Networking', 'Meeting']
-
-// Same guided list as the venue form; any other layout can still be typed.
-export const LAYOUT_TYPES = [
-  'Theatre', 'Classroom', 'Boardroom', 'U-Shape', 'Hollow Square',
-  'Banquet', 'Cabaret', 'Exhibition', 'Reception / Cocktail', 'Herringbone',
-  'Auditorium', 'Workshop / Breakout Pods',
-]

@@ -1182,9 +1182,10 @@ class OrganiserDraftPatch(BaseModel):
 
 
 class RequirementOptionsOut(BaseModel):
-    layouts: list[str]
-    facilities: list[str]
-    accessibility: list[str]
+    layouts: list[str] = Field(description="What the active venues offer, then \"No preference\".")
+    facilities: list[str] = Field(description="What the active venues offer.")
+    accessibility: list[str] = Field(description="What the active venues offer.")
+    categories: list[str] = Field(description="The only categories an event can have.")
 
 
 class EventIntake(BaseModel):

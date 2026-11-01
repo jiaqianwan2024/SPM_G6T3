@@ -449,6 +449,14 @@ class TestServiceCalls(ServiceTestCase):
         with patch.object(clients, "_service_get", return_value=None):
             self.assertIsNone(clients.expired_holds(since, until))
 
+    def test_venue_catalogue_options_reads_with_the_service_key(self):
+        offered = {"layouts": ["Theatre"], "facilities": [], "accessibility": []}
+        with patch.object(clients, "_service_get", return_value=offered) as called:
+            self.assertEqual(clients.venue_catalogue_options(), offered)
+        self.assertTrue(called.call_args.args[0].endswith("/internal/venues/catalogue-options"))
+        with patch.object(clients, "_service_get", return_value=None):
+            self.assertIsNone(clients.venue_catalogue_options())
+
     def test_users_with_roles_is_keyed_by_user_id_or_none(self):
         with patch.object(clients, "_service_get", return_value=[{"userId": "u1", "role": "venue"}]) as called:
             self.assertEqual(clients.users_with_roles(["venue", "techsupport"]), {"u1": {"userId": "u1", "role": "venue"}})

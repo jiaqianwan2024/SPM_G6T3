@@ -68,11 +68,13 @@ from app.orchestration.clients import (
     send_notification,
     users_with_roles,
     venue_capacity_in,
+    venue_catalogue_options,
     venue_details,
     venue_suitability,
 )
 from app.schemas.event import (
     CHANGEABLE_FIELDS,
+    EVENT_CATEGORIES,
     ActivityFieldChange,
     AffectedArrangement,
     ChangeableFieldsOut,
@@ -194,10 +196,13 @@ DECISIONS = {"approve": "approved", "reject": "rejected"}
 COORDINATOR_LEAD = "coordinatorlead"
 STAFF_ROLES = ("coordinator", COORDINATOR_LEAD, "venue", "techsupport", "safety")
 
-# SPM-80: published lists the organiser picks from. "No preference" is a real choice.
-LAYOUT_OPTIONS = ["Theatre", "Boardroom", "Classroom", "Banquet", "U-shape", "No preference"]
+# SPM-80: the lists the organiser picks from are what the active venues offer
+# (requirement_options). These stand in only while venue-service cannot be read.
+# "No preference" is a real layout choice (AC1) that no venue has to offer.
+NO_LAYOUT_PREFERENCE = "No preference"
+LAYOUT_OPTIONS = ["Theatre", "Boardroom", "Classroom", "Banquet"]
 FACILITY_OPTIONS = ["Projector", "PA system", "Video-conferencing", "Stage"]
-ACCESSIBILITY_OPTIONS = ["Wheelchair accessible", "Hearing loop", "Accessible restrooms nearby"]
+ACCESSIBILITY_OPTIONS = ["Wheelchair accessible", "Accessible restrooms nearby"]
 
 # SPM-71 AC1: these save without any warning.
 QUIET_FIELDS = ("eventName", "description", "purpose", "category", "internalNotes", "organiserContact")
@@ -1113,10 +1118,16 @@ class EventService(BaseService):
         return _to_out(event, authorization)
 
     def requirement_options(self) -> RequirementOptionsOut:
+        """SPM-80: a layout (AC1), facilities from "the catalogue's facility list"
+        (AC2) and accessibility needs (AC3) as the active venues offer them, so an
+        organiser cannot ask for something no venue has. Categories are the list
+        a submission is checked against (canonical_category)."""
+        catalogue = venue_catalogue_options() or {}
         return RequirementOptionsOut(
-            layouts=list(LAYOUT_OPTIONS),
-            facilities=list(FACILITY_OPTIONS),
-            accessibility=list(ACCESSIBILITY_OPTIONS),
+            layouts=[*(catalogue.get("layouts") or LAYOUT_OPTIONS), NO_LAYOUT_PREFERENCE],
+            facilities=list(catalogue.get("facilities") or FACILITY_OPTIONS),
+            accessibility=list(catalogue.get("accessibility") or ACCESSIBILITY_OPTIONS),
+            categories=list(EVENT_CATEGORIES),
         )
 
     def patch_own_draft(

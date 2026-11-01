@@ -42,13 +42,25 @@ def _utc(value: datetime | None) -> datetime | None:
     return value
 
 
+# SPM-80 AC1: an organiser may state no layout preference. That is no layout
+# requirement at all, not a layout a venue has to offer.
+NO_PREFERENCE = "no preference"
+
+
+def wanted_layout(layout: str | None) -> str | None:
+    """The layout a venue must offer, or None when any layout will do."""
+    if not layout or not layout.strip() or layout.strip().casefold() == NO_PREFERENCE:
+        return None
+    return layout.strip()
+
+
 def needs_for(request: SuitabilityRequest, event: EventFacts) -> Needs:
     """What the event needs: whatever the request states, else the event record."""
     return Needs(
         expected_attendance=(
             request.expectedAttendance if request.expectedAttendance is not None else event.expectedAttendance
         ),
-        layout=request.layout if request.layout is not None else event.layoutPreference,
+        layout=wanted_layout(request.layout if request.layout is not None else event.layoutPreference),
         facilities=request.requiredFacilities,
         accessibility=request.requiredAccessibility,
         starts_at=_utc(request.startsAt or event.proposedStartAt),

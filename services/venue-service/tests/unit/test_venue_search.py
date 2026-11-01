@@ -354,6 +354,15 @@ class TestSearchGivesTheSuitabilityVerdict(SearchCase):
         self.assertEqual(found["Marina Hall A"], "not suitable")
         self.assertEqual(found["Marina Hall A"], self.direct(self.hall))
 
+    def test_a_search_for_an_event_with_no_layout_preference_judges_overall_capacity(self):
+        event = EventFacts(
+            expectedAttendance=95, layoutPreference="No preference", proposedStartAt=at(10), proposedEndAt=at(12)
+        )
+
+        rows = self.search(min_capacity=95, layout="No preference", exclude_event_id="e-mine", event=event)
+
+        self.assertEqual([(row.name, row.layout, row.verdict) for row in rows], [("Marina Hall A", None, "suitable with warnings")])
+
     def test_a_search_without_an_event_has_no_verdict(self):
         self.assertEqual({row.verdict for row in self.search()}, {None})
         self.assertEqual({row.verdict for row in self.search(exclude_event_id="e-mine")}, {None})

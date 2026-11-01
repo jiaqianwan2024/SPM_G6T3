@@ -155,6 +155,19 @@ class TestCapacity(SuitabilityCase):
 class TestLayoutFacilitiesAccessibility(SuitabilityCase):
     """AC3: each missing item is its own failure, naming the item."""
 
+    def test_no_layout_preference_is_no_layout_requirement(self):
+        # SPM-80 AC1: "No preference" is a choice the organiser can make, not a layout to look for.
+        self.event = EventFacts(
+            expectedAttendance=95, layoutPreference="No preference", proposedStartAt=at(10), proposedEndAt=at(12)
+        )
+
+        for stated in ({}, {"layout": " no preference "}):
+            with self.subTest(stated=stated):
+                result = self.check(**stated)
+                # Judged on the venue's overall capacity (100), so 95 people is only a tight fit.
+                self.assertEqual(result.verdict, "suitable with warnings")
+                self.assertEqual(self.messages(result, "failure"), [])
+
     def test_an_unsupported_layout_fails_naming_it_and_skips_the_capacity_check(self):
         result = self.check(layout="Exhibition", expectedAttendance=500)
 

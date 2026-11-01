@@ -66,6 +66,20 @@ def public_booking_summaries(
 
 
 @router.get(
+    "/catalogue-options",
+    summary="What the active venues offer",
+    description="Service key only. Every layout, facility and accessibility feature at least one active venue "
+    "offers, each once, so event-service can publish them as the organiser's requirement lists (SPM-80).",
+)
+def catalogue_options(
+    x_service_key: str | None = Header(default=None, alias=SERVICE_KEY_HEADER),
+    service: VenueService = Depends(get_venue_service),
+):
+    require_service_key(x_service_key, settings.internal_service_key)
+    return service.catalogue_options()
+
+
+@router.get(
     "/holds/expired",
     summary="Tentative holds that ran out in a period",
     description="Service key only. Every hold whose expiry fell after `since` and at or before `until` and that was "
