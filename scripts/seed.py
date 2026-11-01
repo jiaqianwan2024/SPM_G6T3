@@ -600,6 +600,7 @@ DEMO_LAYOUTS = {
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 ALL_DAYS = WEEKDAYS + ["Sat", "Sun"]
+AROUND_THE_CLOCK = _hours(ALL_DAYS, "00:00", "24:00")
 
 
 def _ensure_venue_bookings(conn, now: datetime, day: timedelta) -> None:
@@ -696,7 +697,7 @@ def seed_venue() -> None:
                 ["Projector", "PA system", "Video-conferencing", "Stage"],
                 ["Wheelchair accessible", "Accessible restrooms nearby"],
                 DEMO_LAYOUTS["v1"],
-                _hours(ALL_DAYS, "08:00", "22:00"),
+                AROUND_THE_CLOCK,
                 60,
                 30,
             ),
@@ -707,7 +708,7 @@ def seed_venue() -> None:
                 ["Projector", "Whiteboard"],
                 ["Wheelchair accessible"],
                 DEMO_LAYOUTS["v2"],
-                _hours(ALL_DAYS, "08:00", "20:00"),
+                AROUND_THE_CLOCK,
                 30,
                 15,
             ),
@@ -718,7 +719,7 @@ def seed_venue() -> None:
                 ["Loading dock", "PA system", "Booth power points"],
                 ["Wheelchair accessible", "Accessible restrooms nearby"],
                 DEMO_LAYOUTS["v3"],
-                _hours(ALL_DAYS, "07:00", "23:00"),
+                AROUND_THE_CLOCK,
                 120,
                 45,
             ),
@@ -729,7 +730,7 @@ def seed_venue() -> None:
                 ["Video-conferencing", "Smart TV"],
                 ["Wheelchair accessible"],
                 DEMO_LAYOUTS["v4"],
-                _hours(ALL_DAYS, "08:00", "18:00"),
+                AROUND_THE_CLOCK,
                 15,
                 10,
             ),
@@ -773,7 +774,7 @@ def seed_venue() -> None:
             )
         _ensure_venue_layouts(conn)
         _ensure_venue_safety_details(conn)
-        _ensure_venues_open_every_day(conn)
+        _ensure_venues_open_around_the_clock(conn)
         _ensure_venue_bookings(conn, now, day)
 
 
@@ -795,15 +796,17 @@ def _ensure_venue_layouts(conn) -> None:
         )
 
 
-def _ensure_venues_open_every_day(conn) -> None:
-    """Riverside Room 204 used to be seeded closed on Sundays and Skyline Boardroom
-    at weekends. Both now open every day; a database still holding exactly the old
-    seeded hours is moved over, so a venue staff edit is never overwritten."""
-    old_hours = {
-        "v2": (_hours(WEEKDAYS + ["Sat"], "08:00", "20:00"), _hours(ALL_DAYS, "08:00", "20:00")),
-        "v4": (_hours(WEEKDAYS, "08:00", "18:00"), _hours(ALL_DAYS, "08:00", "18:00")),
+def _ensure_venues_open_around_the_clock(conn) -> None:
+    """The demo venues open 24 hours every day, so opening hours never decide
+    whether one suits an event. A database still holding hours an earlier seed
+    wrote is moved over; hours a venue staff member set are left alone."""
+    earlier_seeds = {
+        "v1": [_hours(ALL_DAYS, "08:00", "22:00")],
+        "v2": [_hours(WEEKDAYS + ["Sat"], "08:00", "20:00"), _hours(ALL_DAYS, "08:00", "20:00")],
+        "v3": [_hours(ALL_DAYS, "07:00", "23:00")],
+        "v4": [_hours(WEEKDAYS, "08:00", "18:00"), _hours(ALL_DAYS, "08:00", "18:00")],
     }
-    for venue_id, (seeded, every_day) in old_hours.items():
+    for venue_id, seeded in earlier_seeds.items():
         raw = conn.execute(
             text("SELECT operating_hours FROM venues WHERE venue_id = :venue_id"),
             {"venue_id": venue_id},
@@ -811,11 +814,11 @@ def _ensure_venues_open_every_day(conn) -> None:
         if raw is None:
             continue
         current = json.loads(raw) if isinstance(raw, str) else raw
-        if current != seeded:
+        if current not in seeded:
             continue
         conn.execute(
             text("UPDATE venues SET operating_hours = CAST(:hours AS JSON) WHERE venue_id = :venue_id"),
-            {"venue_id": venue_id, "hours": json.dumps(every_day)},
+            {"venue_id": venue_id, "hours": json.dumps(AROUND_THE_CLOCK)},
         )
 
 

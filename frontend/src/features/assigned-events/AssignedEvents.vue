@@ -67,6 +67,7 @@
             <span v-if="event.preferredLocation">{{ event.preferredLocation }}</span>
             <span v-if="event.category">{{ event.category }}</span>
             <span v-if="event.dateNear" class="near-flag">Date is near</span>
+            <span v-else-if="event.datePassed" class="passed-flag">Date has passed</span>
           </div>
         </button>
       </div>
@@ -309,6 +310,7 @@ onMounted(load)
   padding: 3px 9px;
 }
 .near-flag { color: #ffd9a8 !important; border-color: rgba(255, 198, 109, .35) !important; }
+.passed-flag { color: #FF8A76 !important; border-color: rgba(255, 138, 118, .35) !important; }
 .status-pill {
   flex-shrink: 0;
   font-size: 11px;

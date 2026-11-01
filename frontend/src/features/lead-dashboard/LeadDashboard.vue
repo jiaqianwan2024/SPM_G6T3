@@ -15,7 +15,7 @@
       </div>
       <div class="count" data-testid="lead-count-near">
         <span class="count-value">{{ loaded ? nearDate.length : '–' }}</span>
-        <span class="count-label">Unassigned with a near date</span>
+        <span class="count-label">Unassigned with a near or passed date</span>
       </div>
       <div class="count" data-testid="lead-count-active">
         <span class="count-value">{{ loaded ? activeTotal : '–' }}</span>
@@ -50,6 +50,7 @@
             {{ formatDate(event.proposedStartAt) }} · {{ event.expectedAttendance }} attendees ·
             <span class="wait">waiting {{ waitingFor(event.submittedAt) }}</span>
             <span v-if="event.dateNear" class="flag">Date is near</span>
+            <span v-else-if="event.datePassed" class="flag passed">Date has passed</span>
           </span>
         </div>
         <button
@@ -129,7 +130,7 @@ let ticker = null
 // The queue arrives longest-waiting first, so the unassigned ones keep that order.
 const unassigned = computed(() => queue.value.filter((event) => !event.coordinatorId))
 const waitingFirst = computed(() => unassigned.value.slice(0, WAITING_SHOWN))
-const nearDate = computed(() => unassigned.value.filter((event) => event.dateNear))
+const nearDate = computed(() => unassigned.value.filter((event) => event.dateNear || event.datePassed))
 const oldestWait = computed(() => (unassigned.value.length ? waitingFor(unassigned.value[0].submittedAt) : 'None'))
 const activeTotal = computed(() => groups.value.reduce((sum, group) => sum + group.events.length, 0))
 const byWorkload = computed(() =>
@@ -243,6 +244,7 @@ onUnmounted(() => clearInterval(ticker))
   border-radius: 999px;
   padding: 2px 8px;
 }
+.flag.passed { color: #FF8A76; border-color: rgba(255, 138, 118, .35); }
 .btn.small { padding: 7px 14px; font-size: 13px; flex-shrink: 0; }
 
 .workload {

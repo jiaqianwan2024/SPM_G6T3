@@ -78,6 +78,13 @@ test.describe('SPM-65 Review queue of submitted requests', () => {
       const days =
         (new Date(row.proposedStartAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)
       expect(days).toBeLessThanOrEqual(EVENT_PROPOSED_DATE_NEAR_DAYS)
+      // Not already gone by; a minute's allowance covers the time since the server answered.
+      expect(days).toBeGreaterThan(-1 / (24 * 60))
+    }
+    // A start that has already gone by is flagged as passed, never as near.
+    for (const row of (queue.body || []).filter((row) => row.datePassed)) {
+      expect(row.dateNear).toBe(false)
+      expect(new Date(row.proposedStartAt).getTime()).toBeLessThan(Date.now())
     }
   })
 

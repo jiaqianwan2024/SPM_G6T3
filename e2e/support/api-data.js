@@ -64,7 +64,7 @@ export function newVenuePayload(label = `AUTO-VENUE-${Date.now()}`) {
       { name: 'Boardroom', capacity: 12 },
       { name: 'Classroom', capacity: 20 },
     ],
-    operatingHours: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => ({ day, opens: '08:00', closes: '18:00' })),
+    operatingHours: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => ({ day, opens: '00:00', closes: '24:00' })),
     setupMinutes: 15,
     turnaroundMinutes: 15,
   }

@@ -552,8 +552,11 @@ class VenueService(BaseService):
         """SPM-61: the shortlist of active venues that fit the requirements and,
         when a period is given, are free for it. Without a period only the
         venue's own facts are checked. SPM-62 AC9: a search made for an event
-        (`exclude_event_id` and `event`) also gives each venue the verdict of
-        the same suitability check a booking request runs."""
+        (`exclude_event_id` and `event`) also gives each venue the verdict a
+        booking request for that event would get. The filters, which the
+        coordinator may have adjusted (SPM-61 AC1), only decide which venues
+        are listed; the verdict judges the event's own requirements and dates,
+        so a venue shown as suitable can always be requested."""
         if (starts_at is None) != (ends_at is None):
             raise HTTPException(
                 status_code=422,
@@ -590,20 +593,9 @@ class VenueService(BaseService):
                 contested = bool(held.pending)
             verdict = None
             if event is not None and exclude_event_id:
-                # Whatever the search leaves out comes from the event, exactly as
-                # when the coordinator checks this venue on its own.
+                # The same check as picking this venue, or requesting it, for the event.
                 verdict = self.check_suitability(
-                    SuitabilityRequest(
-                        eventId=exclude_event_id,
-                        venueId=venue.venueId,
-                        expectedAttendance=min_capacity,
-                        layout=layout,
-                        requiredFacilities=facilities or [],
-                        requiredAccessibility=accessibility or [],
-                        startsAt=starts_at,
-                        endsAt=ends_at,
-                    ),
-                    event,
+                    SuitabilityRequest(eventId=exclude_event_id, venueId=venue.venueId), event
                 ).verdict
             results.append(
                 VenueSearchResult(
