@@ -655,6 +655,14 @@ input:focus, select:focus, textarea:focus {
   border-color: rgba(167, 139, 250, .6);
   box-shadow: 0 0 0 3px rgba(124, 77, 255, .16);
 }
+select {
+  appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23FFFFFF' d='M1.4.6 6 5.2 10.6.6 12 2 6 8 0 2z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  cursor: pointer;
+}
 select option { background: #1A1030; color: #F3EEFF; }
 
 .row { display: flex; gap: 16px; }

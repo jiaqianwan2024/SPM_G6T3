@@ -64,7 +64,6 @@
           <p class="field-hint" data-testid="register-email-hint">You can only register yourself, with your account's email.</p>
           <p v-if="submitError" class="form-error" data-testid="register-error">{{ submitError }}</p>
           <div class="actions">
-            <button type="button" class="btn btn-ghost" @click="registering = false">Cancel</button>
             <button type="submit" class="btn btn-solid" :disabled="saving" data-testid="register-submit">
               {{ saving ? 'Registering…' : 'Register' }}
             </button>
@@ -257,7 +256,7 @@ onMounted(async () => {
 .register-done { margin: 0 0 6px; font-size: 15px; color: var(--text); }
 .muted { margin: 0; font-size: 13px; color: var(--muted); }
 .notice { margin: 16px 0 0; font-size: 14px; color: #FFB4A8; }
-.register-form { display: grid; gap: 6px; max-width: 420px; }
+.register-form { display: grid; gap: 6px; }
 .register-form label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-top: 8px; }
 .register-form input {
   background: transparent;
@@ -270,7 +269,7 @@ onMounted(async () => {
 .register-form input[readonly] { color: var(--muted); cursor: default; }
 .field-error { margin: 0; font-size: 12px; color: #FF8A76; }
 .field-hint { margin: 0; font-size: 12px; color: var(--muted); }
-.register-form .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
+.register-form .actions { display: flex; margin-top: 12px; }
 @media (max-width: 720px) {
   .browse-detail { padding: 22px 18px 36px; }
   .back { margin-left: 0; }
