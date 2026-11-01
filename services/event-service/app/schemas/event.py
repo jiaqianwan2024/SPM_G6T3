@@ -124,8 +124,9 @@ class EventOut(BaseModel):
     )
     dateNear: bool = Field(
         default=False,
-        description="True when proposedStartAt is within settings.event_proposed_date_near_days.",
+        description="True when proposedStartAt is from now up to settings.event_proposed_date_near_days ahead.",
     )
+    datePassed: bool = Field(default=False, description="True once proposedStartAt has gone by.")
     registeredCount: int = Field(
         default=0, description="Live count from registration-service; 0 if that service is down."
     )

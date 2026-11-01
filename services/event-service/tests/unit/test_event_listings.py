@@ -186,7 +186,7 @@ class TestEventListings(EventCase):
         self.assertEqual(assigned, ["e-soon", "e-done", "e-late"])
         self.assertEqual(self.service.list_assigned_events("nobody"), [])
 
-    def test_a_proposed_date_is_near_on_the_threshold_and_not_one_second_later(self):
+    def test_a_proposed_date_is_near_from_now_to_the_threshold_and_passed_once_gone_by(self):
         now = datetime(2026, 10, 3, 12, 0)
         limit = timedelta(days=settings.event_proposed_date_near_days)
         starts = {
@@ -195,6 +195,7 @@ class TestEventListings(EventCase):
             "e-inside": now + limit - timedelta(seconds=1),
             "e-on": now + limit,
             "e-past-limit": now + limit + timedelta(seconds=1),
+            "e-just-gone": now - timedelta(seconds=1),
             "e-already": now - timedelta(days=1),
         }
         for event_id, start in starts.items():
@@ -202,14 +203,16 @@ class TestEventListings(EventCase):
 
         with patch("app.services.event_service.datetime") as clock:
             clock.utcnow.return_value = now
-            flags = {row.eventId: row.dateNear for row in self.service.list_submission_queue()}
+            flags = {row.eventId: (row.dateNear, row.datePassed) for row in self.service.list_submission_queue()}
 
-        self.assertFalse(flags["e-none"])
-        self.assertTrue(flags["e-now"])
-        self.assertTrue(flags["e-inside"])
-        self.assertTrue(flags["e-on"])
-        self.assertFalse(flags["e-past-limit"])
-        self.assertTrue(flags["e-already"])
+        near, passed = (True, False), (False, True)
+        self.assertEqual(flags["e-none"], (False, False))
+        self.assertEqual(flags["e-now"], near)
+        self.assertEqual(flags["e-inside"], near)
+        self.assertEqual(flags["e-on"], near)
+        self.assertEqual(flags["e-past-limit"], (False, False))
+        self.assertEqual(flags["e-just-gone"], passed)
+        self.assertEqual(flags["e-already"], passed)
 
     def test_an_event_ending_at_this_instant_is_upcoming_and_one_microsecond_earlier_is_not(self):
         now = datetime(2026, 10, 3, 12, 0)

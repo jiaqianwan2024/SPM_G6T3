@@ -297,8 +297,9 @@ class TestPeriod(SearchCase):
 
 
 class TestSearchGivesTheSuitabilityVerdict(SearchCase):
-    """SPM-62 AC9: a search for an event gives each venue the verdict of the same
-    check a booking request runs, so the two always agree."""
+    """SPM-62 AC9: a search for an event gives each venue the verdict a booking
+    request for that event would get, so the list, the check on picking a venue
+    and the request always agree."""
 
     EVENT = EventFacts(
         expectedAttendance=95, layoutPreference="Theatre", proposedStartAt=at(10), proposedEndAt=at(12)
@@ -332,16 +333,26 @@ class TestSearchGivesTheSuitabilityVerdict(SearchCase):
         found = self.verdicts(min_capacity=10)
 
         self.assertEqual(found["Marina Hall A"], "suitable with warnings")
-        self.assertEqual(found["Marina Hall A"], self.direct(self.hall, expectedAttendance=10))
+        self.assertEqual(found["Marina Hall A"], self.direct(self.hall))
 
-    def test_the_searchs_own_filters_are_what_the_verdict_judges(self):
-        # 38 people: a tight fit in the hall's Classroom (40), though not in its Theatre (100).
-        found = self.verdicts(min_capacity=38, layout=" classroom ")
-        roomy = self.verdicts(min_capacity=38)
+    def test_adjusted_filters_choose_the_list_but_the_verdict_judges_the_event(self):
+        # Searching for 10 people in a Boardroom lists the room (20 seats), but the
+        # event needs a Theatre for 95, which the room cannot offer.
+        found = self.verdicts(min_capacity=10, layout="Boardroom")
 
-        self.assertEqual(found, {"Marina Hall A": "suitable with warnings"})
-        self.assertEqual(found["Marina Hall A"], self.direct(self.hall, expectedAttendance=38, layout="classroom"))
-        self.assertEqual(roomy["Marina Hall A"], "suitable")
+        self.assertEqual(found, {"Riverside Room": "not suitable"})
+        self.assertEqual(found["Riverside Room"], self.direct(self.room))
+
+    def test_the_verdict_judges_the_events_own_dates_not_the_searched_period(self):
+        # The hall is booked over the event's own time, so it cannot be requested,
+        # even though a search for another day finds it free.
+        self.book(at(10), at(12))
+
+        next_week = MONDAY + timedelta(days=7)
+        found = self.verdicts(starts_at=at(10, day=next_week), ends_at=at(12, day=next_week))
+
+        self.assertEqual(found["Marina Hall A"], "not suitable")
+        self.assertEqual(found["Marina Hall A"], self.direct(self.hall))
 
     def test_a_search_without_an_event_has_no_verdict(self):
         self.assertEqual({row.verdict for row in self.search()}, {None})
@@ -371,7 +382,9 @@ class TestSearchRoute(SearchCase):
             "&layout=Theatre&facility=PA%20system&facility=Stage&accessibility=Wheelchair%20accessible&eventId=e-mine"
         )
 
-        with patch("app.routers.venue.fetch_event_facts", return_value=EventFacts(expectedAttendance=60)) as fetch:
+        # The verdict judges the event itself: 60 people over its own booked time.
+        facts = EventFacts(expectedAttendance=60, proposedStartAt=at(10), proposedEndAt=at(12))
+        with patch("app.routers.venue.fetch_event_facts", return_value=facts) as fetch:
             response = self.get(query=query)
 
         fetch.assert_called_once_with("e-mine", HEADERS["Authorization"])

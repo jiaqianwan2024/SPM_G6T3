@@ -68,6 +68,7 @@
           <div class="event-name-row">
             <span class="event-name">{{ event.eventName }}</span>
             <span v-if="event.dateNear" class="near-flag">Date is near</span>
+            <span v-else-if="event.datePassed" class="near-flag passed">Date has passed</span>
           </div>
           <span data-testid="queue-status" class="status-pill">{{ event.status }}</span>
         </div>
@@ -566,11 +567,16 @@ onUnmounted(() => clearInterval(ticker))
   font-size: 10px;
   letter-spacing: .06em;
   text-transform: uppercase;
-  color: #FF8A76;
-  background: rgba(255, 138, 118, .12);
-  border: 1px solid rgba(255, 138, 118, .3);
+  color: #FFD9A8;
+  background: rgba(255, 196, 120, .1);
+  border: 1px solid rgba(255, 196, 120, .35);
   border-radius: 999px;
   padding: 2px 8px;
+}
+.near-flag.passed {
+  color: #FF8A76;
+  background: rgba(255, 138, 118, .12);
+  border-color: rgba(255, 138, 118, .3);
 }
 
 .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: auto; }

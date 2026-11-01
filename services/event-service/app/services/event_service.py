@@ -720,17 +720,23 @@ def _registration_details_outstanding(row: Event) -> bool:
     )
 
 
-def _date_near(proposed_start: datetime | None) -> bool:
-    """True when the proposed start is within the configured lead, inclusive.
+def _date_flags(proposed_start: datetime | None) -> dict[str, bool]:
+    """SPM-65 AC6: ``dateNear`` when the proposed start is from now up to the
+    configured lead ahead, inclusive; ``datePassed`` once the start has gone by,
+    which is no longer "near".
 
     ``timedelta.days`` drops the leftover hours, so a start 14 days and 23
     hours away would still look like 14 days. Compare the full span instead:
     the instant exactly ``event_proposed_date_near_days`` ahead is near, and
-    one second later is not. A start already in the past is near.
+    one second later is not.
     """
     if proposed_start is None:
-        return False
-    return proposed_start - datetime.utcnow() <= timedelta(days=settings.event_proposed_date_near_days)
+        return {"dateNear": False, "datePassed": False}
+    ahead = proposed_start - datetime.utcnow()
+    return {
+        "dateNear": timedelta(0) <= ahead <= timedelta(days=settings.event_proposed_date_near_days),
+        "datePassed": ahead < timedelta(0),
+    }
 
 
 def _to_out(
@@ -774,7 +780,7 @@ def _to_out(
         organisationName=org_names.get(row.organisationId) if row.organisationId else None,
         coordinatorId=row.coordinatorId,
         organiserContact=row.organiserContact or "",
-        dateNear=_date_near(row.proposedStartAt),
+        **_date_flags(row.proposedStartAt),
         registeredCount=(
             registered_count if registered_count is not None else registration_count(row.eventId, authorization)
         ),

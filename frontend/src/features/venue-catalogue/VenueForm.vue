@@ -112,8 +112,20 @@
         <select v-model="hours.day">
           <option v-for="d in DAYS" :key="d" :value="d">{{ d }}</option>
         </select>
-        <input v-model="hours.opens" type="time" />
-        <input v-model="hours.closes" type="time" />
+        <label class="all-day">
+          <input
+            type="checkbox"
+            :checked="isAllDay(hours)"
+            :data-testid="`venue-hours-all-day-${i}`"
+            @change="setAllDay(hours, $event.target.checked)"
+          />
+          24 hours
+        </label>
+        <span v-if="isAllDay(hours)" class="all-day-note">Open all day</span>
+        <template v-else>
+          <input v-model="hours.opens" type="time" />
+          <input v-model="hours.closes" type="time" />
+        </template>
         <button type="button" class="btn btn-ghost small danger" @click="form.operatingHours.splice(i, 1)">Remove</button>
       </div>
       <p v-if="!form.operatingHours.length" class="hint">No hours set, so the venue will show as closed every day.</p>
@@ -145,6 +157,8 @@ const props = defineProps({
 const emit = defineEmits(['saved', 'cancel'])
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+// A time field stops at 23:59, so a day open around the clock is a tick box that saves 00:00 to 24:00.
+const ALL_DAY = { opens: '00:00', closes: '24:00' }
 
 // The customer said layouts can be "classroom, theatre, boardroom, banquet,
 // exhibition, or another arrangement" and that the team could "suggest your
@@ -179,7 +193,10 @@ const form = reactive({
   setupMinutes: props.venue?.setupMinutes ?? '',
   turnaroundMinutes: props.venue?.turnaroundMinutes ?? '',
   layouts: props.venue ? props.venue.layouts.map(toLayoutFormRow) : [],
-  operatingHours: props.venue ? props.venue.operatingHours.map((h) => ({ ...h })) : [],
+  // A new venue starts open around the clock every day; staff narrow it where it really closes.
+  operatingHours: props.venue
+    ? props.venue.operatingHours.map((h) => ({ ...h }))
+    : DAYS.map((day) => ({ day, ...ALL_DAY })),
 })
 
 const facilitiesText = ref((props.venue?.facilities ?? []).join(', '))
@@ -252,7 +269,15 @@ const layoutIssues = computed(() => {
 function addHours() {
   const usedDays = new Set(form.operatingHours.map((h) => h.day))
   const nextDay = DAYS.find((d) => !usedDays.has(d)) ?? DAYS[0]
-  form.operatingHours.push({ day: nextDay, opens: '09:00', closes: '17:00' })
+  form.operatingHours.push({ day: nextDay, ...ALL_DAY })
+}
+
+function isAllDay(hours) {
+  return hours.opens === ALL_DAY.opens && hours.closes === ALL_DAY.closes
+}
+
+function setAllDay(hours, allDay) {
+  Object.assign(hours, allDay ? ALL_DAY : { opens: '09:00', closes: '17:00' })
 }
 
 function wholeMinutes(value) {
@@ -414,7 +439,20 @@ async function submit() {
   background: #1A1030;
   color: #F3EEFF;
 }
-.hours-row { grid-template-columns: 100px 1fr 1fr auto; }
+.hours-row { grid-template-columns: 100px auto 1fr 1fr auto; }
+.hours-row .all-day {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--body);
+  white-space: nowrap;
+}
+.hours-row .all-day input { width: auto; padding: 0; margin: 0; }
+.hours-row .all-day-note { grid-column: span 2; font-size: 13px; color: var(--muted); }
 .hours-row.has-error select, .hours-row.has-error input {
   border-color: rgba(255, 138, 118, .6);
 }
@@ -440,5 +478,6 @@ async function submit() {
 @media (max-width: 720px) {
   .field-grid { grid-template-columns: 1fr; }
   .hours-row { grid-template-columns: 1fr; }
+  .hours-row .all-day-note { grid-column: auto; }
 }
 </style>
