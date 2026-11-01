@@ -244,6 +244,7 @@
 | SPM-73 | History stays readable | TC-SPM73-AC04 | `e2e/spm73.spec.js` | Automated |
 | SPM-73 | Completed excluded from active queues | TC-SPM73-AC05 | `e2e/spm73.spec.js` | Automated |
 | SPM-73 | Attendees cannot register or withdraw | TC-SPM73-AC06 | `e2e/spm73.spec.js` | Automated |
+| SPM-73 | Queue API leaves completed out unless includeCompleted is set | TC-SPM73-EXTRA01 | `e2e/spm73.spec.js` | Automated |
 | SPM-2 | Requested and available quantity per line | TC-SPM02-AC01 | `e2e/spm02.spec.js` | Automated |
 | SPM-2 | Overlapping reservations excluded | TC-SPM02-AC02 | `e2e/spm02.spec.js` | Automated |
 | SPM-2 | Out-of-service units excluded | TC-SPM02-AC03 | `e2e/spm02.spec.js` | Automated |
@@ -270,6 +271,11 @@
 | SPM-4 | Status and date filters; terminal events excluded | TC-SPM04-AC05 | `e2e/spm04.spec.js` | Automated |
 | SPM-4 | No-requirement events excluded | TC-SPM04-AC06 | `e2e/spm04.spec.js` | Automated |
 | SPM-4 | Open event to check and reserve | TC-SPM04-AC07 | `e2e/spm04.spec.js` | Automated |
+| SPM-4 | Only Technical Support can read the queue | TC-SPM04-EXTRA01 | `e2e/spm04.spec.js` | Automated (API: 403 for EO-01, EC-01 and ATT-01) |
+| SPM-4 | Status filter narrows to one equipment state | TC-SPM04-EXTRA02 | `e2e/spm04.spec.js` | Automated |
+| SPM-4 | Re-verification flagged on the row | TC-SPM04-EXTRA03 | `e2e/spm04.spec.js` | Automated |
+| SPM-4 | Empty queue explains what is excluded | TC-SPM04-EXTRA04 | `e2e/spm04.spec.js` | Automated (empty list mocked in the browser) |
+| SPM-4 | Calendar view still available beside the list | TC-SPM04-EXTRA05 | `e2e/spm04.spec.js` | Automated |
 | SPM-75 | Catalogue record fields | TC-SPM75-AC01 | `e2e/spm75.spec.js` | Automated |
 | SPM-75 | Out-of-service counts by reason | TC-SPM75-AC02 | `e2e/spm75.spec.js` | Automated |
 | SPM-75 | Available = owned − OOS − overlapping | TC-SPM75-AC03 | `e2e/spm75.spec.js` | Automated |

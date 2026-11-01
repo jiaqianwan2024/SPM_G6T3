@@ -40,7 +40,7 @@
           </div>
           <p v-if="request.technicalRequirements" class="notes">{{ request.technicalRequirements }}</p>
           <p v-if="request.reviewedBy" class="meta">
-            Updated by {{ request.reviewedBy }}
+            Updated by {{ personName(request.reviewedBy) }}
             <template v-if="request.reviewedAt"> at {{ formatWhen(request.reviewedAt) }}</template>
           </p>
           <p v-if="request.reviewNote" class="notes">{{ request.reviewNote }}</p>
@@ -152,6 +152,7 @@ import {
   reserveEquipmentRequest,
   reviewEquipmentRequest,
 } from '../../api/equipmentService.js'
+import { getUsers } from '../../api/userService.js'
 import { formatSgt, parseServerTime } from '../../utils/datetime.js'
 
 // SPM-4 AC7: when set, only that event's requests are listed.
@@ -161,6 +162,8 @@ const props = defineProps({
 
 const requests = ref([])
 const names = ref({})
+// Staff names by user id, so "Updated by" reads as a person rather than an id.
+const people = ref({})
 const results = ref({})
 const loading = ref(true)
 const error = ref('')
@@ -195,6 +198,10 @@ const groups = computed(() => {
 
 function equipmentName(equipmentId) {
   return names.value[equipmentId] || equipmentId
+}
+
+function personName(userId) {
+  return people.value[userId] || userId
 }
 
 function alternatives(request) {
@@ -372,6 +379,10 @@ async function check(eventId) {
 }
 
 onMounted(async () => {
+  // Names are a nicety: if the directory cannot be read, "Updated by" falls back to the id.
+  getUsers()
+    .then(({ data }) => { people.value = Object.fromEntries(data.map((user) => [user.userId, user.userName])) })
+    .catch(() => {})
   try {
     const [requestList, equipmentList] = await Promise.all([getEquipmentRequests(), getEquipmentList()])
     requests.value = requestList.data
