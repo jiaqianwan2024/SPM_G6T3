@@ -308,7 +308,7 @@ def seed_event() -> None:
                 "organisation_id": "org-1",
                 "coordinator_id": "u2",
                 "name": "Q1 Client Briefing",
-                # Confirmed, with a registration period that opens in the future (SPM-11 AC7).
+                # Confirmed, with a registration period that opens in the future (SPM-11 AC6).
                 "purpose": "Quarterly briefing for Apex Partners.",
                 "description": "A two-hour briefing on first-quarter plans and results, followed by questions.",
                 "category": "Meeting",

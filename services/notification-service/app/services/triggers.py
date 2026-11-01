@@ -210,7 +210,7 @@ TRIGGERS: dict[str, Trigger] = {
             recipient_roles=frozenset({"coordinator"}),
             required_context=("eventName", "equipmentName"),
         ),
-        # SPM-11 AC10: the last place was taken.
+        # SPM-11 AC9: the last place was taken.
         Trigger(
             key="registration.full",
             title="{eventName} is full",

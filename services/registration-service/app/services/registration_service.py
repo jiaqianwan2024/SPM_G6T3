@@ -60,7 +60,7 @@ def eligibility(event: dict, registered_count: int) -> tuple[bool, str | None]:
         return False, "Registration has not been enabled for this event."
     opens = _when(opens_raw)
     closes = _when(closes_raw)
-    # SPM-11 AC7: a refusal outside the period states the period.
+    # SPM-11 AC6: a refusal outside the period states the period.
     if now < opens:
         return False, f"Registration has not opened yet. The registration period is {_period(opens, closes)}."
     if now > closes:
@@ -127,7 +127,7 @@ def withdrawal_unavailable(event: dict) -> str | None:
 
 
 def _report_capacity_reached(event_id: str, authorization: str | None) -> None:
-    """SPM-11 AC10: the last place went, so ask event-service to tell the organiser and the
+    """SPM-11 AC9: the last place went, so ask event-service to tell the organiser and the
     assigned coordinator. Event-service checks the count itself. Best effort."""
     try:
         with httpx.Client(timeout=5.0) as client:
@@ -274,10 +274,10 @@ class RegistrationService(BaseService):
         authorization: str | None = None,
         account_email: str | None = None,
     ) -> AttendeeRegistration:
-        """SPM-11. The event's own record decides whether registration is open (AC1, AC7) and
+        """SPM-11. The event's own record decides whether registration is open (AC1, AC6) and
         the event's window row is locked while the places are counted, so two attendees
-        sending for the last place are decided one after the other (AC8). Taking the last
-        place tells the organiser and coordinator (AC10).
+        sending for the last place are decided one after the other (AC7). Taking the last
+        place tells the organiser and coordinator (AC9).
 
         An attendee registers only themselves: with `account_email` given, the email is the
         account's (it is filled in when left out) and an account holds one registration per

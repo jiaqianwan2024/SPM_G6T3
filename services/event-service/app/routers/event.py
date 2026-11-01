@@ -599,7 +599,7 @@ def notify_attendees_of_change(
 @router.post(
     "/{event_id}/capacity-notice",
     summary="Tell the organiser and coordinator that registration is full",
-    description="SPM-11 AC10. Registration-service calls this, with the registering attendee's token, after "
+    description="SPM-11 AC9. Registration-service calls this, with the registering attendee's token, after "
     "the last place is taken. The count is checked here, and each capacity is announced once.",
     responses=error_responses(404),
 )

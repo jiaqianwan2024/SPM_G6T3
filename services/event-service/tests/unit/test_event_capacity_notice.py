@@ -8,7 +8,7 @@ from tests.unit.support import EventCase, insert_event
 
 
 class TestCapacityNotice(EventCase):
-    """SPM-11 AC10: the organiser and the assigned coordinator hear when registration fills up."""
+    """SPM-11 AC9: the organiser and the assigned coordinator hear when registration fills up."""
 
     def full_event(self, **overrides):
         data = dict(

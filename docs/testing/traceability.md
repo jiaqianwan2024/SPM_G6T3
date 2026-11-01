@@ -394,15 +394,14 @@
 | SPM-121 | Confirm unavailable while the safety check is outstanding, rejected, or returned for changes | TC-SPM121-AC04 | `e2e/spm121.spec.js`; `services/event-service/tests/unit/test_event_confirmation.py` | Automated (API and UI) |
 | SPM-121 | The organiser sees the event waiting on the safety review or with safety changes requested | TC-SPM121-AC05 | `e2e/spm121.spec.js`; `services/event-service/tests/unit/test_event_safety_reviews.py` | Automated: the My Events list, then the event page |
 | SPM-11 | Registration succeeds only for confirmed, enabled, in-period events with a place | TC-SPM11-AC01 | `e2e/spm11.spec.js` | Automated |
-| SPM-11 | Mandatory fields block submit with inline validation | TC-SPM11-AC02 | `e2e/spm11.spec.js` | Automated |
-| SPM-11 | Success confirms event, date, time, venue on screen; no notification to the attendee (SPM-93 AC5) | TC-SPM11-AC03 | `e2e/spm11.spec.js` | Automated |
-| SPM-11 | Remaining places drop by one immediately | TC-SPM11-AC04 | `e2e/spm11.spec.js` | Automated |
-| SPM-11 | Second registration refused; existing shown | TC-SPM11-AC05 | `e2e/spm11.spec.js` | Automated |
-| SPM-11 | Full event refuses registration and is shown as full | TC-SPM11-AC06 | `e2e/spm11.spec.js` | Automated |
-| SPM-11 | Outside the period is refused with the period stated | TC-SPM11-AC07 | `e2e/spm11.spec.js` | Automated |
-| SPM-11 | Last-place race: exactly one succeeds | TC-SPM11-AC08 | `e2e/spm11.spec.js` | Automated |
-| SPM-11 | Server enforces the same rules without the UI | TC-SPM11-AC09 | `e2e/spm11.spec.js` | Automated |
-| SPM-11 | Capacity notifies organiser and assigned coordinator | TC-SPM11-AC10 | `e2e/spm11.spec.js` | Automated |
+| SPM-11 | The attendee registers only themselves (name prefilled and editable, email locked); a blank mandatory field blocks submit with inline validation | TC-SPM11-AC02 | `e2e/spm11.spec.js` | Automated |
+| SPM-11 | Remaining places drop by one immediately | TC-SPM11-AC03 | `e2e/spm11.spec.js` | Automated |
+| SPM-11 | Second registration refused; existing shown | TC-SPM11-AC04 | `e2e/spm11.spec.js` | Automated |
+| SPM-11 | Full event refuses registration and is shown as full | TC-SPM11-AC05 | `e2e/spm11.spec.js` | Automated |
+| SPM-11 | Outside the period is refused with the period stated | TC-SPM11-AC06 | `e2e/spm11.spec.js` | Automated |
+| SPM-11 | Last-place race: exactly one succeeds | TC-SPM11-AC07 | `e2e/spm11.spec.js` | Automated |
+| SPM-11 | Server enforces the same rules without the UI | TC-SPM11-AC08 | `e2e/spm11.spec.js` | Automated |
+| SPM-11 | Capacity notifies organiser and assigned coordinator | TC-SPM11-AC09 | `e2e/spm11.spec.js` | Automated |
 | SPM-12 | Withdraw only from own current registration | TC-SPM12-AC01 | `e2e/spm12.spec.js` | Automated |
 | SPM-12 | Withdraw while not started, completed, or cancelled | TC-SPM12-AC02 | `e2e/spm12.spec.js` | Automated |
 | SPM-12 | Confirm dialog names the event | TC-SPM12-AC03 | `e2e/spm12.spec.js` | Automated |

@@ -3499,7 +3499,7 @@ class EventService(BaseService):
         return {"eventId": event.eventId, "notified": told}
 
     def notify_capacity_reached(self, event_id: str, authorization: str | None) -> dict:
-        """SPM-11 AC10: registration-service reports that the last place was taken, and the
+        """SPM-11 AC9: registration-service reports that the last place was taken, and the
         organiser and the assigned coordinator are told. The count is read here, so nobody
         can raise the notice early. One notice per capacity: a place released and taken
         again does not repeat it, but a raised capacity that fills up again does."""

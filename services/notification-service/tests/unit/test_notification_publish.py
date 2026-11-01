@@ -69,7 +69,7 @@ class TestPublish(ServiceTestCase):
                 )
 
     def test_a_full_event_tells_the_organiser_and_coordinator_and_links_the_registration_list(self):
-        # SPM-11 AC10.
+        # SPM-11 AC9.
         title, body, link = notifier.render(
             TRIGGERS["registration.full"], "e9", {"eventName": "AI in Events Summit", "capacity": "120"}
         )

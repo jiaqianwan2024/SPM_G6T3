@@ -39,7 +39,7 @@ test.describe('SPM-11 Register for an event', () => {
     expect(JSON.stringify(disabled.body)).toMatch(/not been enabled/i)
   })
 
-  test('TC-SPM11-AC02 mandatory registration fields left blank block submit with inline validation', async ({
+  test('TC-SPM11-AC02 the attendee registers only themselves, and a blank mandatory field blocks submit with inline validation', async ({
     page,
   }) => {
     const event = await confirmedEvent('SPM11-blank')
@@ -62,25 +62,7 @@ test.describe('SPM-11 Register for an event', () => {
     expect(await remainingPlaces(event.eventId, 'ATT-01')).toBe(5)
   })
 
-  test('TC-SPM11-AC03 a successful registration confirms on screen with event, date, time, and venue, without notifying the attendee', async ({
-    page,
-  }) => {
-    const event = await confirmedEvent('SPM11-confirm')
-    await login(page, account('ATT-02'))
-    await page.goto(`/app/browse/${event.eventId}`)
-    await page.getByTestId('event-register').click()
-    await page.getByTestId('register-name').fill('Gwen Ong')
-    await page.getByTestId('register-submit').click()
-    const confirmation = page.getByTestId('register-confirmation')
-    await expect(confirmation).toContainText(event.eventName)
-    await expect(confirmation).toContainText(/10:00.*12:00 SGT/)
-    await expect(confirmation).toContainText('Marina Hall A')
-    // SPM-93 AC5: the attendee is not notified of their own registration; the screen confirms it.
-    const inbox = await notificationApi('GET', '/notifications?pageSize=100', 'ATT-02')
-    expect((inbox.body || []).filter((row) => row.eventId === event.eventId)).toEqual([])
-  })
-
-  test('TC-SPM11-AC04 a registration reduces remaining places by one, visible immediately to other attendees', async () => {
+  test('TC-SPM11-AC03 a registration reduces remaining places by one, visible immediately to other attendees', async () => {
     const event = await confirmedEvent('SPM11-count')
     const before = await remainingPlaces(event.eventId, 'ATT-01')
     const created = await registrationApi(
@@ -93,7 +75,7 @@ test.describe('SPM-11 Register for an event', () => {
     expect(await remainingPlaces(event.eventId, 'ATT-01')).toBe(before - 1)
   })
 
-  test('TC-SPM11-AC05 a second registration for the same attendee is refused and the existing one is shown', async ({
+  test('TC-SPM11-AC04 a second registration for the same attendee is refused and the existing one is shown', async ({
     page,
   }) => {
     // ATT-01 holds r-att-e1 from the seed.
@@ -110,7 +92,7 @@ test.describe('SPM-11 Register for an event', () => {
     await expect(page.getByTestId('existing-registration')).toContainText(/registered|Amy Wong/i)
   })
 
-  test('TC-SPM11-AC06 registration is refused when the event is full', async ({ page }) => {
+  test('TC-SPM11-AC05 registration is refused when the event is full', async ({ page }) => {
     // e2 is seeded at capacity (r2, r3 and r-att-e2 against 2 places).
     const denied = await registrationApi('POST', '/registrations', 'ATT-02', guestRegistration('e2', 'SPM11-FULL'))
     expect([400, 409]).toContain(denied.status)
@@ -120,7 +102,7 @@ test.describe('SPM-11 Register for an event', () => {
     await expect(page.getByTestId('event-full')).toBeVisible()
   })
 
-  test('TC-SPM11-AC07 registration outside the period is refused with the period stated', async () => {
+  test('TC-SPM11-AC06 registration outside the period is refused with the period stated', async () => {
     // e4's period opens in two days.
     const early = await registrationApi('POST', '/registrations', 'ATT-02', guestRegistration('e4', 'SPM11-EARLY'))
     expect(early.status).toBe(409)
@@ -131,7 +113,7 @@ test.describe('SPM-11 Register for an event', () => {
     expect(JSON.stringify(late.body)).toMatch(/closed.*registration period was .* to .* SGT/i)
   })
 
-  test('TC-SPM11-AC08 two attendees submitting for the last place: exactly one succeeds', async () => {
+  test('TC-SPM11-AC07 two attendees submitting for the last place: exactly one succeeds', async () => {
     const event = await confirmedEvent('SPM11-race', { capacity: 1 })
     const [first, second] = await Promise.all([
       registrationApi('POST', '/registrations', 'ATT-02', guestRegistration(event.eventId, 'SPM11-RACE-A')),
@@ -144,7 +126,7 @@ test.describe('SPM-11 Register for an event', () => {
     expect(JSON.stringify(refused.body)).toMatch(/full|capacity/i)
   })
 
-  test('TC-SPM11-AC09 every condition is enforced on the server when the endpoint is called directly', async () => {
+  test('TC-SPM11-AC08 every condition is enforced on the server when the endpoint is called directly', async () => {
     const cases = [
       ['e3', /not been confirmed/i],
       ['e7', /not been enabled/i],
@@ -168,7 +150,7 @@ test.describe('SPM-11 Register for an event', () => {
     expect(await remainingPlaces(event.eventId, 'ATT-01')).toBe(5)
   })
 
-  test('TC-SPM11-AC10 reaching capacity notifies the organiser and the assigned coordinator', async () => {
+  test('TC-SPM11-AC09 reaching capacity notifies the organiser and the assigned coordinator', async () => {
     const event = await confirmedEvent('SPM11-full', { capacity: 1 })
     const taken = await registrationApi('POST', '/registrations', 'ATT-02', guestRegistration(event.eventId, 'SPM11-FULL-LAST'))
     expect(taken.status, JSON.stringify(taken.body)).toBe(201)

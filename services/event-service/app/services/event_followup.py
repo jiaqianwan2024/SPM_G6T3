@@ -435,7 +435,7 @@ class EventFollowUp(BaseService):
                 continue
             card = self._card(event, authorization)
             # A full event is left out until a withdrawal frees a place. Its own page still opens
-            # (get_open), so an attendee following a link sees that it is full (SPM-11 AC6).
+            # (get_open), so an attendee following a link sees that it is full (SPM-11 AC5).
             if card.full:
                 continue
             rows.append(card)

@@ -49,7 +49,7 @@ class TestRegistrationWindowAndNotices(ServiceTestCase):
         self.assertEqual(window.closesAt, later)
 
     def test_the_places_are_counted_in_a_transaction_that_starts_at_the_lock(self):
-        # SPM-11 AC8: under REPEATABLE READ a count in the transaction that first read the window
+        # SPM-11 AC7: under REPEATABLE READ a count in the transaction that first read the window
         # would miss a registration committed while waiting for the lock, so that one ends first.
         make_window(self.db)
         steps = []
@@ -102,7 +102,7 @@ class TestRegistrationWindowAndNotices(ServiceTestCase):
         self.assertTrue(any("capacity notice for e1 could not be sent" in line for line in logs.output))
 
     def test_taking_the_last_place_asks_event_service_to_tell_the_organiser_and_coordinator(self):
-        # SPM-11 AC10: event-service owns who the organiser and coordinator are.
+        # SPM-11 AC9: event-service owns who the organiser and coordinator are.
         self.register(confirmed_event(capacity=2), email="amy@example.com")
         self.assertEqual(self.posted("/capacity-notice"), [])
 

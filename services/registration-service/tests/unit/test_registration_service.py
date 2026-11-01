@@ -123,7 +123,7 @@ class TestRegistrationService(ServiceTestCase):
         self.assertEqual(len(self.service.list_for_event("e1")), 1)
 
     def test_an_account_holds_one_registration_per_event(self):
-        # SPM-11 AC5: a second registration from the same account is refused, whatever the email.
+        # SPM-11 AC4: a second registration from the same account is refused, whatever the email.
         make_window(self.db)
         self.service.register("e1", "Amy Wong", "amy@example.com", user_id="u-amy")
 
