@@ -254,10 +254,11 @@ def withdraw_registration(
     status_code=201,
     summary="Register an attendee",
     description=(
-        "Creates a registration when the event is `confirmed`, registration is enabled and open, "
-        "capacity is not exceeded, and the email is not already registered."
+        "Registers the signed-in user when the event is `confirmed`, registration is enabled and open, "
+        "and a place remains. The email is the caller's own (filled in when left out; any other is 403), "
+        "and an account holds one registration per event (409)."
     ),
-    responses=error_responses(404, 409),
+    responses=error_responses(403, 404, 409),
 )
 def register(
     body: RegisterRequest,
@@ -265,5 +266,12 @@ def register(
     service: RegistrationService = Depends(get_registration_service),
 ):
     caller = resolve_caller(authorization, settings.user_service_url)
-    row = service.register(body.eventId, body.name, body.email, caller.get("userId"), authorization)
+    row = service.register(
+        body.eventId,
+        body.name,
+        body.email,
+        caller.get("userId"),
+        authorization,
+        account_email=caller.get("email"),
+    )
     return _to_attendee(row)

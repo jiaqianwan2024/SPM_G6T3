@@ -433,7 +433,12 @@ class EventFollowUp(BaseService):
                 continue
             if to_date and start and start > to_date:
                 continue
-            rows.append(self._card(event, authorization))
+            card = self._card(event, authorization)
+            # A full event is left out until a withdrawal frees a place. Its own page still opens
+            # (get_open), so an attendee following a link sees that it is full (SPM-11 AC6).
+            if card.full:
+                continue
+            rows.append(card)
         return rows
 
     def get_open(self, event_id: str, authorization: str | None) -> OpenEventOut:

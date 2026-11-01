@@ -63,6 +63,23 @@ class TestSubmitNeedsEveryRequiredField(ServiceTestCase):
         self.assertEqual(response.status_code, 201, response.text)
         self.assertEqual((response.json()["status"], response.json()["category"]), ("submitted", "Conference"))
 
+    def test_a_category_in_another_case_is_stored_as_the_form_spells_it(self):
+        response = self.client.post("/events", headers=HEADERS, json={**DETAILS, "category": " meeting "})
+
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()["category"], "Meeting")
+
+    def test_a_category_outside_the_list_is_refused(self):
+        response = self.client.post("/events", headers=HEADERS, json={**DETAILS, "category": "Seminar"})
+
+        self.assertEqual(self.missing(response), ["category"])
+        self.assertIn("Conference, Workshop, Networking, Meeting", response.text)
+
+    def test_a_draft_with_a_category_outside_the_list_is_refused(self):
+        response = self.client.post("/events/drafts", headers=HEADERS, json={"eventName": "AUTO-SPM82", "category": "party"})
+
+        self.assertEqual(self.missing(response), ["category"])
+
     def test_a_draft_submitted_with_its_details_needs_the_same_fields(self):
         draft = self.client.post("/events/drafts", headers=HEADERS, json={"eventName": "AUTO-SPM82"}).json()
         body = {key: value for key, value in DETAILS.items() if key != "purpose"}

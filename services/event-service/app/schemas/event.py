@@ -44,6 +44,11 @@ class EventCreate(BaseModel):
     def present(cls, value):
         return _required_text(value or "")
 
+    @field_validator("category")
+    @classmethod
+    def standard_category(cls, value: str) -> str:
+        return canonical_category(value)
+
     @model_validator(mode="after")
     def check_windows(self):
         if self.proposedEndAt <= self.proposedStartAt:
@@ -256,6 +261,24 @@ class EventDecisionOut(BaseModel):
     )
 
 
+# The only event categories, the same list the organiser form offers. Any casing of one of them is
+# stored as the form spells it, so "meeting" and "Meeting" are one category; anything else is refused.
+EVENT_CATEGORIES = ("Conference", "Workshop", "Networking", "Meeting")
+
+
+def canonical_category(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        # Not chosen yet: a draft may leave it blank, and submitting checks it separately.
+        return text
+    for name in EVENT_CATEGORIES:
+        if name.lower() == text.lower():
+            return name
+    raise ValueError(f"category must be one of {', '.join(EVENT_CATEGORIES)}")
+
+
 def _required_text(value: str) -> str:
     value = value.strip()
     if not value:
@@ -445,6 +468,11 @@ class EventUpdate(BaseModel):
         default=False,
         description="Send true after the coordinator has seen which arrangements the change affects.",
     )
+
+    @field_validator("category")
+    @classmethod
+    def standard_category(cls, value: str | None) -> str | None:
+        return canonical_category(value)
 
     @field_validator("proposedStartAt", "proposedEndAt")
     @classmethod
@@ -1135,6 +1163,11 @@ class OrganiserDraftPatch(BaseModel):
     registrationClosesAt: datetime | None = None
     capacity: int | None = Field(default=None, ge=0)
 
+    @field_validator("category")
+    @classmethod
+    def standard_category(cls, value: str | None) -> str | None:
+        return canonical_category(value)
+
     @field_validator("proposedStartAt", "proposedEndAt", "registrationOpensAt", "registrationClosesAt")
     @classmethod
     def as_naive_utc(cls, value: datetime | None) -> datetime | None:
@@ -1175,6 +1208,11 @@ class EventIntake(BaseModel):
     registrationOpensAt: datetime | None = None
     registrationClosesAt: datetime | None = None
     capacity: int = Field(default=0, ge=0)
+
+    @field_validator("category")
+    @classmethod
+    def standard_category(cls, value: str | None) -> str | None:
+        return canonical_category(value)
 
     @model_validator(mode="after")
     def check_registration_stated(self):
@@ -1250,6 +1288,11 @@ class EventDraftUpsert(BaseModel):
     registrationOpensAt: datetime | None = None
     registrationClosesAt: datetime | None = None
     capacity: int | None = Field(default=None, ge=0)
+
+    @field_validator("category")
+    @classmethod
+    def standard_category(cls, value: str | None) -> str | None:
+        return canonical_category(value)
 
     @model_validator(mode="after")
     def check_windows(self):

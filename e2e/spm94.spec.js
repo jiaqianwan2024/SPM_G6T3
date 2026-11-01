@@ -74,7 +74,7 @@ test.describe('SPM-94 Manage my notifications', () => {
     page,
   }) => {
     // A user with nothing in their inbox. Any real account collects notices as the suite runs
-    // (ATT-02 is told about each registration, SPM-11 AC3), so the list is answered as empty.
+    // (attendees are told when an event they hold changes or is cancelled), so the list is answered as empty.
     // Only notification-service's list: the app's own /app/notifications page must still load.
     await page.route(
       (url) => url.port === '8006' && url.pathname === '/notifications',

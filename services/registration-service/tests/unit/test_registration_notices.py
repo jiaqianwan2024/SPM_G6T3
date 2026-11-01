@@ -21,18 +21,6 @@ class FailingClient:
         return False
 
 
-def summit(**overrides):
-    """A confirmed event with the facts the attendee's notice names (SPM-11 AC3)."""
-    return confirmed_event(
-        eventName="AI in Events Summit",
-        # 02:00 to 04:00 UTC is 10:00 to 12:00 in Singapore.
-        proposedStartAt="2099-03-01T02:00:00",
-        proposedEndAt="2099-03-01T04:00:00",
-        venueName="Marina Hall A",
-        **overrides,
-    )
-
-
 class TestRegistrationWindowAndNotices(ServiceTestCase):
     def setUp(self):
         super().setUp()
@@ -41,10 +29,10 @@ class TestRegistrationWindowAndNotices(ServiceTestCase):
         )
         RecordingClient.calls = []
 
-    def register(self, event, name="Amy Wong", email="amy@example.com", client=RecordingClient):
+    def register(self, event, name="Amy Wong", email="amy@example.com", client=RecordingClient, user_id="u-amy"):
         with patch("app.services.registration_service._event", return_value=event):
             with patch("app.services.registration_service.httpx.Client", client):
-                return self.service.register("e1", name, email, user_id="u-amy", authorization="Bearer t")
+                return self.service.register("e1", name, email, user_id=user_id, authorization="Bearer t")
 
     def posted(self, path):
         return [call for call in RecordingClient.calls if call["url"].endswith(path)]
@@ -98,32 +86,19 @@ class TestRegistrationWindowAndNotices(ServiceTestCase):
         self.assertEqual(row.status, "registered")
         self.assertEqual(calls, [False, True])
 
-    def test_the_attendee_is_told_the_event_date_time_and_venue(self):
-        self.register(summit())
-
-        (notice,) = self.posted("/notifications/records")
-        self.assertEqual(notice["headers"], {"Authorization": "Bearer t"})
-        self.assertEqual(notice["json"]["type"], "registration.confirmed")
-        self.assertEqual(notice["json"]["title"], "You are registered for AI in Events Summit")
-        self.assertEqual(
-            notice["json"]["body"],
-            "Your place at AI in Events Summit on 01 Mar 2099, 10:00 to 12:00 SGT at Marina Hall A is confirmed.",
-        )
-
-    def test_a_notice_without_dates_or_venue_still_names_the_event(self):
+    def test_the_attendee_is_not_notified_of_their_own_registration(self):
+        # SPM-93 AC5: the screen confirms it; no in-app notice or email is sent.
         self.register(confirmed_event())
 
-        (notice,) = self.posted("/notifications/records")
-        self.assertEqual(notice["json"]["title"], "You are registered for e1")
-        self.assertEqual(notice["json"]["body"], "Your place at e1 is confirmed.")
+        self.assertEqual(self.posted("/notifications/records"), [])
+        self.assertEqual(self.posted("/notifications"), [])
 
-    def test_a_notice_that_cannot_be_sent_does_not_undo_the_registration(self):
+    def test_a_capacity_notice_that_cannot_be_sent_does_not_undo_the_registration(self):
         with self.assertLogs("app.services.registration_service", level="WARNING") as logs:
             row = self.register(confirmed_event(capacity=1), client=FailingClient)
 
         self.assertEqual(row.status, "registered")
         self.assertEqual(len(self.service.list_for_event("e1")), 1)
-        self.assertTrue(any("registration notification failed" in line for line in logs.output))
         self.assertTrue(any("capacity notice for e1 could not be sent" in line for line in logs.output))
 
     def test_taking_the_last_place_asks_event_service_to_tell_the_organiser_and_coordinator(self):
@@ -131,7 +106,7 @@ class TestRegistrationWindowAndNotices(ServiceTestCase):
         self.register(confirmed_event(capacity=2), email="amy@example.com")
         self.assertEqual(self.posted("/capacity-notice"), [])
 
-        self.register(confirmed_event(capacity=2), name="Ben Tan", email="ben@example.com")
+        self.register(confirmed_event(capacity=2), name="Ben Tan", email="ben@example.com", user_id="u-ben")
 
         (notice,) = self.posted("/capacity-notice")
         self.assertTrue(notice["url"].endswith("/events/e1/capacity-notice"))

@@ -1,13 +1,18 @@
 import { test, expect } from '@playwright/test'
 import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
-import { guestRegistration, registrationApi } from './support/registration.js'
+import { guestRegistration, notificationApi, registrationApi } from './support/registration.js'
 
 test.describe('SPM-12 Registration withdrawal', () => {
   test('TC-SPM12-AC01 the attendee can withdraw only from an event they are currently registered for', async () => {
-    const own = await registrationApi('POST', '/registrations/r-att-e2/withdraw', 'ATT-01')
-    expect([200, 409]).toContain(own.status)
-    const others = await registrationApi('POST', '/registrations/r1/withdraw', 'ATT-01')
+    // A registration of the test's own: Amy's seeded r-att-e2 is what SPM-59 shows as her changed event.
+    const created = await registrationApi('POST', '/registrations', 'ATT-02', guestRegistration('e1', 'SPM12-OWN'))
+    expect(created.status, JSON.stringify(created.body)).toBe(201)
+    const own = await registrationApi('POST', `/registrations/${created.body.attendeeRegistrationId}/withdraw`, 'ATT-02')
+    expect(own.status).toBe(200)
+    const again = await registrationApi('POST', `/registrations/${created.body.attendeeRegistrationId}/withdraw`, 'ATT-02')
+    expect(again.status).toBe(409)
+    const others = await registrationApi('POST', '/registrations/r1/withdraw', 'ATT-02')
     expect([403, 404]).toContain(others.status)
   })
 
@@ -83,7 +88,35 @@ test.describe('SPM-12 Registration withdrawal', () => {
     expect(remainingAfter).toBe(remainingBefore + 1)
   })
 
-  test('TC-SPM12-AC06 the attendee can register again later while the period is open and a place remains', async () => {
+  test('TC-SPM12-AC06 the attendee is shown confirmation of the withdrawal, without a notification', async ({
+    page,
+  }) => {
+    const created = await registrationApi(
+      'POST',
+      '/registrations',
+      'ATT-02',
+      guestRegistration('e1', 'SPM12-NOTE'),
+    )
+    expect(created.status).toBe(201)
+    const e1Notices = async () =>
+      ((await notificationApi('GET', '/notifications?pageSize=100', 'ATT-02')).body || [])
+        .filter((row) => row.eventId === 'e1')
+        .map((row) => row.notificationId)
+    const before = await e1Notices()
+    const withdrawn = await registrationApi(
+      'POST',
+      `/registrations/${created.body.attendeeRegistrationId}/withdraw`,
+      'ATT-02',
+    )
+    expect(withdrawn.status).toBe(200)
+    await login(page, account('ATT-02'))
+    await page.goto(`/app/registrations/${created.body.attendeeRegistrationId}`)
+    await expect(page.getByTestId('withdraw-confirmation')).toContainText(/withdrawn/i)
+    // SPM-93 AC5: the attendee is not notified of their own withdrawal.
+    expect(await e1Notices()).toEqual(before)
+  })
+
+  test('TC-SPM12-AC07 the attendee can register again later while the period is open and a place remains', async () => {
     const first = await registrationApi(
       'POST',
       '/registrations',
@@ -102,9 +135,12 @@ test.describe('SPM-12 Registration withdrawal', () => {
       email: first.body.attendeeEmail,
     })
     expect(again.status).toBe(201)
+    // Give e1's place back: it has one spare, which later tests and specs register for.
+    const tidied = await registrationApi('POST', `/registrations/${again.body.attendeeRegistrationId}/withdraw`, 'ATT-02')
+    expect(tidied.status).toBe(200)
   })
 
-  test('TC-SPM12-AC07 withdrawal is unavailable after the event has started, completed, or been cancelled', async ({
+  test('TC-SPM12-AC08 withdrawal is unavailable after the event has started, completed, or been cancelled', async ({
     page,
   }) => {
     await login(page, account('ATT-01'))
@@ -114,7 +150,7 @@ test.describe('SPM-12 Registration withdrawal', () => {
     expect([400, 403, 409]).toContain(denied.status)
   })
 
-  test('TC-SPM12-AC08 the organiser and assigned coordinator can see the withdrawal in the registration list', async () => {
+  test('TC-SPM12-AC09 the organiser and assigned coordinator can see the withdrawal in the registration list', async () => {
     const created = await registrationApi(
       'POST',
       '/registrations',

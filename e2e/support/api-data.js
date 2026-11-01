@@ -102,7 +102,7 @@ export function newEventPayload(name = `AUTO-EVENT-${Date.now()}`) {
     eventName: name,
     purpose: 'Acceptance test event.',
     description: 'Created by the planning-review suite.',
-    category: 'meeting',
+    category: 'Meeting',
     proposedStartAt: start.toISOString(),
     proposedEndAt: end.toISOString(),
     expectedAttendance: 24,

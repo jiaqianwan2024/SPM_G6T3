@@ -6,7 +6,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.orchestration.clients import notify_venue_staff
+from app.orchestration.clients import notify_attendees, notify_role, notify_venue_staff, settle_reverification
 from app.schemas.venue import EventFacts, OperatingHours
 from shared.auth.deps import require_authenticated_user
 from tests.unit.support import CALLER, VenueCase, venue_create
@@ -262,4 +262,15 @@ class TestNotifyVenueStaff(unittest.TestCase):
         post.assert_not_called()
         with patch("app.orchestration.clients.httpx.get", side_effect=httpx.ConnectError("down")):
             self.assertEqual(notify_venue_staff("S", "B", "Bearer t"), 0)
+
+
+class TestBestEffortCalls(unittest.TestCase):
+    def test_an_unreachable_service_is_logged_and_the_action_carries_on(self):
+        down = httpx.ConnectError("down")
+        with patch("app.orchestration.clients.httpx.get", side_effect=down):
+            self.assertEqual(notify_role("technical", "e1", "T", "B", "Bearer t", "venue.change"), 0)
+        with patch("app.orchestration.clients.httpx.post", side_effect=down) as post:
+            self.assertIsNone(settle_reverification("e1", "Bearer t"))
+            self.assertIsNone(notify_attendees("e1", "venue", "Bearer t"))
+        self.assertEqual(post.call_count, 2)
 

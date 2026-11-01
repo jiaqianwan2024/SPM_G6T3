@@ -126,60 +126,6 @@ def withdrawal_unavailable(event: dict) -> str | None:
     return None
 
 
-def _notify_withdrawal(row: AttendeeRegistration, event: dict, authorization: str | None) -> None:
-    """Tell the attendee they withdrew. A notification failure does not undo the withdrawal."""
-    event_name = event.get("eventName") or row.eventId
-    title = "Registration withdrawn"
-    body = f"You have withdrawn from {event_name} ({row.eventId}). Your place has been released."
-    headers = {"Authorization": authorization} if authorization else {}
-    try:
-        with httpx.Client(timeout=5.0) as client:
-            client.post(
-                f"{settings.notification_service_url}/notifications/records",
-                json={
-                    "eventId": row.eventId,
-                    "type": "registration.withdrawn",
-                    "title": title,
-                    "body": body,
-                },
-                headers=headers,
-            )
-            client.post(
-                f"{settings.notification_service_url}/notifications",
-                json={"to": row.attendeeEmail, "subject": title, "body": body},
-                headers=headers,
-            )
-    except httpx.HTTPError:
-        logger.warning("withdrawal notification failed for %s", row.attendeeRegistrationId)
-
-
-def _notify_registration(row: AttendeeRegistration, event: dict, authorization: str | None) -> None:
-    """SPM-11 AC3: tell the attendee they are registered, naming the event, its date, time
-    and venue. A notification failure does not undo the registration."""
-    event_name = event.get("eventName") or row.eventId
-    details = []
-    if event.get("proposedStartAt") and event.get("proposedEndAt"):
-        starts, ends = to_sgt(_when(event["proposedStartAt"])), to_sgt(_when(event["proposedEndAt"]))
-        details.append(f"{starts:%d %b %Y}, {starts:%H:%M} to {ends:%H:%M} SGT")
-    if event.get("venueName"):
-        details.append(f"at {event['venueName']}")
-    when = f" on {' '.join(details)}" if details else ""
-    try:
-        with httpx.Client(timeout=5.0) as client:
-            client.post(
-                f"{settings.notification_service_url}/notifications/records",
-                json={
-                    "eventId": row.eventId,
-                    "type": "registration.confirmed",
-                    "title": f"You are registered for {event_name}",
-                    "body": f"Your place at {event_name}{when} is confirmed.",
-                },
-                headers={"Authorization": authorization} if authorization else {},
-            )
-    except httpx.HTTPError:
-        logger.warning("registration notification failed for %s", row.attendeeRegistrationId)
-
-
 def _report_capacity_reached(event_id: str, authorization: str | None) -> None:
     """SPM-11 AC10: the last place went, so ask event-service to tell the organiser and the
     assigned coordinator. Event-service checks the count itself. Best effort."""
@@ -316,16 +262,29 @@ class RegistrationService(BaseService):
         row.withdrawnAt = datetime.utcnow()
         self.db.commit()
         self.db.refresh(row)
-        _notify_withdrawal(row, event, authorization)
+        # SPM-93 AC5: no notice about the attendee's own withdrawal; the screen confirms it.
         return row
 
     def register(
-        self, event_id: str, name: str, email: str, user_id: str | None, authorization: str | None = None
+        self,
+        event_id: str,
+        name: str,
+        email: str,
+        user_id: str | None,
+        authorization: str | None = None,
+        account_email: str | None = None,
     ) -> AttendeeRegistration:
         """SPM-11. The event's own record decides whether registration is open (AC1, AC7) and
         the event's window row is locked while the places are counted, so two attendees
-        sending for the last place are decided one after the other (AC8). The attendee is
-        told (AC3), and taking the last place tells the organiser and coordinator (AC10)."""
+        sending for the last place are decided one after the other (AC8). Taking the last
+        place tells the organiser and coordinator (AC10).
+
+        An attendee registers only themselves: with `account_email` given, the email is the
+        account's (it is filled in when left out) and an account holds one registration per
+        event (AC5)."""
+        email = (email or "").strip() or (account_email or "")
+        if account_email and email.lower() != account_email.lower():
+            raise forbidden("You can only register yourself, with your account's email address.")
         if not name or not email:
             raise conflict("Name and email are required.")
         event = _event(event_id, authorization)
@@ -338,10 +297,17 @@ class RegistrationService(BaseService):
         if not ok:
             self.db.rollback()
             raise conflict(reason)
-        duplicate = next((row for row in existing if row.attendeeEmail.lower() == email.lower()), None)
+        duplicate = next(
+            (
+                row
+                for row in existing
+                if row.attendeeEmail.lower() == email.lower() or (user_id and row.userId == user_id)
+            ),
+            None,
+        )
         if duplicate:
             self.db.rollback()
-            raise conflict("This email is already registered for the event.")
+            raise conflict("You are already registered for this event.")
         row = AttendeeRegistration(
             attendeeRegistrationId=str(uuid4()),
             eventId=event_id,
@@ -354,7 +320,7 @@ class RegistrationService(BaseService):
         self.registration_dao.add(row)
         self.db.commit()
         self.db.refresh(row)
-        _notify_registration(row, event, authorization)
+        # SPM-93 AC5: no notice about the attendee's own registration; the screen confirms it.
         if len(existing) + 1 >= event["capacity"]:
             _report_capacity_reached(event_id, authorization)
         return row

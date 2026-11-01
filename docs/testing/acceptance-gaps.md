@@ -61,8 +61,9 @@ with a registered trigger, as the other flows already do.
 from attendees. `/notifications/records` and `/records/batch` do none of that. They carry
 assignment, confirmation, change-request decisions, registration-setting changes, attendee change notices,
 safety handoff and claim notices, and venue-service's notices. Moving them all onto `/publish` is the
-fix. But SPM-11 AC3 and SPM-12 AC6 require the attendee to be told about their *own* registration or
-withdrawal, which SPM-93 AC5 forbids, so settle that conflict in Jira first.
+fix. The conflict with SPM-11 AC3 and SPM-12 AC6 is settled (1 Nov 2026): SPM-93 AC5 wins, so the attendee
+gets no notice about their own registration or withdrawal, only the on-screen confirmation. Reword those two
+ACs in the backlog to match.
 
 ### Performance: per-event requests and per-call HTTP clients
 
@@ -109,8 +110,8 @@ Each fix comes with unit tests that keep the 100% coverage gate.
   looks for the row is ended before the lock is taken. Under MySQL's REPEATABLE READ, a count in that same
   transaction would not see a registration committed while it waited, and both attendees got the last place
   (reproduced live in 1 of 5 runs). **LIVE:** 10 of 10 runs now give exactly one 201 and one "full" 409.
-- **SPM-11 AC3 and AC10, notices.** The attendee gets an in-app `registration.confirmed` notice naming the event,
-  its date, time and venue. Taking the last place calls the new `POST /events/{id}/capacity-notice`.
+- **SPM-11 AC3 and AC10, notices.** The attendee is not notified of their own registration (decided 1 Nov 2026,
+  SPM-93 AC5); the screen confirms it with the event, date, time and venue. Taking the last place calls the new `POST /events/{id}/capacity-notice`.
   Event-service re-checks the count itself and publishes `registration.full` to the organiser and the
   coordinator, once per capacity value.
 - **SPM-11 AC7.** A refusal outside the period states the period in SGT.
@@ -165,7 +166,22 @@ Each fix comes with unit tests that keep the 100% coverage gate.
 - **Navigation.** Tech Support's unbuilt "My Assignments" and "Maintenance Status" tabs are gone, and "Reservations"
   is the real view (`e2e/support/test-data.js` updated).
 - **Specs corrected to match the code and Jira:**
-  - spm11: AC08 and AC10 now use an event of their own, so they really test the race and the full notice.
+  - spm11: AC01 to AC04, AC08, AC10 and the closed side of AC07 use an event of their own, since seeded e1 has a
+    single place left. AC01 and AC09 also cover a confirmed event without registration (e7), and AC07 covers a
+    period that has closed as well as one not yet open.
+  - spm11, spm59, spm91: events made for a test are withdrawn from and cancelled when the spec ends
+    (`releaseEvents` in `e2e/support/registration.js`), so they never reach the attendee screens.
+  - spm12: AC01 withdraws a registration of its own rather than Amy's seeded r-att-e2, and AC07 gives
+    back the e1 place it re-registers for. Re-seeding also restores the seeded registrations.
+  - spm59 AC06 and spm92 AC08: "no registrations" is answered as an empty list, as spm94 AC07 does for
+    the inbox, since other specs register as ATT-02 and records are kept after a withdrawal.
+  - spm59 AC04: checks an event ATT-01 is not registered for; the home leaves out events already held.
+  - spm71 and spm106: each test edits or raises change requests on an event of its own. They had left seeded
+    e1 reconsidering (attendance 180) with pending change requests, e2 moved, and e3's purpose "Updated purpose".
+- **Attendees register only themselves (1 Nov 2026).** `POST /registrations` takes the email from the caller's
+  account (any other is 403) and allows one registration per account per event, which also closes the SPM-11
+  AC5 gap where one attendee could register twice under different emails. The register form fills in the
+  account's name (editable, still required, so SPM-11 AC2 holds) and shows the email read-only.
   - spm14 and spm82: drafts are made with `/drafts`, then submitted once.
   - spm15 AC07: compares against the status label.
   - spm55: rewritten against the current dashboard, with its own data.

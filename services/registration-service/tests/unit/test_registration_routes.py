@@ -180,7 +180,7 @@ class TestRegistrationRoutes(ServiceTestCase):
 
         self.assertEqual(denied.status_code, 404)
 
-    def _register(self, email="guest@example.com", name="Guest"):
+    def _register(self, email="attendee2@connectsphere.com", name="Guest"):
         make_window(self.db)
         self.resolve_caller.return_value = {
             "userId": "u-att",
@@ -207,8 +207,8 @@ class TestRegistrationRoutes(ServiceTestCase):
         body = places.json()
         self.assertEqual(body["attendees"], [])
         self.assertEqual(body["remainingPlaces"], body["placesRemaining"])
-        self.assertNotIn("guest@example.com", places.text)
-        self.assertEqual(created["attendeeEmail"], "guest@example.com")
+        self.assertNotIn("attendee2@connectsphere.com", places.text)
+        self.assertEqual(created["attendeeEmail"], "attendee2@connectsphere.com")
 
     def test_withdraw_keeps_the_row_releases_one_place_and_allows_registering_again(self):
         created = self._register()
@@ -249,7 +249,7 @@ class TestRegistrationRoutes(ServiceTestCase):
         again = self.client.post(
             "/registrations",
             headers={"Authorization": "Bearer token"},
-            json={"eventId": "e1", "name": "Guest", "email": "guest@example.com"},
+            json={"eventId": "e1", "name": "Guest", "email": "attendee2@connectsphere.com"},
         )
         missing = self.client.post(
             "/registrations/missing/withdraw",
@@ -263,7 +263,7 @@ class TestRegistrationRoutes(ServiceTestCase):
         self.assertEqual(viewed.status_code, 200)
         self.assertEqual(viewed.json()["status"], "withdrawn")
         self.assertEqual(after.json()["remainingPlaces"], before.json()["remainingPlaces"] + 1)
-        self.assertNotIn("guest@example.com", after.text)
+        self.assertNotIn("attendee2@connectsphere.com", after.text)
         self.assertEqual(again.status_code, 201)
         self.assertNotEqual(again.json()["attendeeRegistrationId"], created["attendeeRegistrationId"])
         self.assertEqual(missing.status_code, 404)
@@ -309,7 +309,7 @@ class TestRegistrationRoutes(ServiceTestCase):
         )
 
         self.assertEqual(denied.status_code, 404)
-        self.assertNotIn("guest@example.com", denied.text)
+        self.assertNotIn("attendee2@connectsphere.com", denied.text)
 
     def test_mine_event_ids_lists_only_the_events_the_caller_registered_for(self):
         # SPM-127: event-service asks this to decide which event pages an attendee may open.
