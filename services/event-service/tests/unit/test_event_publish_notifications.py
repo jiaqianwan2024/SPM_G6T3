@@ -90,6 +90,17 @@ class TestPublishClient(unittest.TestCase):
         with patch("app.orchestration.clients.httpx.Client", side_effect=httpx.ConnectError("down")):
             self.assertFalse(self.publish())
 
+    def test_a_failed_publish_is_logged_with_its_trigger_and_event(self):
+        """SPM-93 AC9: a delivery failure leaves a trace."""
+        stub, _client = self.post_answering(reply(403))
+        with stub, self.assertLogs("perf.clients", level="WARNING") as refused:
+            self.publish()
+        self.assertIn("booking.assigned for e1 got status 403", refused.output[0])
+        with patch("app.orchestration.clients.httpx.Client", side_effect=httpx.ConnectError("down")):
+            with self.assertLogs("perf.clients", level="WARNING") as unreachable:
+                self.publish()
+        self.assertIn("booking.assigned for e1 raised", unreachable.output[0])
+
 
 class TestSafetyTriggers(SafetyCase):
     """SPM-93: the Safety Officer is told details were submitted, and the coordinator, organiser,

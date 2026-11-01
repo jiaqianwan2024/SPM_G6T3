@@ -336,6 +336,19 @@ class TestAssignmentClients(unittest.TestCase):
         self.assertTrue(post.call_args.args[0].endswith("/notifications"))
         self.assertEqual(post.call_args.kwargs["json"], {"to": "ben@connectsphere.com", "subject": "Subject", "body": "Body"})
 
+    def test_a_failed_send_notification_is_logged_with_its_recipient(self):
+        """SPM-93 AC9: a delivery failure leaves a trace."""
+        client = MagicMock()
+        client.__enter__.return_value.post.return_value = reply(503)
+        with patch("app.orchestration.clients.httpx.Client", MagicMock(return_value=client)):
+            with self.assertLogs("perf.clients", level="WARNING") as refused:
+                clients.send_notification("a@b.com", "S", "B", None)
+        self.assertIn("notification to a@b.com got status 503", refused.output[0])
+        with patch("app.orchestration.clients.httpx.Client", side_effect=httpx.ConnectError("down")):
+            with self.assertLogs("perf.clients", level="WARNING") as unreachable:
+                clients.send_notification("a@b.com", "S", "B", None)
+        self.assertIn("notification to a@b.com raised", unreachable.output[0])
+
     def test_send_notification_reports_a_failure_without_raising(self):
         client = MagicMock()
         client.__enter__.return_value.post.return_value = reply(503)

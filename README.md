@@ -164,19 +164,19 @@ npm run test:acceptance
 
 ### Test case setup SQL
 
-Every acceptance test case has a setup file, `docs/testing/setup/<Test Case ID>.sql`, named in its pre-conditions ("Run `TC-SPM43-AC01.sql` on testDB"). Each one empties every table in the six databases and reloads the seeded demo data from `docs/testing/setup/base.sql`, with dates counted from the moment it runs, so the seeded events are always the same number of days away. Run it before the test:
+Every acceptance test case has a setup file, `docs/testing/setup/<Test Case ID>.sql`, named in its pre-conditions ("Run `TC-SPM43-AC01.sql` on testDB"). Each one is plain SQL that empties every table in the six databases, then inserts all users and organisations and only the seeded data that case uses: the event it tests with that event's venue, equipment and registration window, plus any registration, change request or clarification it names. Dates are counted from the moment it runs, so a seeded event is always the same number of days away. Run it before the test:
 
 ```
 python scripts/test_setup.py TC-SPM43-AC01
 npx playwright test e2e/spm43.spec.js -g "TC-SPM43-AC01 "
 ```
 
-`python scripts/test_setup.py base` resets to the seed without naming a case. Several IDs can be given at once; each one resets the database again.
+`python scripts/test_setup.py base` resets to the full seed. Use it before running a whole spec (`npm run test:spm12`), because one case's file only has that case's data. Several IDs can be given at once; each one resets the database again.
 
 - **It wipes the database.** The test database is the Compose MySQL on port 3307, the same one the dev backends use, so anything you created there is lost. Back it up first if you need it: `docker exec infra-mysql-1 mysqldump -uroot -pconnectsphere --databases user event venue equipment registration notification > backups/mine.sql`.
-- **No MySQL client is needed.** `infra/docker-compose.yml` mounts `docs/testing/setup/` into the MySQL container as `/setup`, and the script runs the file there. After pulling this change, run `docker compose up -d` in `infra/` once so the container picks up the mount (your data volume is kept).
+- **No MySQL client is needed.** `infra/docker-compose.yml` mounts `docs/testing/setup/` into the MySQL container as `/setup`, and the script runs the file there. After pulling this change, run `docker compose up -d` in `infra/` once so the container picks up the mount (your data volume is kept). Each file also runs on its own in any client connected to `127.0.0.1:3307`.
 - **Sign-ins live in Firebase, not in these files.** The files restore the seeded user rows; the accounts in `Test Data/credentials-valid.txt` must already exist in your Firebase project (running `python scripts/migrate.py` once creates them).
-- **Rebuild after a migration or a seed change.** `python scripts/build_test_setup.py` backs the database up to `backups/`, empties it, runs `scripts/seed.py`, and writes `base.sql` and one file per test case the specs name. `--cases-only` rewrites just the per-case files, e.g. after adding a test. A case that needs rows beyond the seed gets them from `EXTRA` in that script.
+- **Rebuild after a migration or a seed change.** `python scripts/build_test_setup.py` backs the database up to `backups/`, empties it, runs `scripts/seed.py`, and writes `base.sql`, `records.json` (the seed's rows filed by record) and one file per test case the specs name. Don't edit the case files by hand. To change what a case loads, edit its list in `docs/testing/setup/needs.json`, then run `--cases-only`, which rewrites just the per-case files without touching the database. A new test needs an entry there too. A case that needs rows beyond the seed gets them from `EXTRA` in that script.
 
 Unit tests (unittest and Coverage.py for each service's `app/` package):
 

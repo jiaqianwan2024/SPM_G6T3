@@ -1,0 +1,1058 @@
+{
+ "TC-SPM02-AC01": [
+  "equipment-eq1"
+ ],
+ "TC-SPM02-AC02": [
+  "equipment-eq1"
+ ],
+ "TC-SPM02-AC03": [
+  "equipment-eq1"
+ ],
+ "TC-SPM02-AC04": [
+  "equipment-eq1"
+ ],
+ "TC-SPM02-AC05": [
+  "equipment-eq1"
+ ],
+ "TC-SPM02-AC06": [
+  "equipment-eq1"
+ ],
+ "TC-SPM02-AC07": [
+  "equipment-eq1"
+ ],
+ "TC-SPM02-AC08": [
+  "equipment-eq1"
+ ],
+ "TC-SPM02-AC09": [
+  "equipment-eq1"
+ ],
+ "TC-SPM03-AC01": [
+  "equipment-eq1"
+ ],
+ "TC-SPM03-AC02": [
+  "equipment-eq1"
+ ],
+ "TC-SPM03-AC03": [
+  "equipment-eq1"
+ ],
+ "TC-SPM03-AC04": [
+  "equipment-eq1"
+ ],
+ "TC-SPM03-AC05": [
+  "equipment-eq1"
+ ],
+ "TC-SPM03-AC06": [
+  "equipment-eq1"
+ ],
+ "TC-SPM03-AC07": [
+  "equipment-eq1"
+ ],
+ "TC-SPM03-AC08": [
+  "equipment-eq1"
+ ],
+ "TC-SPM03-AC09": [
+  "equipment-eq1"
+ ],
+ "TC-SPM03-AC10": [
+  "equipment-eq1"
+ ],
+ "TC-SPM04-AC01": [
+  "event-e1",
+  "event-e2"
+ ],
+ "TC-SPM04-AC02": [
+  "event-e1"
+ ],
+ "TC-SPM04-AC03": [],
+ "TC-SPM04-AC04": [
+  "event-e2"
+ ],
+ "TC-SPM04-AC05": [
+  "event-e8"
+ ],
+ "TC-SPM04-AC06": [
+  "event-e6"
+ ],
+ "TC-SPM04-AC07": [],
+ "TC-SPM04-EXTRA01": [],
+ "TC-SPM04-EXTRA02": [],
+ "TC-SPM04-EXTRA03": [],
+ "TC-SPM04-EXTRA04": [],
+ "TC-SPM04-EXTRA05": [],
+ "TC-SPM05-AC01": [
+  "event-e1"
+ ],
+ "TC-SPM05-AC02": [
+  "event-e1"
+ ],
+ "TC-SPM05-AC03": [
+  "event-e1"
+ ],
+ "TC-SPM05-AC04": [
+  "event-e1"
+ ],
+ "TC-SPM05-AC05": [
+  "event-e1"
+ ],
+ "TC-SPM05-AC06": [
+  "event-e1"
+ ],
+ "TC-SPM05-AC07": [
+  "event-e1"
+ ],
+ "TC-SPM05-AC08": [
+  "event-e1"
+ ],
+ "TC-SPM05-AC09": [
+  "event-e1"
+ ],
+ "TC-SPM06-AC01": [
+  "review-rv-clarify-e3"
+ ],
+ "TC-SPM06-AC02": [
+  "review-rv-clarify-e3"
+ ],
+ "TC-SPM06-AC03": [],
+ "TC-SPM06-AC04": [
+  "review-late-reply"
+ ],
+ "TC-SPM08-AC01": [],
+ "TC-SPM08-AC01b": [],
+ "TC-SPM08-AC02": [],
+ "TC-SPM08-AC02b": [],
+ "TC-SPM08-AC03": [],
+ "TC-SPM08-AC04": [],
+ "TC-SPM08-AC05": [],
+ "TC-SPM08-AC06": [],
+ "TC-SPM08-AC06b": [],
+ "TC-SPM08-AC06c": [],
+ "TC-SPM08-AC07": [],
+ "TC-SPM08-AC08": [],
+ "TC-SPM08-AC09": [],
+ "TC-SPM08-AC10": [],
+ "TC-SPM08-AC11": [],
+ "TC-SPM09-AC01": [
+  "venue-v2"
+ ],
+ "TC-SPM09-AC02": [
+  "venue-v2"
+ ],
+ "TC-SPM09-AC03": [
+  "venue-v4"
+ ],
+ "TC-SPM09-AC04": [
+  "venue-v3"
+ ],
+ "TC-SPM09-AC05": [
+  "venue-v2"
+ ],
+ "TC-SPM09-AC06": [
+  "venue-v2"
+ ],
+ "TC-SPM09-AC07": [
+  "venue-v4"
+ ],
+ "TC-SPM09-AC08": [
+  "venue-v2"
+ ],
+ "TC-SPM10-AC01": [],
+ "TC-SPM10-AC02": [],
+ "TC-SPM10-AC02b": [],
+ "TC-SPM10-AC03": [],
+ "TC-SPM10-AC04": [],
+ "TC-SPM10-AC05": [],
+ "TC-SPM10-AC06": [],
+ "TC-SPM10-AC07": [],
+ "TC-SPM10-AC08": [],
+ "TC-SPM105-AC01": [
+  "event-e1",
+  "registration-r-att-e2"
+ ],
+ "TC-SPM105-AC02": [
+  "event-e1"
+ ],
+ "TC-SPM105-AC03": [
+  "event-e1"
+ ],
+ "TC-SPM105-AC04": [
+  "event-e1"
+ ],
+ "TC-SPM105-AC05": [
+  "event-e3"
+ ],
+ "TC-SPM105-AC06": [
+  "event-e4"
+ ],
+ "TC-SPM106-AC01": [
+  "venue-v1"
+ ],
+ "TC-SPM106-AC02": [
+  "venue-v1"
+ ],
+ "TC-SPM106-AC03": [
+  "venue-v1"
+ ],
+ "TC-SPM106-AC04": [
+  "venue-v1"
+ ],
+ "TC-SPM106-AC05": [
+  "venue-v1"
+ ],
+ "TC-SPM106-AC06": [
+  "venue-v1"
+ ],
+ "TC-SPM106-AC07": [
+  "venue-v1"
+ ],
+ "TC-SPM106-AC08": [
+  "venue-v1"
+ ],
+ "TC-SPM106-AC09": [
+  "event-e8",
+  "venue-v1"
+ ],
+ "TC-SPM106-AC10": [
+  "venue-v1"
+ ],
+ "TC-SPM108-AC01": [
+  "venue-v3"
+ ],
+ "TC-SPM108-AC02": [
+  "venue-v1"
+ ],
+ "TC-SPM108-AC03": [
+  "event-e1"
+ ],
+ "TC-SPM108-AC04": [],
+ "TC-SPM108-AC05": [
+  "venue-v1"
+ ],
+ "TC-SPM108-AC06": [
+  "venue-v3"
+ ],
+ "TC-SPM108-AC07": [
+  "venue-v1"
+ ],
+ "TC-SPM108-AC08": [
+  "venue-v4"
+ ],
+ "TC-SPM11-AC01": [
+  "event-e3",
+  "event-e6",
+  "event-e7"
+ ],
+ "TC-SPM11-AC02": [],
+ "TC-SPM11-AC03": [
+  "venue-v1"
+ ],
+ "TC-SPM11-AC04": [],
+ "TC-SPM11-AC05": [
+  "event-e1"
+ ],
+ "TC-SPM11-AC06": [
+  "event-e2"
+ ],
+ "TC-SPM11-AC07": [
+  "event-e4"
+ ],
+ "TC-SPM11-AC08": [],
+ "TC-SPM11-AC09": [
+  "event-e2",
+  "event-e3",
+  "event-e4",
+  "event-e7"
+ ],
+ "TC-SPM11-AC10": [],
+ "TC-SPM112-AC01": [],
+ "TC-SPM112-AC02": [],
+ "TC-SPM112-AC02b": [],
+ "TC-SPM112-AC02c": [],
+ "TC-SPM112-AC03": [],
+ "TC-SPM112-AC04": [],
+ "TC-SPM115-AC01": [
+  "venue-v1",
+  "venue-v3"
+ ],
+ "TC-SPM115-AC02": [
+  "venue-v1",
+  "venue-v3",
+  "venue-v4"
+ ],
+ "TC-SPM115-AC03": [
+  "venue-v1",
+  "venue-v3"
+ ],
+ "TC-SPM115-AC04": [
+  "venue-v1",
+  "venue-v3"
+ ],
+ "TC-SPM115-AC05": [
+  "venue-v1"
+ ],
+ "TC-SPM116-AC01": [],
+ "TC-SPM116-AC01b": [],
+ "TC-SPM116-AC01c": [],
+ "TC-SPM116-AC02": [],
+ "TC-SPM116-AC02b": [],
+ "TC-SPM116-AC03": [],
+ "TC-SPM116-AC04": [],
+ "TC-SPM116-AC05": [],
+ "TC-SPM116-AC06": [],
+ "TC-SPM117-AC01": [],
+ "TC-SPM117-AC02": [],
+ "TC-SPM117-AC03": [],
+ "TC-SPM117-AC04": [],
+ "TC-SPM117-AC05": [],
+ "TC-SPM117-AC06": [],
+ "TC-SPM117-AC07": [],
+ "TC-SPM118-AC01": [],
+ "TC-SPM118-AC02": [],
+ "TC-SPM118-AC03": [],
+ "TC-SPM118-AC04": [],
+ "TC-SPM118-AC05": [],
+ "TC-SPM119-AC01": [],
+ "TC-SPM119-AC02": [],
+ "TC-SPM119-AC03": [],
+ "TC-SPM12-AC01": [
+  "registration-r1"
+ ],
+ "TC-SPM12-AC02": [
+  "event-e1",
+  "registration-r-att-e8"
+ ],
+ "TC-SPM12-AC03": [
+  "registration-r-att-e1"
+ ],
+ "TC-SPM12-AC04": [
+  "event-e1"
+ ],
+ "TC-SPM12-AC05": [
+  "event-e1"
+ ],
+ "TC-SPM12-AC06": [
+  "event-e1"
+ ],
+ "TC-SPM12-AC07": [
+  "event-e1"
+ ],
+ "TC-SPM12-AC08": [
+  "registration-r-att-e8"
+ ],
+ "TC-SPM12-AC09": [
+  "event-e1"
+ ],
+ "TC-SPM120-AC01": [
+  "equipment-eq1",
+  "venue-v1"
+ ],
+ "TC-SPM120-AC02": [
+  "venue-v1"
+ ],
+ "TC-SPM120-AC03": [
+  "venue-v1"
+ ],
+ "TC-SPM120-AC05": [
+  "venue-v1"
+ ],
+ "TC-SPM120-AC06": [
+  "venue-v1"
+ ],
+ "TC-SPM120-AC07": [
+  "venue-v1"
+ ],
+ "TC-SPM120-AC08": [
+  "venue-v1"
+ ],
+ "TC-SPM121-AC01": [
+  "equipment-eq1",
+  "venue-v1"
+ ],
+ "TC-SPM121-AC02": [
+  "equipment-eq1",
+  "venue-v1",
+  "venue-v3"
+ ],
+ "TC-SPM121-AC03": [
+  "venue-v1"
+ ],
+ "TC-SPM121-AC04": [
+  "venue-v1"
+ ],
+ "TC-SPM121-AC05": [
+  "venue-v1"
+ ],
+ "TC-SPM122-AC01": [],
+ "TC-SPM122-AC01b": [],
+ "TC-SPM122-AC02": [],
+ "TC-SPM122-AC03": [],
+ "TC-SPM122-AC04": [],
+ "TC-SPM127-AC01": [
+  "event-e8",
+  "registration-r-att-e1"
+ ],
+ "TC-SPM127-AC01b": [
+  "event-e8",
+  "registration-r-att-e1"
+ ],
+ "TC-SPM127-AC01c": [
+  "registration-r-att-e8"
+ ],
+ "TC-SPM127-AC02": [
+  "event-e1"
+ ],
+ "TC-SPM127-AC03": [
+  "event-e1"
+ ],
+ "TC-SPM127-AC03b": [
+  "event-e1"
+ ],
+ "TC-SPM127-AC03c": [
+  "registration-r-att-e8"
+ ],
+ "TC-SPM14-AC01": [],
+ "TC-SPM14-AC02": [],
+ "TC-SPM14-AC03": [],
+ "TC-SPM14-AC04": [],
+ "TC-SPM14-AC05": [],
+ "TC-SPM14-AC06": [],
+ "TC-SPM14-AC07": [],
+ "TC-SPM15-AC01": [],
+ "TC-SPM15-AC02": [],
+ "TC-SPM15-AC03": [
+  "event-e1"
+ ],
+ "TC-SPM15-AC04": [
+  "event-e3"
+ ],
+ "TC-SPM15-AC05": [
+  "event-e1"
+ ],
+ "TC-SPM15-AC06": [
+  "event-e1"
+ ],
+ "TC-SPM15-AC07": [
+  "event-e1"
+ ],
+ "TC-SPM15-AC08": [
+  "event-e1",
+  "event-e5",
+  "venue-v3",
+  "venue-v4"
+ ],
+ "TC-SPM15-AC09": [],
+ "TC-SPM17-AC01": [
+  "venue-v1"
+ ],
+ "TC-SPM17-AC02": [
+  "venue-v1"
+ ],
+ "TC-SPM17-AC03": [],
+ "TC-SPM17-AC04": [
+  "venue-v1"
+ ],
+ "TC-SPM17-AC05": [
+  "venue-v1"
+ ],
+ "TC-SPM17-AC06": [],
+ "TC-SPM43-AC01": [],
+ "TC-SPM43-AC02": [],
+ "TC-SPM43-AC03": [],
+ "TC-SPM43-AC04": [],
+ "TC-SPM43-AC05": [],
+ "TC-SPM43-AC06": [],
+ "TC-SPM43-AC07": [],
+ "TC-SPM45-AC01": [],
+ "TC-SPM45-AC02": [],
+ "TC-SPM45-AC03": [],
+ "TC-SPM45-AC04": [],
+ "TC-SPM46-AC01": [
+  "equipment-eq1"
+ ],
+ "TC-SPM46-AC02": [],
+ "TC-SPM46-AC03": [
+  "equipment-eq1"
+ ],
+ "TC-SPM47-AC01": [
+  "event-e1",
+  "event-e5",
+  "event-e7"
+ ],
+ "TC-SPM47-AC02": [
+  "event-e1",
+  "event-e7"
+ ],
+ "TC-SPM47-AC03": [
+  "event-e1",
+  "event-e5"
+ ],
+ "TC-SPM47-AC04": [
+  "event-e1",
+  "event-e5",
+  "event-e7"
+ ],
+ "TC-SPM55-AC01": [],
+ "TC-SPM55-AC02": [],
+ "TC-SPM55-AC03": [],
+ "TC-SPM55-AC04": [
+  "venue-v1"
+ ],
+ "TC-SPM55-AC05": [],
+ "TC-SPM55-AC06": [],
+ "TC-SPM55-AC07": [],
+ "TC-SPM56-AC01": [
+  "event-e3"
+ ],
+ "TC-SPM56-AC02": [
+  "event-e6"
+ ],
+ "TC-SPM56-AC03": [],
+ "TC-SPM56-AC04": [
+  "event-e1"
+ ],
+ "TC-SPM56-AC05": [],
+ "TC-SPM56-AC06": [
+  "event-e1",
+  "event-e5",
+  "event-e7"
+ ],
+ "TC-SPM56-AC07": [],
+ "TC-SPM57-AC01": [],
+ "TC-SPM57-AC01b": [],
+ "TC-SPM57-AC02": [],
+ "TC-SPM57-AC03": [],
+ "TC-SPM57-AC04": [],
+ "TC-SPM57-AC05": [],
+ "TC-SPM57-AC06": [],
+ "TC-SPM58-AC01": [
+  "equipment-eq1"
+ ],
+ "TC-SPM58-AC02": [
+  "equipment-eq1"
+ ],
+ "TC-SPM58-AC03": [
+  "equipment-eq1"
+ ],
+ "TC-SPM58-AC04": [
+  "equipment-eq1"
+ ],
+ "TC-SPM58-AC05": [
+  "equipment-eq1"
+ ],
+ "TC-SPM58-AC06": [
+  "equipment-eq1"
+ ],
+ "TC-SPM58-AC07": [
+  "equipment-eq1"
+ ],
+ "TC-SPM59-AC01": [
+  "event-e1"
+ ],
+ "TC-SPM59-AC02": [
+  "event-e2"
+ ],
+ "TC-SPM59-AC03": [
+  "event-e8"
+ ],
+ "TC-SPM59-AC04": [],
+ "TC-SPM59-AC05": [],
+ "TC-SPM59-AC06": [],
+ "TC-SPM60-AC01": [
+  "venue-v1"
+ ],
+ "TC-SPM60-AC02": [
+  "venue-v1"
+ ],
+ "TC-SPM60-AC03": [
+  "venue-v1"
+ ],
+ "TC-SPM60-AC04": [],
+ "TC-SPM60-AC05": [],
+ "TC-SPM60-AC06": [],
+ "TC-SPM60-AC07": [
+  "venue-v1",
+  "venue-v2"
+ ],
+ "TC-SPM60-AC08": [
+  "venue-v1",
+  "venue-v2",
+  "venue-v3",
+  "venue-v4"
+ ],
+ "TC-SPM60-AC09": [],
+ "TC-SPM61-AC01": [],
+ "TC-SPM61-AC02": [],
+ "TC-SPM61-AC03": [],
+ "TC-SPM61-AC04": [],
+ "TC-SPM61-AC05": [],
+ "TC-SPM61-AC06": [],
+ "TC-SPM61-AC07": [],
+ "TC-SPM61-AC08": [],
+ "TC-SPM61-AC09": [],
+ "TC-SPM62-AC01": [],
+ "TC-SPM62-AC02": [],
+ "TC-SPM62-AC02b": [],
+ "TC-SPM62-AC03": [],
+ "TC-SPM62-AC04": [],
+ "TC-SPM62-AC05": [],
+ "TC-SPM62-AC06": [],
+ "TC-SPM62-AC07": [],
+ "TC-SPM62-AC08": [],
+ "TC-SPM62-AC09": [],
+ "TC-SPM62-AC09b": [],
+ "TC-SPM63-AC01": [],
+ "TC-SPM63-AC01b": [],
+ "TC-SPM63-AC02": [],
+ "TC-SPM63-AC03": [],
+ "TC-SPM63-AC04": [],
+ "TC-SPM63-AC05": [],
+ "TC-SPM63-AC06": [],
+ "TC-SPM63-AC07": [],
+ "TC-SPM63-AC08": [],
+ "TC-SPM63-AC08b": [],
+ "TC-SPM63-AC09": [],
+ "TC-SPM64-AC01": [],
+ "TC-SPM64-AC02": [],
+ "TC-SPM64-AC03": [],
+ "TC-SPM64-AC03b": [],
+ "TC-SPM64-AC04": [],
+ "TC-SPM64-AC05": [],
+ "TC-SPM64-AC06": [],
+ "TC-SPM64-AC07": [],
+ "TC-SPM64-AC08": [],
+ "TC-SPM65-AC01": [
+  "event-e3",
+  "event-e6"
+ ],
+ "TC-SPM65-AC02": [
+  "event-e6"
+ ],
+ "TC-SPM65-AC03": [],
+ "TC-SPM65-AC04": [],
+ "TC-SPM65-AC05": [],
+ "TC-SPM65-AC06": [],
+ "TC-SPM65-AC07": [],
+ "TC-SPM68-AC01": [],
+ "TC-SPM68-AC02": [],
+ "TC-SPM68-AC03": [
+  "event-e3"
+ ],
+ "TC-SPM68-AC04": [],
+ "TC-SPM68-AC05": [],
+ "TC-SPM68-AC06": [
+  "event-e3"
+ ],
+ "TC-SPM68-AC07": [
+  "event-e3"
+ ],
+ "TC-SPM68-AC08": [],
+ "TC-SPM69-AC01": [],
+ "TC-SPM69-AC02": [],
+ "TC-SPM69-AC03": [],
+ "TC-SPM69-AC04": [],
+ "TC-SPM69-AC05": [
+  "event-e6"
+ ],
+ "TC-SPM69-AC06": [],
+ "TC-SPM70-AC01": [],
+ "TC-SPM70-AC02": [],
+ "TC-SPM70-AC03": [],
+ "TC-SPM70-AC04": [],
+ "TC-SPM70-AC05": [
+  "venue-v2"
+ ],
+ "TC-SPM70-AC06": [],
+ "TC-SPM70-AC07": [],
+ "TC-SPM71-AC01": [],
+ "TC-SPM71-AC02": [],
+ "TC-SPM71-AC03": [
+  "venue-v1"
+ ],
+ "TC-SPM71-AC04": [
+  "venue-v1"
+ ],
+ "TC-SPM71-AC05": [],
+ "TC-SPM71-AC06": [
+  "venue-v1"
+ ],
+ "TC-SPM71-AC07": [
+  "event-e8"
+ ],
+ "TC-SPM72-AC01": [
+  "equipment-eq1",
+  "venue-v1"
+ ],
+ "TC-SPM72-AC02": [
+  "equipment-eq1"
+ ],
+ "TC-SPM72-AC03": [
+  "venue-v1"
+ ],
+ "TC-SPM72-AC04": [
+  "venue-v1"
+ ],
+ "TC-SPM72-AC05": [
+  "equipment-eq1",
+  "venue-v1"
+ ],
+ "TC-SPM72-AC06": [
+  "venue-v1"
+ ],
+ "TC-SPM73-AC01": [
+  "event-e1"
+ ],
+ "TC-SPM73-AC02": [
+  "event-e1"
+ ],
+ "TC-SPM73-AC03": [
+  "event-e1"
+ ],
+ "TC-SPM73-AC04": [
+  "event-e1"
+ ],
+ "TC-SPM73-AC05": [],
+ "TC-SPM73-AC06": [
+  "event-e1"
+ ],
+ "TC-SPM73-EXTRA01": [],
+ "TC-SPM75-AC01": [],
+ "TC-SPM75-AC02": [],
+ "TC-SPM75-AC03": [
+  "equipment-eq1"
+ ],
+ "TC-SPM75-AC04": [
+  "equipment-eq1"
+ ],
+ "TC-SPM75-AC05": [],
+ "TC-SPM75-AC06": [
+  "equipment-eq1"
+ ],
+ "TC-SPM75-AC07": [],
+ "TC-SPM76-AC01": [
+  "equipment-eq1",
+  "event-e3"
+ ],
+ "TC-SPM76-AC02": [
+  "equipment-eq1",
+  "event-e3"
+ ],
+ "TC-SPM76-AC03": [
+  "equipment-eq1",
+  "event-e3"
+ ],
+ "TC-SPM76-AC04": [
+  "equipment-eq1",
+  "event-e3"
+ ],
+ "TC-SPM77-AC01": [
+  "equipment-eq1",
+  "equipment-eq2",
+  "event-e3"
+ ],
+ "TC-SPM77-AC02": [
+  "equipment-eq1"
+ ],
+ "TC-SPM77-AC03": [
+  "equipment-eq1",
+  "event-e3"
+ ],
+ "TC-SPM77-AC04": [
+  "event-e3"
+ ],
+ "TC-SPM77-AC05": [
+  "equipment-eq1",
+  "equipment-eq2",
+  "event-e3"
+ ],
+ "TC-SPM77-AC06": [
+  "equipment-eq1"
+ ],
+ "TC-SPM77-AC07": [
+  "equipment-eq1",
+  "event-e3"
+ ],
+ "TC-SPM78-AC01": [
+  "equipment-eq1"
+ ],
+ "TC-SPM78-AC02": [
+  "equipment-eq1"
+ ],
+ "TC-SPM78-AC03": [
+  "equipment-eq1"
+ ],
+ "TC-SPM78-AC04": [
+  "event-e1"
+ ],
+ "TC-SPM78-AC05": [
+  "equipment-eq1"
+ ],
+ "TC-SPM78-AC06": [
+  "equipment-eq1"
+ ],
+ "TC-SPM79-AC01": [],
+ "TC-SPM79-AC02": [],
+ "TC-SPM79-AC03": [],
+ "TC-SPM79-AC04": [],
+ "TC-SPM79-AC05": [],
+ "TC-SPM79-AC06": [],
+ "TC-SPM80-AC01": [],
+ "TC-SPM80-AC02": [],
+ "TC-SPM80-AC03": [],
+ "TC-SPM80-AC04": [
+  "equipment-eq1",
+  "equipment-eq2"
+ ],
+ "TC-SPM80-AC05": [
+  "equipment-eq1"
+ ],
+ "TC-SPM80-AC06": [
+  "equipment-eq1"
+ ],
+ "TC-SPM80-AC07": [
+  "equipment-eq1"
+ ],
+ "TC-SPM81-AC01": [],
+ "TC-SPM81-AC02": [],
+ "TC-SPM81-AC03": [],
+ "TC-SPM81-AC04": [],
+ "TC-SPM81-AC05": [],
+ "TC-SPM81-AC06": [],
+ "TC-SPM81-AC07": [],
+ "TC-SPM82-AC01": [],
+ "TC-SPM82-AC02": [],
+ "TC-SPM82-AC03": [],
+ "TC-SPM82-AC04": [],
+ "TC-SPM82-AC05": [],
+ "TC-SPM82-AC06": [],
+ "TC-SPM82-AC07": [],
+ "TC-SPM83-AC01": [],
+ "TC-SPM83-AC02": [],
+ "TC-SPM83-AC03": [],
+ "TC-SPM83-AC04": [
+  "event-e6",
+  "event-e8"
+ ],
+ "TC-SPM83-AC05": [],
+ "TC-SPM85-AC01": [
+  "change-request-cr-new"
+ ],
+ "TC-SPM85-AC02": [
+  "change-request-cr-new"
+ ],
+ "TC-SPM85-AC03": [],
+ "TC-SPM85-AC04": [],
+ "TC-SPM85-AC05": [
+  "equipment-eq1"
+ ],
+ "TC-SPM85-AC06": [],
+ "TC-SPM85-AC07": [],
+ "TC-SPM85-AC08": [],
+ "TC-SPM85-AC09": [],
+ "TC-SPM86-AC01": [
+  "event-e2"
+ ],
+ "TC-SPM86-AC02": [
+  "event-e2"
+ ],
+ "TC-SPM86-AC03": [
+  "event-e2"
+ ],
+ "TC-SPM86-AC04": [
+  "event-e2"
+ ],
+ "TC-SPM86-AC05": [
+  "event-e2"
+ ],
+ "TC-SPM86-AC06": [
+  "venue-v1"
+ ],
+ "TC-SPM86-AC07": [
+  "event-e2"
+ ],
+ "TC-SPM86-AC08": [
+  "event-e2"
+ ],
+ "TC-SPM86-AC09": [
+  "event-e1"
+ ],
+ "TC-SPM86-AC10": [
+  "event-e2"
+ ],
+ "TC-SPM87-AC01": [
+  "event-e3"
+ ],
+ "TC-SPM87-AC02": [
+  "event-e1"
+ ],
+ "TC-SPM87-AC03": [
+  "event-e3"
+ ],
+ "TC-SPM87-AC04": [
+  "event-e1"
+ ],
+ "TC-SPM87-AC05": [
+  "event-e1",
+  "event-e3"
+ ],
+ "TC-SPM87-AC06": [
+  "event-e2"
+ ],
+ "TC-SPM87-AC07": [
+  "event-e1"
+ ],
+ "TC-SPM87-AC08": [],
+ "TC-SPM87-AC09": [
+  "event-e3"
+ ],
+ "TC-SPM88-AC01": [],
+ "TC-SPM88-AC02": [],
+ "TC-SPM88-AC03": [],
+ "TC-SPM88-AC04": [],
+ "TC-SPM88-AC05": [
+  "venue-v3"
+ ],
+ "TC-SPM88-AC06": [
+  "equipment-eq1"
+ ],
+ "TC-SPM88-AC07": [
+  "event-e8"
+ ],
+ "TC-SPM88-AC08": [],
+ "TC-SPM88-AC09": [
+  "venue-v3"
+ ],
+ "TC-SPM88-AC10": [
+  "event-e8"
+ ],
+ "TC-SPM88-AC11": [],
+ "TC-SPM89-AC01": [
+  "registration-r-att-e1",
+  "registration-r-att-e2"
+ ],
+ "TC-SPM89-AC02": [
+  "event-e1"
+ ],
+ "TC-SPM89-AC03": [
+  "event-e1"
+ ],
+ "TC-SPM89-AC04": [
+  "event-e1"
+ ],
+ "TC-SPM89-AC05": [
+  "event-e1"
+ ],
+ "TC-SPM89-AC06": [
+  "event-e3"
+ ],
+ "TC-SPM89-AC07": [
+  "event-e4"
+ ],
+ "TC-SPM90-AC01": [
+  "event-e3"
+ ],
+ "TC-SPM90-AC02": [
+  "event-e3"
+ ],
+ "TC-SPM90-AC03": [
+  "event-e1"
+ ],
+ "TC-SPM90-AC04": [
+  "event-e1"
+ ],
+ "TC-SPM90-AC05": [
+  "event-e1"
+ ],
+ "TC-SPM90-AC06": [
+  "event-e3"
+ ],
+ "TC-SPM90-AC07": [
+  "event-e3"
+ ],
+ "TC-SPM91-AC01": [
+  "event-e1",
+  "event-e3",
+  "event-e4",
+  "event-e6",
+  "event-e8"
+ ],
+ "TC-SPM91-AC02": [
+  "event-e1"
+ ],
+ "TC-SPM91-AC03": [
+  "event-e1"
+ ],
+ "TC-SPM91-AC04": [],
+ "TC-SPM91-AC05": [
+  "event-e3",
+  "event-e6",
+  "event-e8"
+ ],
+ "TC-SPM91-AC06": [
+  "event-e4"
+ ],
+ "TC-SPM91-AC07": [],
+ "TC-SPM91-AC08": [],
+ "TC-SPM91-AC09": [],
+ "TC-SPM92-AC01": [
+  "event-e1"
+ ],
+ "TC-SPM92-AC02": [],
+ "TC-SPM92-AC03": [
+  "event-e1"
+ ],
+ "TC-SPM92-AC04": [],
+ "TC-SPM92-AC05": [],
+ "TC-SPM92-AC06": [],
+ "TC-SPM92-AC07": [],
+ "TC-SPM92-AC08": [],
+ "TC-SPM93-AC01": [],
+ "TC-SPM93-AC02": [],
+ "TC-SPM93-AC03": [],
+ "TC-SPM93-AC04": [
+  "venue-v1"
+ ],
+ "TC-SPM93-AC04b": [],
+ "TC-SPM93-AC05": [],
+ "TC-SPM93-AC06": [],
+ "TC-SPM93-AC07": [],
+ "TC-SPM93-AC08": [],
+ "TC-SPM93-AC09": [],
+ "TC-SPM93-AC10": [
+  "venue-v1"
+ ],
+ "TC-SPM94-AC01": [],
+ "TC-SPM94-AC02": [],
+ "TC-SPM94-AC03": [],
+ "TC-SPM94-AC04": [],
+ "TC-SPM94-AC05": [],
+ "TC-SPM94-AC06": [
+  "notification-n1"
+ ],
+ "TC-SPM94-AC07": [],
+ "TC-SPM94-AC08": [],
+ "TC-SPM94-AC09": [],
+ "TC-SPM94-AC10": [],
+ "TC-SPM94-AC11": [],
+ "TC-SPM94-AC12": [],
+ "TC-SPM95-AC01": [
+  "equipment-eq1"
+ ],
+ "TC-SPM95-AC02": [
+  "equipment-eq1"
+ ],
+ "TC-SPM95-AC03": [
+  "equipment-eq1"
+ ],
+ "TC-SPM95-AC04": [
+  "equipment-eq1"
+ ],
+ "TC-SPM95-AC05": [
+  "equipment-eq1"
+ ],
+ "TC-SPM95-AC06": [
+  "equipment-eq1"
+ ],
+ "TC-SPM95-AC07": [
+  "equipment-eq1"
+ ],
+ "TC-SPM95-AC08": []
+}

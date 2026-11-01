@@ -1,6 +1,7 @@
+import { execFileSync } from 'node:child_process'
 import { test, expect } from '@playwright/test'
 import { serviceUrls } from './support/api-data.js'
-import { bookVenue, events, passSafetyReview, planningEvent, requestBooking } from './support/confirmation.js'
+import { bookVenue, confirm, events, passSafetyReview, planningEvent, readyToConfirm, requestBooking } from './support/confirmation.js'
 import { assignCoordinator, createSubmittedEvent, eventApi } from './support/event.js'
 import { notificationApi } from './support/registration.js'
 import { venueRequest } from './support/venue.js'
@@ -39,6 +40,19 @@ async function assignedEvent(label) {
 
 function cancel(event, accountId) {
   return events('POST', `/${event.eventId}/cancel`, accountId, { reason: 'AUTO-SPM93 cancelled' })
+}
+
+// An event can only be completed after its end time, and the API refuses past dates,
+// so the test moves its own event into the past directly in the database.
+function endInThePast(eventId) {
+  const sql =
+    'UPDATE events SET proposed_start_at = UTC_TIMESTAMP() - INTERVAL 2 HOUR, ' +
+    `proposed_end_at = UTC_TIMESTAMP() - INTERVAL 1 HOUR WHERE event_id = '${eventId}'`
+  execFileSync(
+    'docker',
+    ['compose', '-f', 'infra/docker-compose.yml', 'exec', '-T', 'mysql', 'mysql', '-uroot', '-pconnectsphere', 'event', '-e', sql],
+    { stdio: 'pipe' },
+  )
 }
 
 // The cancellation notice is published after the response, as a background task.
@@ -221,7 +235,24 @@ test.describe('SPM-93 Notification delivery and recipient resolution', () => {
   // registration-service test_registration_withdrawal, venue-service test_venue_replacement_routes.
   test.skip('TC-SPM93-AC09 if delivery fails, the action still succeeds and the failure is logged', async () => {})
 
-  test('TC-SPM93-AC10 notifications remain after the event is completed or cancelled', async () => {
+  test('TC-SPM93-AC10 notifications remain after the event is completed', async () => {
+    test.setTimeout(120_000)
+    const event = await readyToConfirm('SPM93-completed')
+    const confirmed = await confirm(event)
+    expect(confirmed.status, JSON.stringify(confirmed.body)).toBe(200)
+    const before = (await inbox('EC-01', event.eventId)).map((row) => row.notificationId)
+    expect(before.length).toBeGreaterThan(0)
+
+    endInThePast(event.eventId)
+    const completed = await events('POST', `/${event.eventId}/complete`, 'EC-01')
+    expect(completed.status, JSON.stringify(completed.body)).toBe(200)
+    expect(completed.body.status).toBe('completed')
+
+    const after = (await inbox('EC-01', event.eventId)).map((row) => row.notificationId)
+    expect(after).toEqual(expect.arrayContaining(before))
+  })
+
+  test('TC-SPM93-AC10 notifications remain after the event is cancelled', async () => {
     const event = await assignedEvent('persist')
     const cancelled = await cancel(event, 'EO-01')
     expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200)
