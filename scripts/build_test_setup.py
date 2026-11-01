@@ -8,8 +8,12 @@ offsets from the moment the file is loaded (@now), so "an event in 14 days" is
 14 days away whenever it runs. Firebase sign-ins are not touched; the seeded
 user rows keep their user_id and firebase_uid.
 
-There is one TC-<id>.sql per test case a Playwright spec names. Each loads
-base.sql, then adds the rows that case needs beyond the seed, if any (EXTRA).
+There is one TC-<id>.sql per test case a Playwright spec names, holding its raw SQL
+so it runs on its own in any MySQL client. Each empties every table, then inserts
+users, organisations and only the seeded records that case uses (needs.json), each
+with what it depends on, plus any rows beyond the seed (EXTRA). base.sql stays for
+running a whole spec. records.json files the seed's INSERTs by record, so --cases-only
+can rewrite the TC- files without touching the database.
 
 Building base.sql rebuilds the database you point it at: a full backup is
 written to backups/ first, every table is emptied, and the seed is run. Run it
@@ -28,6 +32,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import json
 import re
 import sys
 from decimal import Decimal
@@ -61,6 +66,24 @@ TITLE = re.compile(r"""test(?:\.describe|\.skip|\.fixme)?\(\s*['"`](TC-[^'"`]*)"
 # Rows a case needs beyond the seed, run after base.sql. Every current spec
 # either builds its own events or mocks its empty states, so none are needed yet.
 EXTRA: dict[str, str] = {}
+
+# The seeded records each case uses, as {case: [record, ...]}. A record brings what it
+# depends on: an event brings its venue, equipment and registration window.
+NEEDS = SETUP / "needs.json"
+RECORDS = SETUP / "records.json"
+CORE_TABLES = {"organisations", "users"}
+# Which record a table's rows belong to: the first of these columns the table has.
+OWNERS = [
+    ("notification_id", "notification"),
+    ("attendee_registration_id", "registration"),
+    ("change_request_id", "change-request"),
+    ("review_id", "review"),
+    ("event_id", "event"),
+    ("venue_id", "venue"),
+    ("equipment_id", "equipment"),
+]
+# Other records a row points at, which must be loaded before it.
+POINTS_AT = {"event_id": "event", "venue_id": "venue", "equipment_id": "equipment"}
 
 
 def story_of(case_id: str) -> str:
@@ -165,12 +188,89 @@ def write_base() -> int:
     return len(inserts)
 
 
+# --- records.json --------------------------------------------------------------
+
+
+def write_records() -> int:
+    """The seed's INSERTs filed under the record they belong to (each event, venue,
+    equipment item, registration and notification), with what each record needs loaded
+    before it. The TC- files for cases in NEEDS are written from this."""
+    with create_engine(URLS["user"]).connect() as conn:
+        now = conn.execute(text("SELECT UTC_TIMESTAMP()")).scalar()
+    deletes: list[str] = []
+    core: list[str] = []
+    records: dict[str, list[str]] = {}
+    depends: dict[str, set[str]] = {}
+    for name in DATABASES:
+        engine = create_engine(URLS[name])
+        with engine.connect() as conn:
+            for table in tables_in_order(engine):
+                deletes.append(f"DELETE FROM `{name}`.`{table}`;")
+                result = conn.exec_driver_sql(f"SELECT * FROM `{table}`")
+                columns = list(result.keys())
+                column_list = ", ".join(f"`{column}`" for column in columns)
+                for row in result.mappings():
+                    values = ", ".join(literal(row[column], now) for column in columns)
+                    insert = f"INSERT INTO `{name}`.`{table}` ({column_list}) VALUES ({values});"
+                    if table in CORE_TABLES:
+                        core.append(insert)
+                        continue
+                    owner = next(((column, kind) for column, kind in OWNERS if column in columns), None)
+                    if owner is None:
+                        raise SystemExit(f"{name}.{table} has seeded rows but no record to file them under")
+                    record = f"{owner[1]}-{row[owner[0]]}"
+                    records.setdefault(record, []).append(insert)
+                    needs = depends.setdefault(record, set())
+                    for column, kind in POINTS_AT.items():
+                        if column in columns and row[column] and f"{kind}-{row[column]}" != record:
+                            needs.add(f"{kind}-{row[column]}")
+    RECORDS.write_text(
+        json.dumps(
+            {
+                "deletes": deletes,
+                "core": core,
+                "records": dict(sorted(records.items())),
+                "depends": {record: sorted(needs) for record, needs in sorted(depends.items())},
+            },
+            indent=1,
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return len(records)
+
+
+def load_order(needs: list[str], depends: dict[str, list[str]]) -> list[str]:
+    """The records a case asked for, each after what it depends on, each once."""
+    ordered: list[str] = []
+
+    def visit(record: str) -> None:
+        if record in ordered:
+            return
+        if record not in depends:
+            raise SystemExit(f"NEEDS names {record}, which is not in {RECORDS.name}")
+        for parent in depends[record]:
+            visit(parent)
+        ordered.append(record)
+
+    for record in needs:
+        visit(record)
+    return ordered
+
+
 # --- TC- files -----------------------------------------------------------------
 
 
 def write_cases() -> int:
     cases = spec_cases()
     named = scenarios()
+    needs = json.loads(NEEDS.read_text(encoding="utf-8"))
+    missing = sorted(set(cases) - set(needs))
+    if missing:
+        raise SystemExit(f"{NEEDS.name} has no entry for: {', '.join(missing)}")
+    seed = json.loads(RECORDS.read_text(encoding="utf-8"))
     for stale in SETUP.glob("TC-*.sql"):
         if stale.stem not in cases:
             stale.unlink()
@@ -179,9 +279,20 @@ def write_cases() -> int:
             f"-- {case_id} ({story_of(case_id)}): {named.get(case_id) or title}",
             f"-- Automated in e2e/{spec}. Run on the test database before the test:",
             f"--   python scripts/test_setup.py {case_id}",
-            "-- Resets every table to the seeded demo data, dated from now.",
-            f"SOURCE {CONTAINER_DIR}/base.sql;",
         ]
+        lines += [
+            "-- Empties every table, then loads users, organisations and the records this case uses.",
+            "-- Generated from scripts/seed.py; do not edit by hand. Dates are offsets from the time it is loaded.",
+            "SET NAMES utf8mb4;",
+            "SET @now = UTC_TIMESTAMP();",
+            "SET FOREIGN_KEY_CHECKS = 0;",
+            *seed["deletes"],
+            "-- Users and organisations",
+            *seed["core"],
+        ]
+        for record in load_order(needs[case_id], seed["depends"]):
+            lines += [f"-- {record}", *seed["records"][record]]
+        lines.append("SET FOREIGN_KEY_CHECKS = 1;")
         if case_id in EXTRA:
             lines += ["-- Rows this case needs beyond the seed.", EXTRA[case_id].strip()]
         (SETUP / f"{case_id}.sql").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
@@ -197,6 +308,7 @@ def main() -> None:
         print(f"backup written to {back_up().relative_to(ROOT)}")
         reset_and_seed()
         print(f"{(SETUP / 'base.sql').relative_to(ROOT)}: {write_base()} INSERT statements")
+        print(f"{RECORDS.relative_to(ROOT)}: {write_records()} seeded records")
     print(f"{SETUP.relative_to(ROOT)}: {write_cases()} test case setup files")
 
 

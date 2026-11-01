@@ -23,14 +23,13 @@ test.describe('SPM-12 Registration withdrawal', () => {
       'ATT-02',
       guestRegistration('e1', 'SPM12-OK'),
     )
-    if (created.status === 201) {
-      const withdrawn = await registrationApi(
-        'POST',
-        `/registrations/${created.body.attendeeRegistrationId}/withdraw`,
-        'ATT-02',
-      )
-      expect(withdrawn.status).toBe(200)
-    }
+    expect(created.status, JSON.stringify(created.body)).toBe(201)
+    const withdrawn = await registrationApi(
+      'POST',
+      `/registrations/${created.body.attendeeRegistrationId}/withdraw`,
+      'ATT-02',
+    )
+    expect(withdrawn.status).toBe(200)
     const cancelled = await registrationApi('POST', '/registrations/r-att-e8/withdraw', 'ATT-01')
     expect([400, 403, 409]).toContain(cancelled.status)
   })
