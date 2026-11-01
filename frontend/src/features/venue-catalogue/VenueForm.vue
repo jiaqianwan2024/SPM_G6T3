@@ -179,7 +179,10 @@ const form = reactive({
   setupMinutes: props.venue?.setupMinutes ?? '',
   turnaroundMinutes: props.venue?.turnaroundMinutes ?? '',
   layouts: props.venue ? props.venue.layouts.map(toLayoutFormRow) : [],
-  operatingHours: props.venue ? props.venue.operatingHours.map((h) => ({ ...h })) : [],
+  // A new venue starts open every day; staff remove the days it is really closed.
+  operatingHours: props.venue
+    ? props.venue.operatingHours.map((h) => ({ ...h }))
+    : DAYS.map((day) => ({ day, opens: '09:00', closes: '17:00' })),
 })
 
 const facilitiesText = ref((props.venue?.facilities ?? []).join(', '))

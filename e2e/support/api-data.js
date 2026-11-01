@@ -64,7 +64,7 @@ export function newVenuePayload(label = `AUTO-VENUE-${Date.now()}`) {
       { name: 'Boardroom', capacity: 12 },
       { name: 'Classroom', capacity: 20 },
     ],
-    operatingHours: [{ day: 'Mon', opens: '08:00', closes: '18:00' }],
+    operatingHours: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => ({ day, opens: '08:00', closes: '18:00' })),
     setupMinutes: 15,
     turnaroundMinutes: 15,
   }
@@ -102,7 +102,7 @@ export function newEventPayload(name = `AUTO-EVENT-${Date.now()}`) {
     eventName: name,
     purpose: 'Acceptance test event.',
     description: 'Created by the planning-review suite.',
-    category: 'meeting',
+    category: 'Meeting',
     proposedStartAt: start.toISOString(),
     proposedEndAt: end.toISOString(),
     expectedAttendance: 24,

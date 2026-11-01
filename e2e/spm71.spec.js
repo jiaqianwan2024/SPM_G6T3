@@ -9,7 +9,7 @@ test.describe('SPM-71 Update event information and flag significant changes', ()
       eventName: 'Partner Networking Night',
       description: 'AUTO-SPM71 quiet edit',
       purpose: 'Updated purpose',
-      category: 'networking',
+      category: 'Networking',
       internalNotes: 'Staff only',
       organiserContact: 'organiser@connectsphere.com',
     })

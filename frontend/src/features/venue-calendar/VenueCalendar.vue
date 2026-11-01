@@ -461,9 +461,12 @@ function businessHours(hours) {
     .map((item) => ({ daysOfWeek: [DAYS.indexOf(item.day)], startTime: item.opens, endTime: item.closes }))
 }
 
-// FullCalendar's day dates carry the calendar's wall-clock date in their UTC fields.
+// A day cell's date is midnight in Singapore, which is still the day before in UTC,
+// so the weekday has to be read in Singapore time.
+const SGT_WEEKDAY = new Intl.DateTimeFormat('en-US', { timeZone: SGT_ZONE, weekday: 'short' })
+
 function hoursFor(date) {
-  return openingHours.value.filter((item) => item.day === DAYS[date.getUTCDay()])
+  return openingHours.value.filter((item) => item.day === SGT_WEEKDAY.format(date))
 }
 
 function closedOn(date) {

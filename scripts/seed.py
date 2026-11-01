@@ -707,7 +707,7 @@ def seed_venue() -> None:
                 ["Projector", "Whiteboard"],
                 ["Wheelchair accessible"],
                 DEMO_LAYOUTS["v2"],
-                _hours(WEEKDAYS + ["Sat"], "08:00", "20:00"),
+                _hours(ALL_DAYS, "08:00", "20:00"),
                 30,
                 15,
             ),
@@ -729,7 +729,7 @@ def seed_venue() -> None:
                 ["Video-conferencing", "Smart TV"],
                 ["Wheelchair accessible"],
                 DEMO_LAYOUTS["v4"],
-                _hours(WEEKDAYS, "08:00", "18:00"),
+                _hours(ALL_DAYS, "08:00", "18:00"),
                 15,
                 10,
             ),
@@ -773,6 +773,7 @@ def seed_venue() -> None:
             )
         _ensure_venue_layouts(conn)
         _ensure_venue_safety_details(conn)
+        _ensure_venues_open_every_day(conn)
         _ensure_venue_bookings(conn, now, day)
 
 
@@ -791,6 +792,30 @@ def _ensure_venue_layouts(conn) -> None:
         conn.execute(
             text("UPDATE venues SET layouts = CAST(:layouts AS JSON) WHERE venue_id = :venue_id"),
             {"venue_id": venue_id, "layouts": json.dumps(layouts)},
+        )
+
+
+def _ensure_venues_open_every_day(conn) -> None:
+    """Riverside Room 204 used to be seeded closed on Sundays and Skyline Boardroom
+    at weekends. Both now open every day; a database still holding exactly the old
+    seeded hours is moved over, so a venue staff edit is never overwritten."""
+    old_hours = {
+        "v2": (_hours(WEEKDAYS + ["Sat"], "08:00", "20:00"), _hours(ALL_DAYS, "08:00", "20:00")),
+        "v4": (_hours(WEEKDAYS, "08:00", "18:00"), _hours(ALL_DAYS, "08:00", "18:00")),
+    }
+    for venue_id, (seeded, every_day) in old_hours.items():
+        raw = conn.execute(
+            text("SELECT operating_hours FROM venues WHERE venue_id = :venue_id"),
+            {"venue_id": venue_id},
+        ).scalar()
+        if raw is None:
+            continue
+        current = json.loads(raw) if isinstance(raw, str) else raw
+        if current != seeded:
+            continue
+        conn.execute(
+            text("UPDATE venues SET operating_hours = CAST(:hours AS JSON) WHERE venue_id = :venue_id"),
+            {"venue_id": venue_id, "hours": json.dumps(every_day)},
         )
 
 
