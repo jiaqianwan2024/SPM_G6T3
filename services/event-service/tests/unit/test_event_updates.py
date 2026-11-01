@@ -65,13 +65,13 @@ class TestQuietEdits(UpdateCase):
             eventName="Partner Networking Night",
             description="New description",
             purpose="New purpose",
-            category="networking",
+            category="Networking",
             internalNotes="Staff only",
             organiserContact="organiser@connectsphere.com",
         )
 
         self.assertEqual(updated.eventName, "Partner Networking Night")
-        self.assertEqual(updated.category, "networking")
+        self.assertEqual(updated.category, "Networking")
         self.assertEqual(updated.internalNotes, "Staff only")
         self.assertEqual(updated.organiserContact, "organiser@connectsphere.com")
         self.assertEqual(updated.status, "confirmed")
@@ -82,11 +82,11 @@ class TestQuietEdits(UpdateCase):
     def test_every_quiet_edit_is_logged_with_the_field_old_and_new_value_actor_and_time(self):
         self.event()
 
-        self.update(description="New description", category="networking")
+        self.update(description="New description", category="Networking")
 
         edits = self.edits()
         self.assertEqual([edit.field for edit in edits], ["category", "description"])
-        self.assertEqual((edits[0].oldValue, edits[0].newValue), (None, "networking"))
+        self.assertEqual((edits[0].oldValue, edits[0].newValue), (None, "Networking"))
         self.assertEqual((edits[1].oldValue, edits[1].newValue), ("Old description", "New description"))
         self.assertTrue(all(edit.changedBy == "coord-1" for edit in edits))
         self.assertTrue(all(edit.createdAt for edit in edits))
