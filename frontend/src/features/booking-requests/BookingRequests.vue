@@ -153,7 +153,7 @@
 
         <div v-else-if="booking.status === 'pending' && rejecting[booking.bookingId]" class="reject-form">
           <label>
-            Reason for rejecting (required)
+            <span>Reason for rejecting <span class="req">*</span></span>
             <textarea v-model="reasons[booking.bookingId]" rows="3" maxlength="2000" />
           </label>
           <label>

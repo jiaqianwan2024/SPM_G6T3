@@ -136,6 +136,11 @@ select optgroup {
 
 /* ---------- Type utilities ---------- */
 
+/* Marks a field that must be filled in before its form can be submitted. */
+.req { color: var(--iris-soft); }
+/* When a field is only needed for one of the form's actions, this says which. */
+.req-note { color: var(--muted); letter-spacing: 0; text-transform: none; }
+
 /* Wide-tracked micro caps used as section labels throughout the app */
 .eyebrow {
   font-size: 11px;

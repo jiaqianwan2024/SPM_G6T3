@@ -20,7 +20,7 @@
             @submit.prevent="saveEdit(request)"
           >
             <label>
-              Quantity
+              <span>Quantity <span class="req">*</span></span>
               <input v-model.number="editQuantity" type="number" min="1" required />
             </label>
             <label>
@@ -53,7 +53,7 @@
               @submit.prevent="resubmit(request)"
             >
               <label>
-                Quantity to ask for
+                <span>Quantity to ask for <span class="req">*</span></span>
                 <input v-model.number="amendQuantity" type="number" min="1" required data-testid="equipment-amend-quantity" />
               </label>
               <div class="edit-actions">
@@ -89,7 +89,7 @@
       </div>
       <form v-if="canRecord" class="request-form" @submit.prevent="submit">
         <label>
-          Equipment type
+          <span>Equipment type <span class="req">*</span></span>
           <select v-model="equipmentId" required>
             <option value="" disabled>Select a type</option>
             <option v-for="item in catalogue" :key="item.equipmentId" :value="item.equipmentId">
@@ -98,7 +98,7 @@
           </select>
         </label>
         <label>
-          Quantity
+          <span>Quantity <span class="req">*</span></span>
           <input v-model.number="quantity" type="number" min="1" required />
         </label>
         <label class="wide">

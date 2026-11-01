@@ -40,7 +40,7 @@
             Hold expired {{ moment(request.hold.expiresAt) }}
           </span>
           <label>
-            Hold until (SGT)
+            <span>Hold until (SGT) <span class="req">*</span></span>
             <input
               v-model="expiry[request.bookingId]"
               type="datetime-local"

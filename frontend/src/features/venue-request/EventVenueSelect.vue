@@ -178,7 +178,7 @@
             <template v-if="isAssignedCoordinator">
               <label v-if="result.verdict === 'suitable with warnings'" class="acknowledge">
                 <input v-model="acknowledged" type="checkbox" data-testid="suitability-acknowledge" />
-                I have read the warnings above and want to send the request anyway.
+                <span>I have read the warnings above and want to send the request anyway. <span class="req">*</span></span>
               </label>
               <label v-if="result.verdict !== 'not suitable'" class="notes">
                 Notes for Venue Staff (optional)

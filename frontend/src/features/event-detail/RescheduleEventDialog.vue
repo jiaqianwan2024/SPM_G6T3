@@ -8,11 +8,11 @@
 
       <div class="row">
         <div class="col">
-          <label for="reschedule-start">New start (SGT)</label>
+          <label for="reschedule-start">New start (SGT) <span class="req">*</span></label>
           <input id="reschedule-start" v-model="start" type="datetime-local" :min="today" data-testid="reschedule-start" />
         </div>
         <div class="col">
-          <label for="reschedule-end">New end (SGT)</label>
+          <label for="reschedule-end">New end (SGT) <span class="req">*</span></label>
           <input id="reschedule-end" v-model="end" type="datetime-local" :min="laterInput(today, start)" data-testid="reschedule-end" />
         </div>
       </div>
@@ -36,7 +36,7 @@
         for another venue, or abandon the reschedule. Bookings for venues that are still available stay in place.
       </p>
 
-      <label for="reschedule-reason">Reason</label>
+      <label for="reschedule-reason">Reason <span class="req">*</span></label>
       <textarea
         id="reschedule-reason"
         v-model="reason"

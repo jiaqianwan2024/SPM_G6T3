@@ -1,7 +1,7 @@
 <template>
   <!-- SPM-106 AC7 / SPM-85 AC6 to AC8: the assigned coordinator accepts or declines a pending change request. -->
   <div class="decision" data-testid="change-request-decision">
-    <label :for="reasonId">Reason for the organiser</label>
+    <label :for="reasonId">Reason for the organiser <span class="req">*</span><span class="req-note"> (needed to decline)</span></label>
     <textarea
       :id="reasonId"
       v-model="reason"

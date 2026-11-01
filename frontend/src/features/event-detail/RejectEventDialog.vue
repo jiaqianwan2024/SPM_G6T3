@@ -9,13 +9,13 @@
         why. They can submit a new request afterwards.
       </p>
 
-      <label for="reject-reason">Reason</label>
+      <label for="reject-reason">Reason <span class="req">*</span></label>
       <select id="reject-reason" v-model="reason" data-testid="reject-reason">
         <option value="" disabled>Choose a reason</option>
         <option v-for="item in REJECTION_REASONS" :key="item" :value="item">{{ item }}</option>
       </select>
 
-      <label for="reject-explanation">Explanation for the organiser</label>
+      <label for="reject-explanation">Explanation for the organiser <span class="req">*</span></label>
       <textarea
         id="reject-explanation"
         v-model="explanation"

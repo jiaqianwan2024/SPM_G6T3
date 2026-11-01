@@ -17,11 +17,11 @@
         <h2>Add a follow-up line</h2>
         <div class="fields">
           <label>
-            Category
+            <span>Category <span class="req">*</span></span>
             <input v-model="draft.category" required placeholder="venue, equipment, registration…" data-testid="readiness-create-category" />
           </label>
           <label>
-            Personnel
+            <span>Personnel <span class="req">*</span></span>
             <select v-model="draft.handlerId" required data-testid="readiness-create-handler">
               <option value="" disabled>Choose someone</option>
               <option v-for="person in handlers" :key="person.userId" :value="person.userId">
@@ -141,11 +141,11 @@
 
         <form v-if="editingId === row.itemId" class="edit-form" data-testid="readiness-edit-form" @submit.prevent="saveEdit(row)">
           <label>
-            Category
+            <span>Category <span class="req">*</span></span>
             <input v-model="edit.category" required data-testid="readiness-edit-category" />
           </label>
           <label>
-            Personnel
+            <span>Personnel <span class="req">*</span></span>
             <select v-model="edit.handlerId" required data-testid="readiness-edit-handler">
               <option v-if="edit.handlerId && !knownHandler(edit.handlerId)" :value="edit.handlerId">
                 {{ handlerLabel(row) }}

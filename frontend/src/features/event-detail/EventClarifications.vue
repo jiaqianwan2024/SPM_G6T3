@@ -22,7 +22,7 @@
         <option value="">The request in general</option>
         <option v-for="[key, label] in FIELD_OPTIONS" :key="key" :value="key">{{ label }}</option>
       </select>
-      <label for="clarification-message">What is unclear?</label>
+      <label for="clarification-message">What is unclear? <span class="req">*</span></label>
       <textarea
         id="clarification-message"
         v-model="message"
