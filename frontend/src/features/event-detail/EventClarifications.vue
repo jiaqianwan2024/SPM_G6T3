@@ -1,7 +1,7 @@
 <template>
   <!-- SPM-68: clarification threads. Only organisers and staff mount this, and
        the server refuses everyone else (AC6). -->
-  <section v-if="showPanel" class="panel clarifications" data-testid="clarification-thread">
+  <section v-if="showPanel" id="clarifications" class="panel clarifications" data-testid="clarification-thread">
     <div class="panel-head">
       <h2>Clarifications</h2>
       <button

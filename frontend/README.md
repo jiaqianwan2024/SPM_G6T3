@@ -220,8 +220,7 @@ tests are listed in `docs/testing/README.md`.
 
 ## What's NOT here
 
-- Some tabs still show "not built yet for this sprint": Reports and Venue
-  Requests (coordinator), Reservations, My Assignments, and Maintenance Status
-  (technical support), and Waiting List (attendee)
+- Placeholder tabs from the first template (Reports, Venue Requests, My Assignments,
+  Maintenance Status, Waiting List) were removed; every tab left in a menu has its screen
 - The orb is an original swirling-marble design with a single orbit ring —
   deliberately not shaped like a two-tone capsule or any branded "capture ball"

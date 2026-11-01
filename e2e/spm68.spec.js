@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
-import { assignCoordinator, createSubmittedEvent, eventApi } from './support/event.js'
+import { assignCoordinator, createNameOnlyDraft, createSubmittedEvent, eventApi } from './support/event.js'
 
 async function planningEvent() {
   const event = await createSubmittedEvent('EO-01', `AUTO-SPM68-${Date.now()}`)
@@ -90,19 +90,13 @@ test.describe('SPM-68 Request clarification or amendment from the organiser', ()
   })
 
   test('TC-SPM68-AC08 a draft event cannot receive a clarification', async () => {
-    const created = await eventApi('POST', '', 'EO-01', {
-      eventName: 'AUTO-SPM68-draft',
-      purpose: 'Draft only',
-      description: 'Must stay draft',
-      proposedStartAt: new Date(Date.now() + 50 * 24 * 60 * 60 * 1000).toISOString(),
-      proposedEndAt: new Date(Date.now() + 50 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000).toISOString(),
-      expectedAttendance: 10,
-      capacity: 10,
-    })
-    expect(created.status).toBe(201)
-    const denied = await eventApi('POST', `/${created.body.eventId}/clarifications`, 'EC-01', {
+    // Name only, so it is saved as a draft; with full details POST /events treats it as a submission.
+    const draft = await createNameOnlyDraft('EO-01', `AUTO-SPM68-draft-${Date.now()}`)
+    expect(draft.status).toBe('draft')
+    const denied = await eventApi('POST', `/${draft.eventId}/clarifications`, 'EC-01', {
       message: 'Should not work on a draft',
     })
-    expect([400, 409, 422]).toContain(denied.status)
+    expect(denied.status).toBe(409)
+    expect(denied.body.detail).toBe('A draft event is not a request yet, so no clarification can be raised against it')
   })
 })

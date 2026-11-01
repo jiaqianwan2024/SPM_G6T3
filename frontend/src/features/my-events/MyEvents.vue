@@ -72,7 +72,7 @@
           <dl class="event-facts">
             <div>
               <dt>Category</dt>
-              <dd>{{ event.category || '—' }}</dd>
+              <dd>{{ event.category || 'Not set' }}</dd>
             </div>
             <div>
               <dt>Date</dt>
@@ -84,7 +84,7 @@
             </div>
             <div>
               <dt>Location</dt>
-              <dd :data-testid="`organiser-event-${event.eventId}-venue`">{{ event.preferredLocation || '—' }}</dd>
+              <dd :data-testid="`organiser-event-${event.eventId}-venue`">{{ event.preferredLocation || 'Not set' }}</dd>
             </div>
           </dl>
           <div v-if="event.status === 'draft'" class="draft-actions">
@@ -108,7 +108,7 @@ import { useRouter } from 'vue-router'
 import { getMyEvents } from '../../api/eventService.js'
 import { editDraft } from '../../store/draftEditor.js'
 import { EVENT_STAGES, eventSafetyNote, eventStatusLabel } from '../../config/eventStatus.js'
-import { formatSgtDate, formatSgtTime, sgtDay } from '../../utils/datetime.js'
+import { formatSgtDate, formatSgtTime, parseServerTime, sgtDay } from '../../utils/datetime.js'
 
 const router = useRouter()
 const emit = defineEmits(['create', 'edit-draft'])
@@ -155,10 +155,16 @@ const flags = computed(() =>
 )
 
 const visible = computed(() => {
-  if (!stageFilter.value) return narrowed.value
   const stage = EVENT_STAGES.find((item) => item.key === stageFilter.value)
-  return narrowed.value.filter((event) => stage.statuses.includes(event.status))
+  const shown = stage ? narrowed.value.filter((event) => stage.statuses.includes(event.status)) : narrowed.value
+  return [...shown].sort(byDate)
 })
+
+// Soonest event first; one with no date yet (a draft) goes last.
+function byDate(a, b) {
+  const when = (event) => parseServerTime(event.proposedStartAt)?.getTime() ?? Infinity
+  return when(a) - when(b) || (a.eventName || '').localeCompare(b.eventName || '')
+}
 
 // The Singapore date, which is what the date filters hold.
 function startDay(value) {
@@ -207,7 +213,7 @@ function dateLabel(event) {
 function timeLabel(event) {
   const start = event.proposedStartAt
   const end = event.proposedEndAt
-  if (!start || !end) return '—'
+  if (!start || !end) return 'Not set'
   return `${timePart(start)} – ${timePart(end)} SGT`
 }
 

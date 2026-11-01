@@ -228,6 +228,7 @@
           type="button"
           class="notice attention"
           data-testid="organiser-needs-action"
+          @click="openClarifications"
         >
           A clarification needs action.
         </button>
@@ -512,6 +513,12 @@ import EventRequirements from './EventRequirements.vue'
 
 const route = useRoute()
 const router = useRouter()
+
+// SPM-15 AC4: the notice opens the clarification that is waiting on the organiser.
+function openClarifications() {
+  router.replace({ hash: '#clarifications' })
+  document.getElementById('clarifications')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 const event = ref(null)
 const loading = ref(true)

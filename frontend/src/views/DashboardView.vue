@@ -56,10 +56,6 @@
         @edit-draft="activeTab = 'New Request'"
       />
       <MyRegistrations v-else-if="activeTab === 'My Registrations'" />
-
-      <div class="not-built" v-else>
-        This tab isn't built yet for this sprint — only Dashboard{{ hasVenueTab ? ', Venue Catalogue' : '' }}{{ hasCalendarTab ? ', Venue Calendar' : '' }}{{ hasUnavailabilityTab ? ', Unavailability' : '' }}{{ hasAssignedTab ? ', Assigned Events' : '' }}{{ hasEventsTab ? ', Browse Events' : '' }}{{ hasNewRequestTab ? ', New Request' : '' }}{{ hasEquipmentTab ? ', Equipment Catalogue' : '' }}{{ hasMyEventsTab ? ', My Events' : '' }}{{ hasRegistrationsTab ? ', My Registrations' : '' }} are functional.
-      </div>
   </AppShell>
 </template>
 
@@ -122,15 +118,6 @@ function tabFromRoute() {
 const activeTab = ref(tabFromRoute())
 const calendarFocus = ref(focusFromRoute())
 
-const hasVenueTab = computed(() => currentData.value.tabs.includes('Venue Catalogue'))
-const hasCalendarTab = computed(() => currentData.value.tabs.includes('Venue Calendar'))
-const hasUnavailabilityTab = computed(() => currentData.value.tabs.includes('Unavailability'))
-const hasAssignedTab = computed(() => currentData.value.tabs.includes('Assigned Events'))
-const hasEventsTab = computed(() => currentData.value.tabs.includes('Browse Events'))
-const hasNewRequestTab = computed(() => currentData.value.tabs.includes('New Request'))
-const hasEquipmentTab = computed(() => currentData.value.tabs.includes('Equipment Catalogue'))
-const hasMyEventsTab = computed(() => currentData.value.tabs.includes('My Events'))
-const hasRegistrationsTab = computed(() => currentData.value.tabs.includes('My Registrations'))
 
 // Coming back from the event detail page (e.g. after discarding a draft)
 // lands on a specific tab via ?tab= instead of always resetting to Dashboard.
@@ -166,14 +153,3 @@ async function logout() {
   router.replace('/login')
 }
 </script>
-
-<style scoped>
-.not-built {
-  color: var(--muted);
-  font-size: 14px;
-  background: var(--glass);
-  border: 1px dashed var(--hairline);
-  border-radius: var(--radius);
-  padding: 26px;
-}
-</style>

@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test'
 import { authedApi, login } from './support/auth.js'
 import { account } from './support/test-data.js'
+import { confirm, readyToConfirm } from './support/confirmation.js'
+import { formatSgtDate } from '../frontend/src/utils/datetime.js'
 import { serviceUrls } from './support/api-data.js'
 import { createDraftEvent, eventApi } from './support/event.js'
 import { eventStatusLabel } from '../frontend/src/config/eventStatus.js'
@@ -58,7 +60,9 @@ test.describe('SPM-15 View Event and preparation status', () => {
     await expect(flag).toBeVisible()
     await expect(flag).toContainText(/clarification|change request|needs action/i)
     await flag.click()
-    await expect(page).toHaveURL(/clarif|change|e3/i)
+    // It opens the clarification on the same page, not just stays on it.
+    await expect(page).toHaveURL(/\/app\/events\/e3#clarifications$/)
+    await expect(page.getByTestId('clarification-thread')).toBeInViewport()
   })
 
   test('TC-SPM15-AC05 the assigned coordinator name and contact are shown', async ({ page }) => {
@@ -70,21 +74,24 @@ test.describe('SPM-15 View Event and preparation status', () => {
     await expect(card).toContainText(/coordinator@connectsphere\.com|@/)
   })
 
-  test('TC-SPM15-AC06 a confirmed event shows venue, date, time, layout, and equipment', async ({
-    page,
-  }) => {
+  test('TC-SPM15-AC06 a confirmed event shows venue, date, time, layout, and equipment', async ({ page }) => {
+    // Its own confirmed event (Theatre, Marina Hall A, 10:00 SGT), as other specs change seeded e1.
+    test.slow()
+    const event = await readyToConfirm('SPM15-ac06', { equipmentRequirements: 'One projector' })
+    const confirmed = await confirm(event)
+    expect(confirmed.status, JSON.stringify(confirmed.body)).toBe(200)
+
     await login(page, account('EO-01'))
-    await page.goto('/app/events/e1')
-    const confirmed = page.getByTestId('organiser-confirmed-arrangements')
-    await expect(confirmed).toBeVisible()
-    await expect(confirmed).toContainText('Marina Hall A')
-    await expect(confirmed.getByTestId('organiser-confirmed-date')).toBeVisible()
-    await expect(confirmed.getByTestId('organiser-confirmed-time')).toBeVisible()
-    await expect(confirmed).toContainText(/theatre|layout/i)
-    await expect(confirmed).toContainText(/projector|equipment/i)
+    await page.goto(`/app/events/${event.eventId}`)
+    const shown = page.getByTestId('organiser-confirmed-arrangements')
+    await expect(shown).toContainText('Marina Hall A')
+    await expect(shown.getByTestId('organiser-confirmed-date')).toHaveText(formatSgtDate(event.period.startsAt))
+    await expect(shown.getByTestId('organiser-confirmed-time')).toHaveText('10:00 SGT')
+    await expect(shown).toContainText('Layout: Theatre')
+    await expect(shown).toContainText('Equipment: One projector')
   })
 
-  test('TC-SPM15-AC07 the shown status matches the stored event status', async ({ page }) => {
+  test('TC-SPM15-AC08 the shown status matches the stored event status', async ({ page }) => {
     const stored = await eventApi('GET', '/e1', 'EO-01')
     expect(stored.status).toBe(200)
     await login(page, account('EO-01'))
@@ -95,7 +102,7 @@ test.describe('SPM-15 View Event and preparation status', () => {
     await expect(shown).toHaveText(eventStatusLabel(stored.body.status))
   })
 
-  test('TC-SPM15-AC08 the organiser sees no internal notes, other clients, or unrelated records', async ({
+  test('TC-SPM15-AC09 the organiser sees no internal notes, other clients, or unrelated records', async ({
     page,
   }) => {
     await login(page, account('EO-01'))
@@ -109,7 +116,7 @@ test.describe('SPM-15 View Event and preparation status', () => {
     expect(JSON.stringify(event.body)).not.toMatch(/internalNotes|internal_notes/)
   })
 
-  test('TC-SPM15-AC09 an organiser with no events is pointed at creating a request', async ({
+  test('TC-SPM15-AC10 an organiser with no events is pointed at creating a request', async ({
     page,
   }) => {
     await login(page, account('EO-04'))

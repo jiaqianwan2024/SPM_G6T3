@@ -6,10 +6,11 @@ from shared.dao.base import BaseDAO
 
 class EventReadinessDAO(BaseDAO):
     def list_for_event(self, event_id: str) -> list[EventReadinessItem]:
+        """Newest first, so a line just added is at the top of the readiness page."""
         return (
             self.db.query(EventReadinessItem)
             .filter(EventReadinessItem.eventId == event_id)
-            .order_by(EventReadinessItem.assignedAt, EventReadinessItem.itemId)
+            .order_by(EventReadinessItem.assignedAt.desc(), EventReadinessItem.itemId.desc())
             .all()
         )
 

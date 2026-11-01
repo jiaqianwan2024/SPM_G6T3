@@ -202,4 +202,4 @@ Backend (from repo root, with the same venv already activated):
 python scripts/dev-backend.py
 ```
 
-Every screen reads the services through `frontend/src/api/`. Tabs that are not built yet say so on screen.
+Every screen reads the services through `frontend/src/api/`.

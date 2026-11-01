@@ -230,7 +230,8 @@ const router = useRouter()
 const rows = ref([])
 const people = ref([])
 // SPM-5 AC1: the personnel handling an item are ConnectSphere staff, not an organiser or an
-// attendee. Everyone stays in `people`, so an older item's handler still shows by name.
+// attendee (event-service refuses anyone else too). Everyone stays in `people`, so an older item's
+// handler still shows by name.
 const HANDLER_ROLES = ['coordinator', 'coordinatorlead', 'venue', 'techsupport', 'safety']
 const handlers = computed(() => people.value.filter((person) => HANDLER_ROLES.includes(person.role)))
 const loading = ref(true)
@@ -385,10 +386,11 @@ function editBody(row) {
     category: edit.category,
     handlerId: edit.handlerId,
     note: edit.note,
-    dueAt: toIso(edit.dueAt),
     attachments: attachmentsFrom(edit, row.attachments || []),
   }
   if (edit.status !== row.status) body.status = edit.status
+  // Only a changed due date is sent, so an overdue line's other fields can still be saved (SPM-5 AC10).
+  if (edit.dueAt !== toLocalInput(row.dueAt)) body.dueAt = toIso(edit.dueAt)
   return body
 }
 
