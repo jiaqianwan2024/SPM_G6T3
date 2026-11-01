@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.core.config import settings
 from app.main import app
 from app.models.venue_booking import VenueBooking
+from app.schemas.venue import Layout
 from shared.testing.cases import ServiceTestCase
 from tests.unit.support import CALLER, START, VenueCase, venue_create
 
@@ -49,6 +50,39 @@ class TestInternalPublicSummary(VenueCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["venueName"], "Marina Hall A")
+
+    def test_a_service_reads_what_the_active_venues_offer_each_once(self):
+        # SPM-80: the organiser's requirement lists. A retired venue's offer does not count.
+        self.service.create_venue(venue_create(), CALLER)
+        self.service.create_venue(
+            venue_create(
+                code="RR-1",
+                name="Riverside Room",
+                layouts=[Layout(name="theatre", capacity=30), Layout(name="Boardroom", capacity=12)],
+                facilities=["PA", "Whiteboard", " "],
+                accessibility=["Ramp"],
+            ),
+            CALLER,
+        )
+        retired = self.service.create_venue(
+            venue_create(code="OLD-1", name="Old Hall", facilities=["Smoke machine"]), CALLER
+        )
+        self.service.retire_venue(retired.venueId, CALLER, confirm=True)
+
+        response = self.client.get("/internal/venues/catalogue-options", headers={"X-Service-Key": "key-1"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "layouts": ["Theatre", "Classroom", "Boardroom"],
+                "facilities": ["PA", "Whiteboard"],
+                "accessibility": ["Ramp"],
+            },
+        )
+        self.assertEqual(
+            self.client.get("/internal/venues/catalogue-options").status_code, 403
+        )
 
     def test_it_needs_the_service_key(self):
         response = self.client.get("/internal/venues/bookings/public-summary", params={"eventId": "e1"})

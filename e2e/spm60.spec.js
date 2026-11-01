@@ -101,21 +101,25 @@ test.describe('SPM-60 Maintain venue records and supported layouts', () => {
   })
 
   test('TC-SPM60-AC06 zero or negative layout capacity is rejected', async () => {
-    const created = await venueRequest('POST', '/venues', 'VS-01', newVenuePayload('Capacity Guard'))
+    const created = await venueRequest('POST', '/venues', 'VS-01', newVenuePayload(`AUTO-SPM60 Capacity Guard ${Date.now()}`))
     expect(created.status).toBe(201)
-    const zero = await venueRequest('PATCH', `/venues/${created.body.venueId}`, 'VS-01', {
-      layouts: [{ name: 'Theatre', capacity: 0 }],
-    })
-    expect(zero.status).toBe(422)
-    const negative = await venueRequest('PATCH', `/venues/${created.body.venueId}`, 'VS-01', {
-      layouts: [{ name: 'Theatre', capacity: -4 }],
-    })
-    expect(negative.status).toBe(422)
-    // Boundary: a capacity of 1 is accepted, and the refused edits changed nothing before it.
-    const one = await venueRequest('PATCH', `/venues/${created.body.venueId}`, 'VS-01', {
-      layouts: [{ name: 'Theatre', capacity: 1 }],
-    })
-    expect([one.status, one.body.layouts]).toEqual([200, [{ name: 'Theatre', capacity: 1 }]])
+    try {
+      const zero = await venueRequest('PATCH', `/venues/${created.body.venueId}`, 'VS-01', {
+        layouts: [{ name: 'Theatre', capacity: 0 }],
+      })
+      expect(zero.status).toBe(422)
+      const negative = await venueRequest('PATCH', `/venues/${created.body.venueId}`, 'VS-01', {
+        layouts: [{ name: 'Theatre', capacity: -4 }],
+      })
+      expect(negative.status).toBe(422)
+      // Boundary: a capacity of 1 is accepted, and the refused edits changed nothing before it.
+      const one = await venueRequest('PATCH', `/venues/${created.body.venueId}`, 'VS-01', {
+        layouts: [{ name: 'Theatre', capacity: 1 }],
+      })
+      expect([one.status, one.body.layouts]).toEqual([200, [{ name: 'Theatre', capacity: 1 }]])
+    } finally {
+      await retireSuiteVenue(created.body)
+    }
   })
 
   test('TC-SPM60-AC07 only venue staff can change records; other roles are read-only', async () => {
@@ -143,15 +147,19 @@ test.describe('SPM-60 Maintain venue records and supported layouts', () => {
   })
 
   test('TC-SPM60-AC09 every change is written to the activity log', async () => {
-    const created = await venueRequest('POST', '/venues', 'VS-01', newVenuePayload('Logged Venue'))
+    const created = await venueRequest('POST', '/venues', 'VS-01', newVenuePayload(`AUTO-SPM60 Logged Venue ${Date.now()}`))
     expect(created.status).toBe(201)
-    await venueRequest('PATCH', `/venues/${created.body.venueId}`, 'VS-01', {
-      description: 'logged edit',
-    })
-    const log = await venueRequest('GET', `/venues/${created.body.venueId}/activity-log`, 'VS-01')
-    expect(log.status).toBe(200)
-    const actions = log.body.map((row) => row.action)
-    expect(actions).toEqual(expect.arrayContaining(['created', 'updated']))
-    expect(log.body[0].changedBy).toBe('u3')
+    try {
+      await venueRequest('PATCH', `/venues/${created.body.venueId}`, 'VS-01', {
+        description: 'logged edit',
+      })
+      const log = await venueRequest('GET', `/venues/${created.body.venueId}/activity-log`, 'VS-01')
+      expect(log.status).toBe(200)
+      const actions = log.body.map((row) => row.action)
+      expect(actions).toEqual(expect.arrayContaining(['created', 'updated']))
+      expect(log.body[0].changedBy).toBe('u3')
+    } finally {
+      await retireSuiteVenue(created.body)
+    }
   })
 })

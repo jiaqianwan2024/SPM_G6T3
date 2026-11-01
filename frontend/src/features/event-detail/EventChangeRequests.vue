@@ -88,6 +88,16 @@
           :min="field === 'proposedEndAt' ? laterInput(today, proposed.proposedStartAt) : today"
           :data-testid="`change-request-value-${field}`"
         />
+        <!-- The category can only be one the event service accepts, so it is chosen, not typed. -->
+        <select
+          v-else-if="field === 'category'"
+          :id="`change-${field}`"
+          v-model="proposed[field]"
+          :data-testid="`change-request-value-${field}`"
+        >
+          <option value="" disabled>Choose a category</option>
+          <option v-for="option in choices.categories" :key="option" :value="option">{{ option }}</option>
+        </select>
         <input
           v-else-if="field === 'expectedAttendance'"
           :id="`change-${field}`"
@@ -101,15 +111,12 @@
           :id="`change-${field}`"
           v-model="proposed[field]"
           type="text"
-          :list="field === 'category' ? 'change-categories' : field === 'layoutPreference' ? 'change-layouts' : undefined"
+          :list="field === 'layoutPreference' ? 'change-layouts' : undefined"
           :data-testid="`change-request-value-${field}`"
         />
       </div>
-      <datalist id="change-categories">
-        <option v-for="option in EVENT_CATEGORIES" :key="option" :value="option" />
-      </datalist>
       <datalist id="change-layouts">
-        <option v-for="option in LAYOUT_TYPES" :key="option" :value="option" />
+        <option v-for="option in choices.layouts" :key="option" :value="option" />
       </datalist>
 
       <label for="change-reason">Why is this changing?</label>
@@ -193,7 +200,8 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { getEquipmentList } from '../../api/equipmentService.js'
 import { getChangeRequests, raiseChangeRequest, withdrawChangeRequest } from '../../api/eventService.js'
-import { CHANGEABLE_FIELDS, EVENT_CATEGORIES, LAYOUT_TYPES, fieldLabel } from '../../config/eventFields.js'
+import { useRequirementOptions } from '../../composables/requirementOptions.js'
+import { CHANGEABLE_FIELDS, fieldLabel } from '../../config/eventFields.js'
 import { CHANGE_REQUEST_STATUSES } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
 import { formatSgt, fromSgtInput, laterInput, sgtMinInput, toSgtInput } from '../../utils/datetime.js'
@@ -221,6 +229,8 @@ const busy = ref(false)
 const actionError = ref('')
 // The equipment catalogue, to pick types and show their names (SPM-85 AC5).
 const catalogue = ref([])
+// SPM-80: the layouts the active venues offer, and the categories event-service accepts.
+const { options: choices } = useRequirementOptions()
 const equipmentNames = computed(() => Object.fromEntries(catalogue.value.map((item) => [item.equipmentId, item.name])))
 
 // Newest first, so these are the latest of each.

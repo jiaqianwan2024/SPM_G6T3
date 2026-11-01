@@ -211,15 +211,19 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { createEvent, getEvent, getRequirementOptions, saveDraft, submitDraft, updateDraft } from '../../api/eventService.js'
-import { EVENT_CATEGORIES } from '../../config/eventFields.js'
+import { createEvent, getEvent, saveDraft, submitDraft, updateDraft } from '../../api/eventService.js'
+import { useRequirementOptions } from '../../composables/requirementOptions.js'
 import { consumeEditingId, setDirty } from '../../store/draftEditor.js'
 import { fromSgtInput, laterInput, sgtMinInput, toSgtInput } from '../../utils/datetime.js'
 
-const categories = EVENT_CATEGORIES
-const layouts = ref(['No preference', 'Theatre', 'Boardroom', 'Classroom', 'Banquet'])
-const facilities = ref(['Projector', 'PA system', 'Video-conferencing', 'Stage'])
-const accessibility = ref(['Wheelchair accessible', 'Hearing loop'])
+// SPM-80: what the active venues offer, and the categories event-service accepts.
+const { options: choices, ready: choicesReady } = useRequirementOptions()
+// A choice saved before the lists changed stays on screen, so it can still be seen and undone.
+const withChosen = (list, chosen) => [...list, ...[].concat(chosen || []).filter((value) => value && !list.includes(value))]
+const categories = computed(() => choices.categories)
+const layouts = computed(() => withChosen(choices.layouts, form.layoutPreference))
+const facilities = computed(() => withChosen(choices.facilities, form.requiredFacilities))
+const accessibility = computed(() => withChosen(choices.accessibility, form.accessibilityNeeds))
 
 function blankForm() {
   return {
@@ -384,7 +388,7 @@ function populateFormFromEvent(data) {
   form.eventName = data.eventName || ''
   form.purpose = data.purpose || ''
   form.description = data.description || ''
-  form.category = categories.find((option) => option.toLowerCase() === String(data.category || '').toLowerCase()) ?? data.category ?? null
+  form.category = categories.value.find((option) => option.toLowerCase() === String(data.category || '').toLowerCase()) ?? data.category ?? null
   form.proposedStartAt = toInputDatetime(data.proposedStartAt)
   form.proposedEndAt = toInputDatetime(data.proposedEndAt)
   form.expectedAttendance = data.expectedAttendance ?? null
@@ -516,14 +520,7 @@ async function submit() {
 }
 
 onMounted(async () => {
-  try {
-    const { data } = await getRequirementOptions()
-    if (data.layouts?.length) layouts.value = data.layouts
-    if (data.facilities?.length) facilities.value = data.facilities
-    if (data.accessibility?.length) accessibility.value = data.accessibility
-  } catch {
-    // The published fallback lists above still let a draft be saved.
-  }
+  await choicesReady
   const id = consumeEditingId()
   if (id) {
     try {

@@ -78,7 +78,7 @@
             <label for="edit-layout">Required layout</label>
             <input id="edit-layout" v-model.trim="form.layoutPreference" type="text" list="edit-layout-types" />
             <datalist id="edit-layout-types">
-              <option v-for="layout in LAYOUT_TYPES" :key="layout" :value="layout" />
+              <option v-for="layout in choices.layouts" :key="layout" :value="layout" />
             </datalist>
           </div>
         </div>
@@ -104,7 +104,8 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { updateEvent } from '../../api/eventService.js'
-import { EVENT_CATEGORIES, LAYOUT_TYPES } from '../../config/eventFields.js'
+import { useRequirementOptions } from '../../composables/requirementOptions.js'
+import { EVENT_CATEGORIES } from '../../config/eventFields.js'
 import { eventStatusLabel } from '../../config/eventStatus.js'
 import { fromSgtInput, laterInput, sgtMinInput, toSgtInput } from '../../utils/datetime.js'
 
@@ -115,6 +116,8 @@ const props = defineProps({
 const emit = defineEmits(['close', 'saved'])
 
 const CATEGORIES = EVENT_CATEGORIES
+// SPM-80: the layouts the active venues offer, and the categories event-service accepts.
+const { options: choices } = useRequirementOptions()
 // Cleared, these go to the API as null rather than "".
 const CLEARABLE = ['category', 'layoutPreference']
 
@@ -148,9 +151,11 @@ const saving = ref(false)
 const error = ref('')
 const pending = ref(null)
 
-// An existing category outside the usual four stays selectable.
+// An existing category outside the published list stays selectable.
 const categoryOptions = computed(() =>
-  original.category && !CATEGORIES.includes(original.category) ? [...CATEGORIES, original.category] : CATEGORIES,
+  original.category && !choices.categories.includes(original.category)
+    ? [...choices.categories, original.category]
+    : choices.categories,
 )
 
 // Only the fields that changed are sent, so an untouched field is never logged as edited.

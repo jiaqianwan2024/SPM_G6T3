@@ -112,15 +112,17 @@ function unique(lists) {
 
 const facilityOptions = computed(() => unique(props.venues.map((v) => v.facilities || [])))
 const accessibilityOptions = computed(() => unique(props.venues.map((v) => v.accessibility || [])))
+// SPM-80 AC1: "No preference" means any layout will do, which is the "Any layout" choice here.
+const eventLayout = /^\s*no preference\s*$/i.test(props.event.layoutPreference || '') ? '' : props.event.layoutPreference || ''
 const layoutOptions = computed(() =>
-  unique([...props.venues.map((v) => (v.layouts || []).map((l) => l.name)), props.event.layoutPreference || '']),
+  unique([...props.venues.map((v) => (v.layouts || []).map((l) => l.name)), eventLayout]),
 )
 
 // SPM-61 AC1: everything starts from the event's own requirements.
 const startsAt = ref(toInput(props.event.proposedStartAt))
 const endsAt = ref(toInput(props.event.proposedEndAt))
 const attendance = ref(props.event.expectedAttendance || 0)
-const layout = ref(props.event.layoutPreference || '')
+const layout = ref(eventLayout)
 const location = ref('')
 const facilities = ref(mentioned(facilityOptions.value, props.event.venueRequirements))
 const accessibility = ref(mentioned(accessibilityOptions.value, props.event.accessibilityNeeds))

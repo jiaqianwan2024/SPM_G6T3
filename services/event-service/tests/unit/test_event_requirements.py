@@ -10,11 +10,22 @@ from tests.unit.support import END, ORGANISER, START, EventCase, draft_payload
 
 
 class TestEventRequirements(EventCase):
-    def test_published_lists_include_layout_facility_and_access(self):
-        options = self.service.requirement_options()
+    def test_the_lists_are_what_the_active_venues_offer(self):
+        # SPM-80 AC2: facilities come from the catalogue, and so do layouts and accessibility.
+        catalogue = {"layouts": ["Theatre", "Exhibition"], "facilities": ["Whiteboard"], "accessibility": ["Ramp"]}
+        with patch("app.services.event_service.venue_catalogue_options", return_value=catalogue):
+            options = self.service.requirement_options()
 
-        self.assertIn("Theatre", options.layouts)
-        self.assertIn("No preference", options.layouts)
+        self.assertEqual(options.layouts, ["Theatre", "Exhibition", "No preference"])
+        self.assertEqual(options.facilities, ["Whiteboard"])
+        self.assertEqual(options.accessibility, ["Ramp"])
+        self.assertEqual(options.categories, ["Conference", "Workshop", "Networking", "Meeting"])
+
+    def test_the_fixed_lists_stand_in_while_venue_service_cannot_be_read(self):
+        with patch("app.services.event_service.venue_catalogue_options", return_value=None):
+            options = self.service.requirement_options()
+
+        self.assertEqual(options.layouts, ["Theatre", "Boardroom", "Classroom", "Banquet", "No preference"])
         self.assertIn("Projector", options.facilities)
         self.assertIn("Wheelchair accessible", options.accessibility)
 
@@ -187,7 +198,8 @@ class TestEventRequirementRoutes(ServiceTestCase):
 
     def test_name_only_create_is_a_draft_and_options_are_public(self):
         headers = {"Authorization": "Bearer token"}
-        options = self.client.get("/events/requirement-options", headers=headers)
+        with patch("app.services.event_service.venue_catalogue_options", return_value=None):
+            options = self.client.get("/events/requirement-options", headers=headers)
         created = self.client.post("/events", headers=headers, json={"eventName": "AUTO-SPM80"})
 
         self.assertEqual(options.status_code, 200)

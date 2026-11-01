@@ -555,6 +555,13 @@ def expired_holds(since: datetime, until: datetime) -> list[dict] | None:
     return rows if isinstance(rows, list) else None
 
 
+def venue_catalogue_options() -> dict[str, list[str]] | None:
+    """SPM-80: the layouts, facilities and accessibility features the active venues offer.
+    None when venue-service cannot be read."""
+    options = _service_get(f"{settings.venue_service_url}/internal/venues/catalogue-options")
+    return options if isinstance(options, dict) else None
+
+
 def users_with_roles(roles: list[str]) -> dict[str, dict] | None:
     """SPM-95: everyone holding one of the roles, as {userId: {"role": ...}}. None when
     user-service cannot be read."""

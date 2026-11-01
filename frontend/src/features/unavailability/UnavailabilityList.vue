@@ -20,7 +20,7 @@
             Venue
             <select v-model="venueId" data-testid="unavailability-venue">
               <option value="">All venues</option>
-              <option v-for="venue in venues" :key="venue.venueId" :value="venue.venueId">
+              <option v-for="venue in venueOptions" :key="venue.venueId" :value="venue.venueId">
                 {{ venue.name }}
               </option>
             </select>
@@ -153,6 +153,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { createVenueUnavailability, getVenueBookings, getVenueUnavailability, getVenues } from '../../api/venueService.js'
 import { formatSgt, fromSgtInput, sgtDayEnd, sgtDayStart } from '../../utils/datetime.js'
+import { venueFilterOptions } from '../../utils/venueOptions.js'
 
 const router = useRouter()
 const reasons = ['maintenance', 'renovation', 'safety issue', 'internal activity', 'other']
@@ -187,6 +188,9 @@ const form = reactive({
 })
 
 const activeVenues = computed(() => venues.value.filter((venue) => venue.isActive !== false))
+const venueOptions = computed(() =>
+  venueFilterOptions(venues.value, currentRows.value.map((row) => row.venueId), venueId.value)
+)
 const currentRows = computed(() => {
   const now = Date.now()
   return rows.value.filter((row) => new Date(ensureZ(row.endsAt)).getTime() > now)

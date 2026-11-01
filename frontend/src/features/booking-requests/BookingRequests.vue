@@ -19,7 +19,7 @@
         Venue
         <select v-model="venueId" data-testid="booking-venue-filter">
           <option value="">All venues</option>
-          <option v-for="venue in venues" :key="venue.venueId" :value="venue.venueId">{{ venue.name }}</option>
+          <option v-for="venue in venueOptions" :key="venue.venueId" :value="venue.venueId">{{ venue.name }}</option>
         </select>
       </label>
     </div>
@@ -222,6 +222,7 @@ import {
   reconfirmVenueBooking,
   rejectVenueBooking,
 } from '../../api/venueService.js'
+import { venueFilterOptions } from '../../utils/venueOptions.js'
 
 const route = useRoute()
 
@@ -245,6 +246,9 @@ const status = ref(
 const venueId = ref('')
 const venues = ref([])
 const bookings = ref([])
+const venueOptions = computed(() =>
+  venueFilterOptions(venues.value, bookings.value.map((booking) => booking.venueId), venueId.value)
+)
 const loading = ref(true)
 const loadError = ref('')
 const notice = ref('')

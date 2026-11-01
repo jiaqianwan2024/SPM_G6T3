@@ -4,7 +4,9 @@ Acceptance tests leave hundreds of AUTO-... events behind. This keeps the seeded
 demo events (e1, e2, ...) and, for each status none of them is in, the test event
 with the most history attached. Every other event goes, along with its bookings,
 equipment requests and reservations, registrations and notifications. Users,
-organisations, venues and equipment are left alone.
+organisations, venues and equipment are left alone, except that venues the tests
+created and left active are retired, so they drop out of every venue list while
+their history stays.
 
 Run through `python scripts/migrate.py --clean-test-data`, which seeds first so
 the demo events always exist. A full backup is written to backups/ before anything
@@ -27,6 +29,9 @@ BACKUP_DIR = ROOT / "backups"
 DATABASES = ["user", "event", "venue", "equipment", "registration", "notification"]
 # Notifications kept per user and type, newest first.
 NOTICES_KEPT = 2
+# Venues the acceptance tests create are named AUTO-...; before they retired their own
+# venues, the SPM-60 and SPM-17 tests also left these names behind on every run.
+LEFTOVER_TEST_VENUES = ["Capacity Guard", "Logged Venue", "Maintain Add Venue", "Retired Catalogue Venue"]
 
 # event-service tables keyed by event_id, deleted before events (no foreign key cascades).
 EVENT_CHILD_TABLES = [
@@ -87,6 +92,24 @@ def choose_events_to_keep() -> tuple[list[str], list[tuple]]:
             examples[row.status] = row
     keep += [row.event_id for row in examples.values()]
     return keep, sorted(((row.status, row.name) for row in examples.values()))
+
+
+def test_venues_to_retire() -> list[tuple[str, str]]:
+    """Active venues the tests created, as (venue_id, name)."""
+    statement = text(
+        "SELECT venue_id, name FROM venues WHERE is_active = 1 AND (name LIKE :auto OR name IN :names)"
+    ).bindparams(bindparam("names", expanding=True))
+    with _engine("venue").connect() as conn:
+        rows = conn.execute(statement, {"auto": "AUTO-%", "names": LEFTOVER_TEST_VENUES}).all()
+    return [(row.venue_id, row.name) for row in rows]
+
+
+def retire_venues(venue_ids: list[str]) -> int:
+    statement = text("UPDATE venues SET is_active = 0 WHERE venue_id IN :ids").bindparams(
+        bindparam("ids", expanding=True)
+    )
+    with _engine("venue").begin() as conn:
+        return conn.execute(statement, {"ids": venue_ids}).rowcount
 
 
 def _delete(conn, sql: str, keep: list[str]) -> int:
@@ -168,22 +191,37 @@ def clean_test_data(assume_yes: bool = False) -> None:
     print(f"keeping {len(keep)} of {total} events: the demo events plus one example for")
     for status, name in examples:
         print(f"  {status:<18} {name}")
-    if total == len(keep):
+    venues = test_venues_to_retire()
+    if venues:
+        print(f"retiring {len(venues)} venues the tests left active (kept with their history, just hidden):")
+        for name in sorted({name for _, name in venues}):
+            copies = sum(1 for _, other in venues if other == name)
+            print(f"  {name}" + (f" ({copies} copies)" if copies > 1 else ""))
+    extra = total - len(keep)
+    if not extra and not venues:
         print("nothing to clean")
         return
     if not assume_yes:
         if not sys.stdin.isatty():
             raise SystemExit("Refusing to delete without a terminal to confirm. Re-run with --yes.")
+        steps = []
+        if extra:
+            steps.append(f"delete the other {extra} events and everything attached to them")
+        if venues:
+            steps.append(f"retire those {len(venues)} venues")
         try:
-            answer = input(f"delete the other {total - len(keep)} events and everything attached to them? [y/N] ")
+            answer = input(f"{' and '.join(steps)}? [y/N] ")
         except EOFError:  # Git Bash can report a terminal that has no input behind it
             answer = ""
         if answer.strip().lower() != "y":
             print("cancelled, nothing deleted")
             return
     print(f"backup written to {back_up().relative_to(ROOT)}")
-    removed = delete_everything_else(keep)
-    for table, n in removed.items():
-        if n:
-            print(f"  removed {n:>5} from {table}")
+    if extra:
+        removed = delete_everything_else(keep)
+        for table, n in removed.items():
+            if n:
+                print(f"  removed {n:>5} from {table}")
+    if venues:
+        print(f"  retired {retire_venues([venue_id for venue_id, _ in venues]):>5} test venues")
     print("clean complete")
