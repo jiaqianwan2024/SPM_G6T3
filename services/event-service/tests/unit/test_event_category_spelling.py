@@ -1,5 +1,7 @@
 import unittest
 
+from pydantic import ValidationError
+
 from app.schemas.event import (
     ChangeRequestCreate,
     EventCreate,
@@ -42,8 +44,14 @@ class TestCategorySpelling(unittest.TestCase):
 
         self.assertEqual(request.proposedChanges, {"category": "Workshop"})
 
-    def test_a_category_that_is_not_listed_is_kept_as_typed(self):
-        self.assertEqual(EventUpdate(category=" Gala dinner ").category, "Gala dinner")
+    def test_a_category_that_is_not_listed_is_refused_on_every_way_in(self):
+        for build in (
+            lambda: EventUpdate(category="Gala dinner"),
+            lambda: OrganiserDraftPatch(category="Gala dinner"),
+            lambda: ChangeRequestCreate(reason="Rebrand", proposedChanges={"category": "Gala dinner"}),
+        ):
+            with self.subTest(build=build), self.assertRaises(ValidationError):
+                build()
 
     def test_a_category_can_still_be_left_out_of_a_draft(self):
         self.assertIsNone(EventDraftUpsert(eventName="AUTO-category").category)

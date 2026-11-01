@@ -1,29 +1,7 @@
 from datetime import datetime, timezone
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
-from pydantic import (
-    AfterValidator,
-    BaseModel,
-    ConfigDict,
-    Field,
-    ValidationError,
-    field_validator,
-    model_serializer,
-    model_validator,
-)
-
-# The categories every event form offers (frontend/src/config/eventFields.js).
-EVENT_CATEGORIES = ("Conference", "Workshop", "Networking", "Meeting")
-
-
-def _category_spelling(value: str) -> str:
-    """A known category is stored in its listed spelling, so "meeting" and
-    "Meeting" never become two categories. Anything else is kept as typed."""
-    value = value.strip()
-    return next((name for name in EVENT_CATEGORIES if name.lower() == value.lower()), value)
-
-
-Category = Annotated[str, AfterValidator(_category_spelling)]
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_serializer, model_validator
 
 
 def check_registration_window(opens: datetime | None, closes: datetime | None, start: datetime | None) -> None:
@@ -48,7 +26,7 @@ class EventCreate(BaseModel):
     # SPM-14 AC1 / SPM-82 AC1: category and purpose are required to submit, like the name and dates.
     purpose: str = Field(description="Required to submit.")
     description: str = ""
-    category: Category = Field(description="Required to submit.")
+    category: str = Field(description="Required to submit.")
     proposedStartAt: datetime
     proposedEndAt: datetime
     expectedAttendance: int = Field(ge=1, description="At least one. A draft may still save zero.")
@@ -478,7 +456,7 @@ class EventUpdate(BaseModel):
     eventName: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
     purpose: str | None = None
-    category: Category | None = None
+    category: str | None = None
     internalNotes: str | None = None
     organiserContact: str | None = Field(default=None, max_length=255)
     proposedStartAt: datetime | None = None
@@ -1169,7 +1147,7 @@ class OrganiserDraftPatch(BaseModel):
     eventName: str | None = Field(default=None, min_length=1, max_length=255)
     purpose: str | None = None
     description: str | None = None
-    category: Category | None = None
+    category: str | None = None
     proposedStartAt: datetime | None = None
     proposedEndAt: datetime | None = None
     expectedAttendance: int | None = Field(default=None, ge=0)
@@ -1215,7 +1193,7 @@ class EventIntake(BaseModel):
     eventName: str = Field(min_length=1, max_length=255)
     purpose: str = ""
     description: str = ""
-    category: Category | None = None
+    category: str | None = None
     proposedStartAt: datetime | None = None
     proposedEndAt: datetime | None = None
     expectedAttendance: int | None = Field(default=None, ge=0)
@@ -1295,7 +1273,7 @@ class EventDraftUpsert(BaseModel):
     eventName: str = Field(min_length=1, max_length=255)
     purpose: str = ""
     description: str = ""
-    category: Category | None = None
+    category: str | None = None
     proposedStartAt: datetime | None = None
     proposedEndAt: datetime | None = None
     expectedAttendance: int | None = Field(default=None, ge=0)
