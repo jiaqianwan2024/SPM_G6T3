@@ -20,7 +20,7 @@
             Venue
             <select v-model="venueId" data-testid="unavailability-venue">
               <option value="">All venues</option>
-              <option v-for="venue in venues" :key="venue.venueId" :value="venue.venueId">
+              <option v-for="venue in venueOptions" :key="venue.venueId" :value="venue.venueId">
                 {{ venue.name }}
               </option>
             </select>
@@ -33,11 +33,11 @@
             </select>
           </label>
           <label>
-            From (UTC)
+            From (SGT)
             <input v-model="fromDate" type="date" data-testid="unavailability-from" />
           </label>
           <label>
-            To (UTC)
+            To (SGT)
             <input v-model="toDate" type="date" data-testid="unavailability-to" />
           </label>
         </div>
@@ -64,7 +64,7 @@
           <form class="modal mark-form" role="dialog" aria-modal="true" data-testid="unavailability-form" @submit.prevent="save">
             <h3>Mark unavailable</h3>
             <label>
-              Venue
+              <span>Venue <span class="req">*</span></span>
               <select v-model="form.venueId" required data-testid="unavailability-form-venue">
                 <option v-for="venue in activeVenues" :key="venue.venueId" :value="venue.venueId">
                   {{ venue.name }}
@@ -73,16 +73,16 @@
             </label>
             <div class="form-times">
               <label>
-                Start (UTC)
+                <span>Start (SGT) <span class="req">*</span></span>
                 <input v-model="form.startsAt" type="datetime-local" required />
               </label>
               <label>
-                End (UTC)
+                <span>End (SGT) <span class="req">*</span></span>
                 <input v-model="form.endsAt" type="datetime-local" required />
               </label>
             </div>
             <label>
-              Reason
+              <span>Reason <span class="req">*</span></span>
               <select v-model="form.reason" required>
                 <option v-for="item in reasons" :key="item" :value="item">{{ item }}</option>
               </select>
@@ -94,7 +94,7 @@
             <p v-if="form.error" class="form-error">{{ form.error }}</p>
             <label v-if="form.needsAck" class="ack">
               <input v-model="form.acknowledge" type="checkbox" />
-              I have seen these events. Save the block anyway. Their bookings stay as they are.
+              <span>I have seen these events. Save the block anyway. Their bookings stay as they are. <span class="req">*</span></span>
             </label>
             <div class="form-actions">
               <button type="submit" class="mark-btn" :disabled="form.saving || (form.needsAck && !form.acknowledge)">
@@ -152,6 +152,8 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { createVenueUnavailability, getVenueBookings, getVenueUnavailability, getVenues } from '../../api/venueService.js'
+import { formatSgt, fromSgtInput, sgtDayEnd, sgtDayStart } from '../../utils/datetime.js'
+import { venueFilterOptions } from '../../utils/venueOptions.js'
 
 const router = useRouter()
 const reasons = ['maintenance', 'renovation', 'safety issue', 'internal activity', 'other']
@@ -186,6 +188,9 @@ const form = reactive({
 })
 
 const activeVenues = computed(() => venues.value.filter((venue) => venue.isActive !== false))
+const venueOptions = computed(() =>
+  venueFilterOptions(venues.value, currentRows.value.map((row) => row.venueId), venueId.value)
+)
 const currentRows = computed(() => {
   const now = Date.now()
   return rows.value.filter((row) => new Date(ensureZ(row.endsAt)).getTime() > now)
@@ -193,8 +198,9 @@ const currentRows = computed(() => {
 
 const visible = computed(() => {
   const needle = query.value.trim().toLowerCase()
-  const from = fromDate.value ? new Date(`${fromDate.value}T00:00:00Z`).getTime() : null
-  const to = toDate.value ? new Date(`${toDate.value}T23:59:59Z`).getTime() : null
+  // The filter dates are Singapore dates.
+  const from = sgtDayStart(fromDate.value)
+  const to = sgtDayEnd(toDate.value)
   const now = Date.now()
   const matched = currentRows.value.filter((row) => {
     if (venueId.value && row.venueId !== venueId.value) return false
@@ -320,8 +326,9 @@ function message(detail) {
   return 'Could not save this block.'
 }
 
+// Typed in Singapore time, sent in UTC.
 function toUtc(value) {
-  return value.length === 16 ? `${value}:00Z` : value
+  return fromSgtInput(value)
 }
 
 function timing(row, now) {
@@ -339,12 +346,7 @@ function ensureZ(value) {
 }
 
 function formatWhen(value) {
-  const date = new Date(ensureZ(value))
-  if (Number.isNaN(date.getTime())) return String(value)
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  const hours = String(date.getUTCHours()).padStart(2, '0')
-  const minutes = String(date.getUTCMinutes()).padStart(2, '0')
-  return `${date.getUTCDate()} ${months[date.getUTCMonth()]} ${date.getUTCFullYear()}, ${hours}:${minutes} UTC`
+  return formatSgt(value) || String(value)
 }
 </script>
 
@@ -365,7 +367,7 @@ function formatWhen(value) {
   width: 100%;
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -433,7 +435,7 @@ function formatWhen(value) {
   padding: 22px;
   background: #140828;
   border: 1px solid rgba(167, 139, 250, .35);
-  border-radius: 16px;
+  border-radius: var(--radius);
   box-shadow: 0 24px 70px rgba(4, 1, 12, .75);
 }
 .mark-form h3 { margin: 0; color: var(--text); font-size: 16px; }
@@ -465,7 +467,7 @@ function formatWhen(value) {
   padding: 18px 20px;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
 }
 .card header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .card header strong { color: var(--text); font-size: 16px; }

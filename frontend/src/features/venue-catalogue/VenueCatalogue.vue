@@ -44,6 +44,7 @@
         :key="venue.venueId"
         class="venue-row"
         :class="{ active: selected?.venueId === venue.venueId, retired: !venue.isActive }"
+        :data-testid="`venue-row-${venue.venueId}`"
         @click="selectVenue(venue.venueId)"
       >
         <div class="venue-name">
@@ -70,6 +71,9 @@
             <span v-if="!selected.isActive" class="retired-tag">Retired</span>
           </h3>
           <div class="detail-actions">
+            <button type="button" class="btn btn-ghost small" data-testid="venue-open-calendar" @click="openCalendar">
+              Open calendar
+            </button>
             <template v-if="canWrite && selected.isActive">
               <button type="button" class="btn btn-ghost small" @click="startEdit">Edit</button>
               <button type="button" class="btn btn-ghost small" @click="showLog = !showLog">
@@ -92,7 +96,7 @@
           <dt>Accessibility</dt><dd>{{ selected.accessibility.join(', ') }}</dd>
           <dt>Supported layouts</dt>
           <dd>{{ selected.layouts.map(l => `${l.name} (${l.capacity})`).join(', ') }}</dd>
-          <dt>Operating hours</dt>
+          <dt>Operating hours (SGT)</dt>
           <dd>{{ selected.operatingHours.map(h => `${h.day} ${h.opens}–${h.closes}`).join(', ') }}</dd>
           <dt>Setup needed</dt><dd>{{ selected.setupMinutes }} minutes before the event</dd>
           <dt>Turnaround needed</dt><dd>{{ selected.turnaroundMinutes }} minutes between bookings</dd>
@@ -157,19 +161,23 @@
       </div>
       <div class="venue-detail empty" v-else-if="loadingDetail">Loading venue…</div>
       <div class="venue-detail empty" v-else-if="venues.length">Select a venue to view its details.</div>
-      <div class="venue-detail empty" v-else>No venues are currently available.</div>
+      <div class="venue-detail empty" data-testid="venue-catalogue-empty" v-else>
+        No venues are currently available. Venue staff maintain the catalogue, so check back once they have added a venue.
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { getBookingClashes, getVenue, getVenues, retireVenue } from '../../api/venueService.js'
 import { session } from '../../store/session.js'
 import VenueForm from './VenueForm.vue'
 import VenueActivityLog from './VenueActivityLog.vue'
 import VenueHolds from './VenueHolds.vue'
 
+const router = useRouter()
 const venues = ref([])
 const selected = ref(null)
 const loading = ref(true)
@@ -188,6 +196,11 @@ const retireWarning = ref('')
 const loadingDetail = ref(false)
 
 const canWrite = computed(() => session.role === 'venue')
+
+// SPM-17 AC4: a venue opens its availability calendar.
+function openCalendar() {
+  router.push(`/app/venues/${selected.value.venueId}/calendar`)
+}
 
 const visible = computed(() => {
   const term = query.value.trim().toLowerCase()
@@ -231,9 +244,9 @@ async function loadClashes() {
   }
 }
 
-// Booking times are UTC and come without a zone marker.
-const dayFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
-const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+// Booking times come in UTC without a zone marker; they are shown in Singapore time.
+const dayFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric' })
+const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
 function utc(value) {
   return new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`)
@@ -243,8 +256,8 @@ function span(start, end) {
   const [from, to] = [utc(start), utc(end)]
   const [fromDay, toDay] = [dayFormat.format(from), dayFormat.format(to)]
   return fromDay === toDay
-    ? `${fromDay}, ${timeFormat.format(from)} to ${timeFormat.format(to)} UTC`
-    : `${fromDay}, ${timeFormat.format(from)} to ${toDay}, ${timeFormat.format(to)} UTC`
+    ? `${fromDay}, ${timeFormat.format(from)} to ${timeFormat.format(to)} SGT`
+    : `${fromDay}, ${timeFormat.format(from)} to ${toDay}, ${timeFormat.format(to)} SGT`
 }
 
 function eventLabel(booking) {
@@ -405,7 +418,7 @@ onMounted(async () => {
   width: 100%;
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -440,7 +453,7 @@ onMounted(async () => {
   border: 1px solid var(--hairline);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 14px 16px;
   cursor: pointer;
   transition: background .4s var(--ease-out), border-color .4s var(--ease-out),
@@ -453,7 +466,7 @@ onMounted(async () => {
   box-shadow: 0 0 26px rgba(124, 77, 255, .22);
 }
 .venue-name {
-  font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: var(--text); font-size: 14px;
+  font-family: var(--font); font-weight: 500; color: var(--text); font-size: 14px;
   display: flex; align-items: center; gap: 8px;
 }
 .venue-meta { font-size: 12px; margin-top: 3px; color: var(--muted); }
@@ -478,7 +491,7 @@ onMounted(async () => {
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 26px;
 }
 .venue-detail.empty { display: flex; align-items: center; justify-content: center; color: var(--muted); }
@@ -507,7 +520,7 @@ dd { margin: 0; font-size: 14px; line-height: 1.6; color: var(--body); }
 .retire-warning {
   margin-top: 20px;
   padding: 16px;
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .3);
 }
@@ -516,7 +529,7 @@ dd { margin: 0; font-size: 14px; line-height: 1.6; color: var(--body); }
 .retire-warning .actions .btn { white-space: nowrap; }
 
 .clash-banner {
-  padding: 12px 14px; border-radius: 12px;
+  padding: 12px 14px; border-radius: var(--radius);
   background: rgba(255, 196, 87, .08); border: 1px solid rgba(255, 196, 87, .3);
 }
 .clash-banner p { margin: 0 0 8px; font-size: 12px; line-height: 1.5; color: var(--text); }
@@ -531,7 +544,7 @@ dd { margin: 0; font-size: 14px; line-height: 1.6; color: var(--body); }
 .clashes .hint { margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: var(--muted); }
 .clashes ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .clashes li {
-  padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.6; color: var(--body);
+  padding: 12px 14px; border-radius: var(--radius); font-size: 13px; line-height: 1.6; color: var(--body);
   background: rgba(255, 196, 87, .06); border: 1px solid rgba(255, 196, 87, .25);
 }
 .clashes strong { color: var(--text); font-weight: 500; }

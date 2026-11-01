@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.event import Event
@@ -74,6 +74,20 @@ class EventDAO(BaseDAO):
             .all()
         )
 
+    def list_organisation_overview(self, organisation_id: str, organiser_id: str) -> list[Event]:
+        """SPM-47: a client organisation's events, newest change first, without discarded
+        drafts or a colleague's draft (a draft stays with the organiser writing it)."""
+        return (
+            self.db.query(Event)
+            .filter(
+                Event.organisationId == organisation_id,
+                Event.status != "discarded",
+                or_(Event.status != "draft", Event.organiserId == organiser_id),
+            )
+            .order_by(Event.updatedAt.desc())
+            .all()
+        )
+
     def list_by_organiser_excluding_statuses(self, organiser_id: str, statuses: list[str]) -> list[Event]:
         return (
             self.db.query(Event)
@@ -97,6 +111,15 @@ class EventDAO(BaseDAO):
         return (
             self.db.query(Event)
             .filter(Event.coordinatorId.isnot(None), Event.status.notin_(statuses))
+            .order_by(Event.proposedStartAt.asc())
+            .all()
+        )
+
+    def list_by_coordinator_excluding_statuses(self, coordinator_id: str, statuses: list[str]) -> list[Event]:
+        """One coordinator's assigned events not in `statuses`, soonest first."""
+        return (
+            self.db.query(Event)
+            .filter(Event.coordinatorId == coordinator_id, Event.status.notin_(statuses))
             .order_by(Event.proposedStartAt.asc())
             .all()
         )

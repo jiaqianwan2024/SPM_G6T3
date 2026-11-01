@@ -89,6 +89,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getEvent } from '../../api/eventService.js'
 import { getRegistrationRoster } from '../../api/registrationService.js'
+import { formatSgt } from '../../utils/datetime.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -106,10 +107,7 @@ const visibleAttendees = computed(() => {
 })
 
 function formatWhen(value) {
-  if (!value) return 'Not set'
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return 'Not set'
-  return parsed.toLocaleString()
+  return formatSgt(value) || 'Not set'
 }
 
 function goBack() {
@@ -154,7 +152,7 @@ onMounted(load)
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin-top: 16px;
 }
@@ -182,7 +180,7 @@ onMounted(load)
 .summary div {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 14px 16px;
 }
 .summary span {
@@ -203,7 +201,7 @@ onMounted(load)
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
 }
 .list { display: flex; flex-direction: column; gap: 12px; }

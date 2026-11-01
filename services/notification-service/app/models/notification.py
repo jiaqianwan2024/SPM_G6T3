@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, String, Text, UniqueConstraint
+from sqlalchemy import false as sa_false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.session import Base
@@ -24,4 +25,8 @@ class Notification(Base):
     link: Mapped[str | None] = mapped_column(String(255), nullable=True)
     resourceType: Mapped[str | None] = mapped_column("resource_type", String(64), nullable=True)
     resourceId: Mapped[str | None] = mapped_column("resource_id", String(64), nullable=True)
+    # "Clear all" in the bell hides a notification from the bell panel only; it stays in the full history.
+    clearedFromBell: Mapped[bool] = mapped_column(
+        "cleared_from_bell", Boolean, default=False, server_default=sa_false()
+    )
     occurrenceId: Mapped[str | None] = mapped_column("occurrence_id", String(128), nullable=True)

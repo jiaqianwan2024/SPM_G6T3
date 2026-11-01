@@ -2,42 +2,38 @@ import { test, expect } from '@playwright/test'
 import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
 
-test.describe('SPM-47 future UI acceptance contracts', () => {
-  test('TC-SPM47-AC01 My Events and Drafts stay inside the organiser organisation', async ({
-    page,
-  }) => {
-    test.skip(true, 'My Events / Drafts screens are not implemented; remove when SPM-47 AC1 ships.')
+// SPM-47 in the browser. Seeded events are read, never changed (see spm47-api.spec.js).
 
-    await login(page, account('EO-01'))
-    await page.locator('.nav-item').getByText('My Events', { exact: true }).click()
-    await expect(page.getByText('AI in Events Summit')).toBeVisible()
-    await expect(page.getByText('Beacon Q4 Showcase')).toHaveCount(0)
+test.describe('SPM-47 Multi-Tenant Event Access Restriction (UI)', () => {
+  test('TC-SPM47-AC01 My Events lists the organisation\'s events and none of another organisation\'s', async ({ page }) => {
+    // The whole organisation's list loads at once; a database that earlier runs filled
+    // with test events makes it slow, so wait for the list rather than a fixed time.
+    test.slow()
+    await login(page, account('EO-03'))
 
-    await page.locator('.nav-item').getByText('Drafts', { exact: true }).click()
-    await expect(page.getByText('Partner Networking Night')).toBeVisible()
+    await page.getByRole('navigation').getByText('My Events', { exact: true }).click()
+    await expect(page.getByText('Loading your events…')).toHaveCount(0, { timeout: 90_000 })
+
+    // e1 was filed by EO-01, EO-03's colleague (AC2).
+    await expect(page.getByText('AI in Events Summit').first()).toBeVisible()
+    await expect(page.getByText('Colleague Town Hall').first()).toBeVisible()
     await expect(page.getByText('Beacon Q4 Showcase')).toHaveCount(0)
   })
 
-  test('TC-SPM47-AC02 foreign event URL is rejected', async ({ page }) => {
-    test.skip(true, 'Event details page is not implemented; remove when SPM-47 AC2 ships.')
-
+  test('TC-SPM47-AC03 another organisation\'s event URL shows nothing of it', async ({ page }) => {
     await login(page, account('EO-01'))
+
     await page.goto('/app/events/e5')
+
+    await expect(page.getByText('This event is no longer available to you.')).toBeVisible()
     await expect(page.getByText('Beacon Q4 Showcase')).toHaveCount(0)
-    await expect(page.getByText(/not found|forbidden|do not have access/i)).toBeVisible()
   })
 
-  test('TC-SPM47-AC03 attendee browse hides drafts and other registrations', async ({ page }) => {
-    test.skip(true, 'Attendee browse and registration screens are not implemented; remove when SPM-47 AC3 ships.')
+  test('TC-SPM47-AC04 a colleague\'s event opens', async ({ page }) => {
+    await login(page, account('EO-03'))
 
-    await login(page, account('ATT-01'))
-    await page.locator('.nav-item').getByText('Browse Events', { exact: true }).click()
-    await expect(page.getByText('AI in Events Summit')).toBeVisible()
-    await expect(page.getByText('Partner Networking Night')).toHaveCount(0)
-    await expect(page.getByText(/coordinator|staff note|clarification/i)).toHaveCount(0)
+    await page.goto('/app/events/e1')
 
-    await page.locator('.nav-item').getByText('My Registrations', { exact: true }).click()
-    await expect(page.getByText('Demo Attendee')).toHaveCount(0)
-    await expect(page.getByText('one@example.com')).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'AI in Events Summit' })).toBeVisible()
   })
 })

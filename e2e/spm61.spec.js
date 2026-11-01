@@ -7,13 +7,14 @@ import {
   createSuiteVenue,
   period,
   retireSuiteVenue,
+  sgtInput,
   shift,
   soonExpiry,
   waitForHoldToExpire,
 } from './support/venue-suite.js'
 
 // The suite makes three venues of its own, each in a location no other venue has,
-// and retires them afterwards. All times are UTC.
+// and retires them afterwards. All times are Singapore time (SGT); the server stores UTC.
 // - hall: Theatre for 300, Stage and PA system, wheelchair accessible and accessible
 //   restrooms, open every day 08:00 to 22:00, 30 minutes setup and 60 turnaround, so
 //   a 10:00 to 12:00 search occupies it from 09:30 to 13:00.
@@ -123,8 +124,8 @@ test.describe('SPM-61 Search and filter venues against event requirements', () =
 
     await expect(page.getByLabel('Expected attendance')).toHaveValue('50')
     await expect(page.getByLabel('Layout')).toHaveValue('Theatre')
-    await expect(page.getByLabel('Starts (UTC)')).toHaveValue(event.proposedStartAt.slice(0, 16))
-    await expect(page.getByLabel('Ends (UTC)')).toHaveValue(event.proposedEndAt.slice(0, 16))
+    await expect(page.getByLabel('Starts (SGT)')).toHaveValue(sgtInput(event.proposedStartAt))
+    await expect(page.getByLabel('Ends (SGT)')).toHaveValue(sgtInput(event.proposedEndAt))
     await expect(page.getByRole('checkbox', { name: 'Stage', exact: true })).toBeChecked()
 
     // 320 people is more than the hall's Theatre holds (300).

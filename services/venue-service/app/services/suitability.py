@@ -8,12 +8,14 @@ unavailability that overlap the event, and passes them in.
 Clashes use the shared occupied window (SPM-64): the event's times widened by
 the venue's own setup and turnaround time.
 
-All times are UTC, and a venue's opening hours are read as UTC hours.
+Times are stored in UTC. A venue's opening hours, and every time in a message,
+are Singapore time (SGT), where ConnectSphere's venues are.
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta, timezone
 
+from app.core.sgt import to_sgt
 from app.models.venue_booking import VenueBooking
 from app.models.venue_unavailability import VenueUnavailability
 from app.schemas.venue import EventFacts, SuitabilityReason, SuitabilityRequest, VenueOut
@@ -40,13 +42,25 @@ def _utc(value: datetime | None) -> datetime | None:
     return value
 
 
+# SPM-80 AC1: an organiser may state no layout preference. That is no layout
+# requirement at all, not a layout a venue has to offer.
+NO_PREFERENCE = "no preference"
+
+
+def wanted_layout(layout: str | None) -> str | None:
+    """The layout a venue must offer, or None when any layout will do."""
+    if not layout or not layout.strip() or layout.strip().casefold() == NO_PREFERENCE:
+        return None
+    return layout.strip()
+
+
 def needs_for(request: SuitabilityRequest, event: EventFacts) -> Needs:
     """What the event needs: whatever the request states, else the event record."""
     return Needs(
         expected_attendance=(
             request.expectedAttendance if request.expectedAttendance is not None else event.expectedAttendance
         ),
-        layout=request.layout if request.layout is not None else event.layoutPreference,
+        layout=wanted_layout(request.layout if request.layout is not None else event.layoutPreference),
         facilities=request.requiredFacilities,
         accessibility=request.requiredAccessibility,
         starts_at=_utc(request.startsAt or event.proposedStartAt),
@@ -86,9 +100,10 @@ def _clock(moment: datetime) -> str:
 
 
 def _span(start: datetime, end: datetime) -> str:
+    start, end = to_sgt(start), to_sgt(end)
     if start.date() == end.date():
-        return f"{start:%d %b %Y}, {_clock(start)} to {_clock(end)} UTC"
-    return f"{start:%d %b %Y}, {_clock(start)} to {end:%d %b %Y}, {_clock(end)} UTC"
+        return f"{start:%d %b %Y}, {_clock(start)} to {_clock(end)} SGT"
+    return f"{start:%d %b %Y}, {_clock(start)} to {end:%d %b %Y}, {_clock(end)} SGT"
 
 
 def _hours(value: str) -> timedelta:
@@ -141,7 +156,8 @@ def _missing(required: list[str], offered: list[str]) -> list[str]:
 
 
 def _opening_hours(venue: VenueOut, start: datetime, end: datetime) -> list[SuitabilityReason]:
-    """Every calendar day the event touches must fall inside that day's hours."""
+    """Every Singapore calendar day the event touches must fall inside that day's hours."""
+    start, end = to_sgt(start), to_sgt(end)
     hours = {slot.day: slot for slot in venue.operatingHours}
     reasons = []
     day_start = datetime.combine(start.date(), time.min)
@@ -157,8 +173,8 @@ def _opening_hours(venue: VenueOut, start: datetime, end: datetime) -> list[Suit
             reasons.append(
                 _failure(
                     "openingHours",
-                    f"On {label} the event runs {_clock(part_from)} to {_clock(part_until)} UTC, outside this "
-                    f"venue's opening hours of {slot.opens} to {slot.closes} UTC.",
+                    f"On {label} the event runs {_clock(part_from)} to {_clock(part_until)} SGT, outside this "
+                    f"venue's opening hours of {slot.opens} to {slot.closes} SGT.",
                 )
             )
         day_start += timedelta(days=1)
@@ -173,7 +189,8 @@ def _event_label(booking: VenueBooking) -> str:
 
 
 def _moment(value: datetime) -> str:
-    return f"{value:%d %b %Y}, {_clock(value)} UTC"
+    value = to_sgt(value)
+    return f"{value:%d %b %Y}, {_clock(value)} SGT"
 
 
 def _clashes(

@@ -4,8 +4,10 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import httpx
+from fastapi import HTTPException, status
 
 from app.core.config import settings
+from app.core.sgt import before_today, to_sgt
 from app.dao.event_change_request_dao import EventChangeRequestDAO
 from app.dao.event_dao import EventDAO
 from app.dao.event_readiness_dao import EventReadinessDAO
@@ -20,6 +22,8 @@ from shared.services.base import BaseService
 DUE_SOON = timedelta(days=3)
 # Readiness statuses that mean nothing is left to do. Anything else is still outstanding (SPM-95).
 READY_STATUSES = frozenset({"ready", "in place", "confirmed"})
+# SPM-5: a line is followed up by ConnectSphere staff, never an organiser or an attendee.
+HANDLER_ROLES = frozenset({"coordinator", "coordinatorlead", "venue", "techsupport", "safety"})
 DATE_FIELDS = {"proposedStartAt", "proposedEndAt", "layoutPreference"}
 SCHEDULE_FIELDS = ("proposedStartAt", "proposedEndAt")
 VENUE_FIELDS = {"venueName", "venueLocation", "venueId"}
@@ -31,6 +35,30 @@ def _naive(value: datetime | None) -> datetime | None:
     if value.tzinfo is not None:
         return value.astimezone(timezone.utc).replace(tzinfo=None)
     return value
+
+
+def _staff_handler(user_id: str, authorization: str | None) -> tuple[str, str, str]:
+    """The staff member chosen to handle a line: name, email and phone. 422 for anyone else."""
+    for user in list_users(authorization):
+        if user.get("userId") == user_id and user.get("role") in HANDLER_ROLES:
+            return user.get("userName") or user.get("name") or "", user.get("email") or "", user.get("phone") or ""
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail="Choose a ConnectSphere staff member to handle this line.",
+    )
+
+
+def _minute(value: datetime | None) -> datetime | None:
+    """A time to the minute: a date input holds no seconds, so a saved date sent back is the same minute."""
+    return value.replace(second=0, microsecond=0) if value else None
+
+
+def _check_due(due: datetime | None) -> None:
+    """SPM-5 AC10: a new or changed due date cannot be before today, the Singapore day."""
+    if due is not None and before_today(due):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The due date cannot be before today."
+        )
 
 
 def _soft_get(url: str, authorization: str | None, params: dict | None = None):
@@ -74,9 +102,10 @@ def _clock(value) -> datetime | None:
 
 
 def _schedule_aspects(old, new) -> tuple[bool, bool]:
-    """A start or end change is a date change, a time change, or both."""
+    """A start or end change is a date change, a time change, or both, as read in Singapore time."""
     before, after = _clock(old), _clock(new)
     if before and after:
+        before, after = to_sgt(before), to_sgt(after)
         return before.date() != after.date(), (before.hour, before.minute) != (after.hour, after.minute)
     return True, True
 
@@ -145,6 +174,10 @@ class EventFollowUp(BaseService):
             raise not_found("Event not found")
         return row
 
+    def event_record(self, event_id: str) -> Event:
+        """The event, or 404, so a route can check who may open it (SPM-47)."""
+        return self._event(event_id)
+
     def _derived(self, event: Event, authorization: str | None, now: datetime) -> list[ReadinessItemOut]:
         name, email, phone = _person(event.coordinatorId or "", authorization)
         if not name:
@@ -152,7 +185,9 @@ class EventFollowUp(BaseService):
         if not email and not phone:
             email = "coordinator@connectsphere.local"
         requests = _soft_get(
-            f"{settings.equipment_service_url}/equipment/requests", authorization
+            f"{settings.equipment_service_url}/equipment/requests",
+            authorization,
+            {"eventId": event.eventId},
         ) or []
         reservations = _soft_get(
             f"{settings.equipment_service_url}/equipment/reservations",
@@ -245,7 +280,8 @@ class EventFollowUp(BaseService):
         self, event_id: str, body: ReadinessCreate, authorization: str | None, coordinator_id: str
     ) -> ReadinessItemOut:
         self._managed(event_id, coordinator_id)
-        name, email, phone = _person(body.handlerId, authorization)
+        _check_due(_naive(body.dueAt))
+        name, email, phone = _staff_handler(body.handlerId, authorization)
         row = EventReadinessItem(
             itemId=str(uuid4()),
             eventId=event_id,
@@ -297,9 +333,14 @@ class EventFollowUp(BaseService):
         if "note" in sent and body.note is not None:
             row.note = body.note
         if "dueAt" in sent:
-            row.dueAt = _naive(body.dueAt)
-        if "handlerId" in sent and body.handlerId is not None:
-            name, email, phone = _person(body.handlerId, authorization)
+            due = _naive(body.dueAt)
+            # A saved overdue date sent back unchanged stays valid.
+            if _minute(due) != _minute(row.dueAt):
+                _check_due(due)
+            row.dueAt = due
+        # Only a changed handler is checked, so a line already handled by someone keeps saving.
+        if "handlerId" in sent and body.handlerId is not None and body.handlerId != row.handlerId:
+            name, email, phone = _staff_handler(body.handlerId, authorization)
             row.handlerId = body.handlerId
             row.handlerName = name or body.handlerId
             row.handlerEmail = email
@@ -380,6 +421,8 @@ class EventFollowUp(BaseService):
             endsAt=event.proposedEndAt,
             accessibilityNeeds=event.accessibilityNeeds or "",
             layoutPreference=event.layoutPreference,
+            registrationEnabled=bool(event.registrationEnabled),
+            registrationOpensAt=event.registrationOpensAt,
             registrationClosesAt=event.registrationClosesAt,
             capacity=event.capacity or 0,
             registeredCount=count,
@@ -417,12 +460,18 @@ class EventFollowUp(BaseService):
                 continue
             if category and (event.category or "").lower() != category.lower():
                 continue
-            start = event.proposedStartAt.date().isoformat() if event.proposedStartAt else ""
+            # The filter dates are Singapore dates.
+            start = to_sgt(event.proposedStartAt).date().isoformat() if event.proposedStartAt else ""
             if from_date and start and start < from_date:
                 continue
             if to_date and start and start > to_date:
                 continue
-            rows.append(self._card(event, authorization))
+            card = self._card(event, authorization)
+            # A full event is left out until a withdrawal frees a place. Its own page still opens
+            # (get_open), so an attendee following a link sees that it is full (SPM-11 AC5).
+            if card.full:
+                continue
+            rows.append(card)
         return rows
 
     def get_open(self, event_id: str, authorization: str | None) -> OpenEventOut:

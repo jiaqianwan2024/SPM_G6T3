@@ -26,51 +26,53 @@
     <p v-else-if="error" class="form-error" data-testid="browse-error">{{ error }}</p>
     <p v-else-if="!visible.length" class="empty-note" data-testid="browse-empty">No events are open for registration.</p>
 
-    <article
-      v-for="event in visible"
-      :key="event.eventId"
-      class="event-card"
-      :data-testid="`browse-event-${event.eventId}`"
-      :data-full="event.full ? 'true' : 'false'"
-    >
-      <h3 class="event-name">{{ event.eventName }}</h3>
-      <dl class="event-facts">
-        <div>
-          <dt>Category:</dt>
-          <dd data-testid="browse-category">{{ event.category }}</dd>
+    <div v-if="visible.length" class="cards">
+      <article
+        v-for="event in visible"
+        :key="event.eventId"
+        class="event-card"
+        :data-testid="`browse-event-${event.eventId}`"
+        :data-full="event.full ? 'true' : 'false'"
+      >
+        <h3 class="event-name" :title="event.eventName">{{ event.eventName }}</h3>
+        <dl class="event-facts">
+          <div>
+            <dt>Category:</dt>
+            <dd data-testid="browse-category">{{ event.category }}</dd>
+          </div>
+          <div>
+            <dt>Date:</dt>
+            <dd data-testid="browse-date">{{ datePart(event.proposedStartAt) }}</dd>
+          </div>
+          <div>
+            <dt>Time:</dt>
+            <dd>
+              <span data-testid="browse-start">{{ timePart(event.proposedStartAt) }}</span>
+              – <span data-testid="browse-end">{{ timePart(event.proposedEndAt) }}</span> SGT
+            </dd>
+          </div>
+          <div>
+            <dt>Location:</dt>
+            <dd>{{ [event.venueName, event.venueLocation].filter(Boolean).join(' · ') || 'To be confirmed' }}</dd>
+          </div>
+        </dl>
+        <p class="places" data-testid="browse-remaining">
+          {{ event.full ? 'Full' : `${event.remaining} place(s) remaining` }}
+        </p>
+        <div class="actions">
+          <button type="button" class="btn btn-outline" @click="open(event.eventId)">View</button>
+          <button
+            v-if="!event.full"
+            type="button"
+            class="btn btn-solid"
+            data-testid="event-register"
+            @click="open(event.eventId, true)"
+          >
+            Register
+          </button>
         </div>
-        <div>
-          <dt>Date:</dt>
-          <dd data-testid="browse-date">{{ datePart(event.proposedStartAt) }}</dd>
-        </div>
-        <div>
-          <dt>Time:</dt>
-          <dd>
-            <span data-testid="browse-start">{{ timePart(event.proposedStartAt) }}</span>
-            – <span data-testid="browse-end">{{ timePart(event.proposedEndAt) }}</span>
-          </dd>
-        </div>
-        <div>
-          <dt>Location:</dt>
-          <dd>{{ event.venueName }} · {{ event.venueLocation }}</dd>
-        </div>
-      </dl>
-      <p class="places" data-testid="browse-remaining">
-        {{ event.full ? 'Full' : `${event.remaining} place(s) remaining` }}
-      </p>
-      <div class="actions">
-        <button type="button" class="btn btn-outline" @click="open(event.eventId)">View</button>
-        <button
-          v-if="!event.full"
-          type="button"
-          class="btn btn-solid"
-          data-testid="event-register"
-          @click="open(event.eventId)"
-        >
-          Register
-        </button>
-      </div>
-    </article>
+      </article>
+    </div>
   </div>
 </template>
 
@@ -78,6 +80,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getOpenEvents } from '../../api/eventService.js'
+import { formatSgtDate, formatSgtTime, sgtDay } from '../../utils/datetime.js'
 
 const router = useRouter()
 const events = ref([])
@@ -88,27 +91,35 @@ const category = ref('')
 const fromDate = ref('')
 const toDate = ref('')
 
-const categories = computed(() => [...new Set(events.value.map((event) => event.category).filter(Boolean))])
+// Older events may spell a category in a different case ("meeting"); list each category once.
+const categories = computed(() => {
+  const byKey = new Map()
+  for (const event of events.value) {
+    const name = event.category?.trim()
+    if (name && !byKey.has(name.toLowerCase())) byKey.set(name.toLowerCase(), name)
+  }
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b))
+})
 
 const visible = computed(() => events.value.filter((event) => {
   if (search.value && !event.eventName.toLowerCase().includes(search.value.toLowerCase())) return false
-  if (category.value && event.category !== category.value) return false
-  const start = event.proposedStartAt ? event.proposedStartAt.slice(0, 10) : ''
+  if (category.value && event.category?.trim().toLowerCase() !== category.value.toLowerCase()) return false
+  const start = sgtDay(event.proposedStartAt)
   if (fromDate.value && start && start < fromDate.value) return false
   if (toDate.value && start && start > toDate.value) return false
   return true
 }))
 
 function datePart(value) {
-  return value ? new Date(value).toLocaleDateString() : ''
+  return formatSgtDate(value)
 }
 
 function timePart(value) {
-  return value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+  return formatSgtTime(value)
 }
 
-function open(eventId) {
-  router.push(`/app/browse/${eventId}`)
+function open(eventId, register = false) {
+  router.push({ path: `/app/browse/${eventId}`, query: register ? { register: '1' } : {} })
 }
 
 onMounted(async () => {
@@ -124,7 +135,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.browse { display: flex; flex-direction: column; gap: 14px; max-width: 860px; }
+.browse { display: flex; flex-direction: column; gap: 14px; }
 .filters {
   display: grid;
   grid-template-columns: minmax(180px, 1.6fr) minmax(150px, 1fr) 158px 158px;
@@ -147,7 +158,7 @@ onMounted(async () => {
   appearance: none;
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 12px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -166,7 +177,7 @@ onMounted(async () => {
 }
 .filters select {
   padding-right: 34px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23A78BFA' d='M1.4.6 6 5.2 10.6.6 12 2 6 8 0 2z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23FFFFFF' d='M1.4.6 6 5.2 10.6.6 12 2 6 8 0 2z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   cursor: pointer;
@@ -183,14 +194,28 @@ onMounted(async () => {
   .filters { grid-template-columns: 1fr 1fr; }
   .search { grid-column: 1 / -1; }
 }
+/* Events sit three to a row so the page uses its full width. */
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1100px) {
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .cards { grid-template-columns: minmax(0, 1fr); }
+}
 .event-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 18px 20px;
 }
 .event-name {
   margin: 0 0 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 22px;
   font-weight: 500;
   letter-spacing: -.02em;
@@ -201,5 +226,6 @@ onMounted(async () => {
 .event-facts dd { margin: 0; color: var(--body); }
 .places { margin: 12px 0 0; font-size: 14px; color: var(--text); }
 .empty-note { font-size: 13px; color: var(--muted); }
-.actions { display: flex; gap: 8px; margin-top: 14px; }
+/* Pinned to the bottom so the buttons line up across a row of cards. */
+.actions { display: flex; gap: 8px; margin-top: auto; padding-top: 14px; }
 </style>

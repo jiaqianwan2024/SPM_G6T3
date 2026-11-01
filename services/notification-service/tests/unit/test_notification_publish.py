@@ -57,7 +57,80 @@ class TestPublish(ServiceTestCase):
             with self.subTest(trigger=key):
                 _, body, link = notifier.render(trigger, "e9", context)
                 self.assertIn("AI in Events Summit", body)
-                self.assertEqual(link, "/app/events/e9")
+                self.assertIn(
+                    link,
+                    (
+                        "/app/events/e9",
+                        "/app/events/e9/equipment",
+                        "/app/events/e9/registrations",
+                        "/app/events/e9/readiness",
+                        "/app/events/e9/venues",
+                    ),
+                )
+
+    def test_a_full_event_tells_the_organiser_and_coordinator_and_links_the_registration_list(self):
+        # SPM-11 AC9.
+        title, body, link = notifier.render(
+            TRIGGERS["registration.full"], "e9", {"eventName": "AI in Events Summit", "capacity": "120"}
+        )
+
+        self.assertEqual(title, "AI in Events Summit is full")
+        self.assertIn("registration capacity of 120", body)
+        self.assertEqual(link, "/app/events/e9/registrations")
+        self.assertEqual(TRIGGERS["registration.full"].recipient_roles, frozenset({"coordinator", "organiser"}))
+
+    def test_a_cancellation_reaches_attendees_and_staff_with_the_reason(self):
+        people = [
+            ATTENDEE,
+            {"userId": "u-coord", "role": "coordinator"},
+            {"userId": "u-vinod", "role": "venue"},
+            {"userId": "u-tia", "role": "techsupport"},
+        ]
+
+        result = self.publish(
+            trigger="event.cancelled", recipients=people, context={**CONTEXT, "reason": "Speaker withdrew"}, actor_id="u-org"
+        )
+
+        self.assertEqual(result.created, 4)
+        row = self.rows()[0]
+        self.assertEqual(row.title, "AI in Events Summit has been cancelled")
+        self.assertEqual(row.body, "AI in Events Summit has been cancelled. Reason: Speaker withdrew")
+
+    def test_technical_support_are_told_of_a_new_or_changed_equipment_request_on_its_equipment_page(self):
+        tech = {"userId": "u-tech", "role": "techsupport"}
+        equipment = {**CONTEXT, "equipment": "2 × Projector PX-200"}
+
+        self.publish(trigger="equipment.requested", recipients=[tech], context=equipment, actor_id="u-coord")
+        self.publish(
+            trigger="equipment.request_changed",
+            recipients=[tech],
+            context={**equipment, "change": "quantity 2 to 3"},
+            occurrence="occ-2",
+            actor_id="u-coord",
+        )
+
+        requested, changed = sorted(self.rows(), key=lambda row: row.occurrenceId)
+        self.assertEqual((requested.userId, requested.title), ("u-tech", "New equipment request"))
+        self.assertEqual(
+            requested.body, "AI in Events Summit needs 2 × Projector PX-200. The request is waiting for review."
+        )
+        self.assertEqual(
+            changed.body, "The 2 × Projector PX-200 request for AI in Events Summit changed: quantity 2 to 3."
+        )
+        self.assertEqual({requested.link, changed.link}, {"/app/events/e1/equipment"})
+        with self.assertRaisesRegex(PublishError, "coordinator cannot receive equipment.requested"):
+            self.publish(trigger="equipment.requested", recipients=[COORD], context=equipment, occurrence="occ-3")
+
+    def test_a_submitted_request_goes_to_the_coordinator_lead_and_no_one_else(self):
+        lead = {"userId": "u-lead", "role": "coordinatorlead"}
+
+        self.publish(trigger="booking.submitted", recipients=[lead], actor_id="u-organiser")
+
+        row = self.rows()[0]
+        self.assertEqual((row.userId, row.type, row.title), ("u-lead", "booking.submitted", "New booking request submitted"))
+        self.assertIn("waiting to be assigned to a coordinator", row.body)
+        with self.assertRaisesRegex(PublishError, "coordinator cannot receive booking.submitted"):
+            self.publish(trigger="booking.submitted", recipients=[COORD], occurrence="occ-2")
 
     def test_the_person_who_did_the_action_is_not_notified(self):
         result = self.publish(recipients=[COORD, {"userId": "u-lead", "role": "coordinator"}], actor_id="u-lead")
@@ -198,6 +271,48 @@ class TestPublish(ServiceTestCase):
         self.publish(trigger="equipment.shortfall", context=self.SHORTFALL)
 
         self.assertTrue(self.rows()[0].body.endswith("Reason: Two units are out for repair"))
+
+    SAFETY_OFFICER = {"userId": "u-safety", "role": "safety"}
+
+    def test_a_withdrawn_safety_review_tells_the_officer_what_changed(self):
+        context = {"eventName": "AI in Events Summit", "what": "approval", "reason": "Expected attendance: 250 -> 400"}
+        self.publish(trigger="safety.withdrawn", recipients=[self.SAFETY_OFFICER], context=context)
+
+        [row] = self.rows()
+        self.assertEqual(row.title, "Safety approval withdrawn for AI in Events Summit")
+        self.assertIn("its safety approval was withdrawn and it is back in planning", row.body)
+        self.assertIn("What changed: Expected attendance: 250 -> 400", row.body)
+        with self.assertRaises(PublishError):
+            self.publish(trigger="safety.withdrawn", recipients=[COORD], context=context, occurrence="occ-2")
+
+    def test_a_raised_or_withdrawn_change_request_goes_only_to_the_coordinator(self):
+        context = {"eventName": "AI in Events Summit", "requesterName": "Amy", "fields": "layout", "reason": "Banquet."}
+        self.publish(trigger="change_request.raised", context=context)
+        self.publish(trigger="change_request.withdrawn", context=context, occurrence="occ-2")
+
+        raised, withdrawn = sorted(self.rows(), key=lambda row: row.occurrenceId)
+        self.assertEqual(raised.title, "Change requested for AI in Events Summit")
+        self.assertIn("Amy asked to change layout on AI in Events Summit. Reason: Banquet.", raised.body)
+        self.assertIn("accept or decline", raised.body)
+        self.assertIn("Amy withdrew their request to change layout", withdrawn.body)
+        with self.assertRaises(PublishError):
+            self.publish(
+                trigger="change_request.raised", recipients=[{"userId": "u-org", "role": "organiser"}],
+                context=context, occurrence="occ-3",
+            )
+
+    def test_each_equipment_outcome_names_the_line_and_a_rejection_needs_its_reason(self):
+        context = {"eventName": "AI in Events Summit", "equipmentName": "Projector", "quantity": "2"}
+        self.publish(trigger="equipment.approved", context=context, occurrence="a")
+        self.publish(trigger="equipment.reserved", context=context, occurrence="b")
+        self.publish(trigger="equipment.rejected", context={**context, "reason": "Under repair."}, occurrence="c")
+
+        bodies = {row.type: row.body for row in self.rows()}
+        self.assertIn("2 × Projector for AI in Events Summit was approved", bodies["equipment.approved"])
+        self.assertIn("2 × Projector is reserved for AI in Events Summit", bodies["equipment.reserved"])
+        self.assertIn("Reason: Under repair.", bodies["equipment.rejected"])
+        with self.assertRaisesRegex(PublishError, "equipment.rejected needs: reason"):
+            self.publish(trigger="equipment.rejected", context=context, occurrence="d")
 
     def test_a_shortfall_needs_every_fact_and_goes_only_to_the_coordinator(self):
         with self.assertRaisesRegex(PublishError, "equipment.shortfall needs: shortfall, reason"):

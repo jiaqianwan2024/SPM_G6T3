@@ -2,7 +2,7 @@
 export const roles = {
   organiser: {
     label: 'Event Organiser',
-    tabs: ['Dashboard', 'My Events', 'New Request', 'Drafts', 'Profile'],
+    tabs: ['Dashboard', 'My Events', 'New Request'],
     cards: [
       { title: 'Drafts awaiting submission', sub: '3 requests saved but not yet sent' },
       { title: 'Pending coordinator review', sub: '2 requests under review' },
@@ -12,51 +12,39 @@ export const roles = {
   },
   coordinator: {
     label: 'Event Coordinator',
-    tabs: ['Dashboard', 'Assigned Events', 'Review Queue', 'Venue Catalogue', 'Venue Requests', 'Reports', 'Profile'],
-    cards: [
-      { title: 'Review queue', sub: '4 requests need clarification' },
-      { title: 'Venue requests in progress', sub: '2 awaiting Venue Staff decision' },
-      { title: 'Outstanding arrangements', sub: '1 event missing equipment sign-off' },
-      { title: 'Recently confirmed', sub: 'Q3 Partner Summit confirmed' }
-    ]
+    tabs: ['Dashboard', 'Assigned Events', 'Review Queue', 'Venue Catalogue', 'Venue Calendar'],
+    // The Dashboard tab is CoordinatorHome (own events, change requests, re-verification), not cards.
+    cards: []
   },
   // Oversees incoming requests: each new request waits, unassigned, until the
   // Lead assigns it to an Event Coordinator. The Lead does not manage events.
   coordinatorlead: {
     label: 'Event Coordinator Lead',
-    tabs: ['Dashboard', 'Review Queue', 'Assignments', 'Profile'],
+    tabs: ['Dashboard', 'Review Queue', 'Assignments', 'Venue Calendar'],
     // The Dashboard tab is LeadDashboard (live counts, waiting requests, workload), not cards.
     cards: []
   },
   venue: {
     label: 'Venue Staff',
-    tabs: ['Dashboard', 'Venue Calendar', 'Booking Requests', 'Unavailability', 'Venue Catalogue', 'Profile'],
-    cards: [
-      { title: 'Pending booking requests', sub: '3 requests to approve or reject' },
-      { title: 'Blocked for maintenance', sub: 'Hall B closed until Friday' },
-      { title: 'Turnaround conflicts', sub: 'Tight changeover flagged for Rm 204' },
-      { title: "This week's setups", sub: '5 events need setup confirmation' }
-    ]
+    tabs: ['Dashboard', 'Venue Calendar', 'Booking Requests', 'Unavailability', 'Venue Catalogue'],
+    // The Dashboard tab is VenueHome (SPM-57: live requests, re-verification, the next few days), not cards.
+    cards: []
   },
   techsupport: {
     label: 'Technical Support Staff',
-    tabs: ['Dashboard', 'Upcoming Events', 'Equipment Catalogue', 'Reservations', 'My Assignments', 'Maintenance Status', 'Profile'],
-    cards: [
-      { title: 'Equipment requests', sub: '2 requests pending review' },
-      { title: 'Damaged / under maintenance', sub: '1 projector flagged unavailable' },
-      { title: 'Upcoming on-site assignments', sub: "You're assigned to 2 events this week" },
-      { title: 'Low availability alert', sub: 'Wireless mics fully booked Thu' }
-    ]
+    tabs: ['Dashboard', 'Upcoming Events', 'Venue Catalogue', 'Venue Calendar', 'Equipment Catalogue', 'Reservations'],
+    // The Dashboard tab is TechDashboard (live requests, re-verification, shortfalls, supplied events), not cards.
+    cards: []
   },
   safety: {
     label: 'Safety Officer',
-    tabs: ['Dashboard', 'Safety Reviews', 'Profile'],
+    tabs: ['Dashboard', 'Safety Reviews', 'Venue Calendar'],
     // The Dashboard tab is SafetyDashboard (live counts and decisions), not cards.
     cards: []
   },
   attendee: {
     label: 'Attendee',
-    tabs: ['Dashboard', 'Browse Events', 'My Registrations', 'Waiting List', 'Profile'],
+    tabs: ['Dashboard', 'Browse Events', 'My Registrations'],
     // The Dashboard tab is AttendeeHome (live registrations and open events), not cards.
     cards: []
   }

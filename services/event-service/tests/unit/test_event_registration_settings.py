@@ -144,7 +144,8 @@ class TestPeriod(SettingsCase):
         error = self.refused(registrationClosesAt=START + timedelta(minutes=1))
 
         self.assertEqual(error.status_code, 422)
-        self.assertIn("no later than the event starts", error.detail)
+        # START is 09:00 UTC, which is 17:00 in Singapore.
+        self.assertEqual(error.detail, "Registration must close no later than the event starts (01 Dec 2026, 17:00 SGT)")
         self.assertEqual(self.save(registrationClosesAt=START).registrationClosesAt, START)
 
     def test_one_end_is_checked_against_the_stored_other(self):
@@ -322,7 +323,7 @@ class TestOrganiserTold(SettingsCase):
 
         to, subject, body, _ = self.mocks["email"].call_args.args
         self.assertEqual((to, subject), ("amy@apex.com", "Registration settings changed for Summit"))
-        self.assertIn("Registration: needed; Registration opens: 01 Nov 2026, 09:00; Capacity: 60.", body)
+        self.assertIn("Registration: needed; Registration opens: 01 Nov 2026, 17:00 SGT; Capacity: 60.", body)
         user_id, event_id, kind, title, in_app, _ = self.mocks["inbox"].call_args.args
         self.assertEqual((user_id, event_id, kind, title, in_app), ("org-1", "e1", "event.registration_settings", subject, body))
 

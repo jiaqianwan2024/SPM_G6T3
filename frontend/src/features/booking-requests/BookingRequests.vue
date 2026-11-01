@@ -19,13 +19,13 @@
         Venue
         <select v-model="venueId" data-testid="booking-venue-filter">
           <option value="">All venues</option>
-          <option v-for="venue in venues" :key="venue.venueId" :value="venue.venueId">{{ venue.name }}</option>
+          <option v-for="venue in venueOptions" :key="venue.venueId" :value="venue.venueId">{{ venue.name }}</option>
         </select>
       </label>
     </div>
 
     <p class="hint">
-      Oldest request first: requests are handled in the order they were submitted. All times are in UTC.
+      Oldest request first: requests are handled in the order they were submitted. All times are in Singapore time (SGT).
     </p>
 
     <p v-if="notice" class="notice" data-testid="booking-approved-notice">{{ notice }}</p>
@@ -153,7 +153,7 @@
 
         <div v-else-if="booking.status === 'pending' && rejecting[booking.bookingId]" class="reject-form">
           <label>
-            Reason for rejecting (required)
+            <span>Reason for rejecting <span class="req">*</span></span>
             <textarea v-model="reasons[booking.bookingId]" rows="3" maxlength="2000" />
           </label>
           <label>
@@ -213,7 +213,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   approveVenueBooking,
@@ -222,6 +222,7 @@ import {
   reconfirmVenueBooking,
   rejectVenueBooking,
 } from '../../api/venueService.js'
+import { venueFilterOptions } from '../../utils/venueOptions.js'
 
 const route = useRoute()
 
@@ -236,10 +237,18 @@ const EMPTY = {
   rejected: 'No rejected requests.',
 }
 
-const status = ref(route.query.booking ? 'approved' : 'pending')
+// SPM-108: the venue calendar opens a held request with `status=pending`.
+const status = ref(
+  STATUSES.some((option) => option.value === route.query.status)
+    ? route.query.status
+    : route.query.booking ? 'approved' : 'pending'
+)
 const venueId = ref('')
 const venues = ref([])
 const bookings = ref([])
+const venueOptions = computed(() =>
+  venueFilterOptions(venues.value, bookings.value.map((booking) => booking.venueId), venueId.value)
+)
 const loading = ref(true)
 const loadError = ref('')
 const notice = ref('')
@@ -252,9 +261,9 @@ const rejecting = reactive({})
 const reasons = reactive({})
 const suggestions = reactive({})
 
-// Booking times are UTC and come without a zone marker.
-const dayFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
-const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+// Booking times come in UTC without a zone marker; they are shown in Singapore time.
+const dayFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric' })
+const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
 function utc(value) {
   return new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`)
@@ -262,14 +271,14 @@ function utc(value) {
 
 function moment(value) {
   const when = utc(value)
-  return `${dayFormat.format(when)}, ${timeFormat.format(when)} UTC`
+  return `${dayFormat.format(when)}, ${timeFormat.format(when)} SGT`
 }
 
 function span(start, end) {
   const [from, to] = [utc(start), utc(end)]
   const sameDay = dayFormat.format(from) === dayFormat.format(to)
   return sameDay
-    ? `${dayFormat.format(from)}, ${timeFormat.format(from)} to ${timeFormat.format(to)} UTC`
+    ? `${dayFormat.format(from)}, ${timeFormat.format(from)} to ${timeFormat.format(to)} SGT`
     : `${moment(start)} to ${moment(end)}`
 }
 
@@ -364,11 +373,23 @@ async function load() {
     if (mine !== latestLoad) return
     bookings.value = data
     loadError.value = ''
+    revealFocused()
   } catch {
     if (mine === latestLoad) loadError.value = 'Unable to load the booking requests. Please try again.'
   } finally {
     if (mine === latestLoad) loading.value = false
   }
+}
+
+// The request a link opened (`?booking=`) shows its full details, once.
+let focusPending = typeof route.query.booking === 'string'
+async function revealFocused() {
+  const id = route.query.booking
+  if (!focusPending || !bookings.value.some((booking) => booking.bookingId === id)) return
+  focusPending = false
+  expanded[id] = true
+  await nextTick()
+  document.querySelector(`[data-testid="booking-request-${id}"]`)?.scrollIntoView({ block: 'center' })
 }
 
 async function loadVenues() {
@@ -462,22 +483,22 @@ onMounted(() => {
 .venue-filter select {
   min-width: 220px; font: inherit; font-size: 14px; letter-spacing: 0; text-transform: none; color: var(--text);
   color-scheme: dark; background: rgba(255, 255, 255, .04); border: 1px solid var(--hairline);
-  border-radius: 10px; padding: 8px 10px;
+  border-radius: var(--radius); padding: 8px 10px;
 }
 .hint, .empty-note { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.6; }
 .notice {
   margin: 0; font-size: 13px; color: #8EF0B5; background: rgba(142, 240, 181, .08);
-  border: 1px solid rgba(142, 240, 181, .25); border-radius: 9px; padding: 11px 14px;
+  border: 1px solid rgba(142, 240, 181, .25); border-radius: var(--radius); padding: 11px 14px;
 }
 
 .booking-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .booking-card {
   display: flex; flex-direction: column; gap: 8px; background: var(--glass); border: 1px solid var(--hairline);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-radius: 14px; padding: 18px 20px;
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-radius: var(--radius); padding: 18px 20px;
 }
 .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .name-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
-.event-name { font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: var(--text); font-size: 16px; line-height: 1.35; }
+.event-name { font-family: var(--font); font-weight: 500; color: var(--text); font-size: 16px; line-height: 1.35; }
 .venue { font-size: 14px; color: var(--text); }
 .org { font-size: 13px; color: var(--body); }
 .tag {
@@ -502,27 +523,27 @@ dd { margin: 0; font-size: 13px; color: var(--body); line-height: 1.5; word-brea
 .actions { display: flex; gap: 10px; margin-top: auto; padding-top: 6px; }
 .actions input {
   flex: 1; min-width: 0; font: inherit; font-size: 13px; color: var(--text); color-scheme: dark;
-  background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: 9px; padding: 8px 10px;
+  background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: var(--radius); padding: 8px 10px;
 }
 .btn:disabled { opacity: .55; cursor: progress; }
 .link-btn {
   align-self: flex-start; padding: 0; border: 0; background: none; font: inherit; font-size: 13px;
   color: var(--halo); cursor: pointer; text-decoration: underline;
 }
-dl.detail { padding: 10px 12px; border-radius: 10px; background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); }
+dl.detail { padding: 10px 12px; border-radius: var(--radius); background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); }
 .rejected p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--body); }
 .reject-form { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
 .reject-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
 .reject-form textarea, .reject-form select {
   font: inherit; font-size: 13px; color: var(--text); color-scheme: dark; background: rgba(255, 255, 255, .03);
-  border: 1px solid var(--hairline); border-radius: 9px; padding: 8px 10px;
+  border: 1px solid var(--hairline); border-radius: var(--radius); padding: 8px 10px;
 }
 .reject-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .btn-danger { background: rgba(255, 138, 118, .16); color: #FFB4A6; border: 1px solid rgba(255, 138, 118, .45); }
 .row-error { margin: 0; font-size: 13px; color: #FF8A76; }
 .form-error {
   color: #FF8A76; font-size: 13px; background: rgba(255, 138, 118, .08);
-  border: 1px solid rgba(255, 138, 118, .25); border-radius: 9px; padding: 11px 14px;
+  border: 1px solid rgba(255, 138, 118, .25); border-radius: var(--radius); padding: 11px 14px;
 }
 
 @media (max-width: 900px) {

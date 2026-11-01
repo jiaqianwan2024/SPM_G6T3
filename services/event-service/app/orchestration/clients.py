@@ -5,8 +5,9 @@ from datetime import datetime
 import httpx
 
 from app.core.config import settings
+from app.core.sgt import to_sgt
 from shared.auth.service_key import service_key_headers
-from shared.exceptions.http import forbidden, service_unavailable, unauthorized
+from shared.exceptions.http import conflict, forbidden, service_unavailable, unauthorized
 
 logger = logging.getLogger("perf.clients")
 
@@ -16,6 +17,25 @@ _registration_client = httpx.Client(timeout=3.0)
 
 # Reused for organisation_names() the same way.
 _user_directory_client = httpx.Client(timeout=3.0)
+
+
+REGISTRATIONS_UNREACHABLE = "Your registrations could not be checked right now. Please try again shortly."
+
+
+def registered_event_ids(authorization: str | None) -> set[str]:
+    """SPM-127: the events the caller holds a registration for (registered or withdrawn).
+    An attendee may open those events' public pages. registration-service answers this
+    without calling back here, so the two services never loop. Unreachable is a 503."""
+    headers = {"Authorization": authorization} if authorization else {}
+    try:
+        response = _registration_client.get(
+            f"{settings.registration_service_url}/registrations/mine/event-ids", headers=headers
+        )
+    except httpx.HTTPError as exc:
+        raise service_unavailable(REGISTRATIONS_UNREACHABLE) from exc
+    if response.status_code != 200:
+        raise service_unavailable(REGISTRATIONS_UNREACHABLE)
+    return set(response.json())
 
 
 def registration_count(event_id: str, authorization: str | None = None) -> int:
@@ -40,6 +60,33 @@ def registration_count(event_id: str, authorization: str | None = None) -> int:
             "registration_count(%s) took %.3fs", event_id, time.perf_counter() - start
         )
     return 0
+
+
+def registration_counts(event_ids: list[str], authorization: str | None = None) -> dict[str, int] | None:
+    """Registered attendees for several events in ONE call (a list of events used to make one
+    call per event). None means the batch could not be read, so the caller can fall back to
+    per-event counts; the best-effort rule of registration_count() still applies there."""
+    if not event_ids:
+        return {}
+    start = time.perf_counter()
+    headers = {"Authorization": authorization} if authorization else {}
+    try:
+        response = _registration_client.get(
+            f"{settings.registration_service_url}/registrations/counts",
+            params={"eventIds": ",".join(event_ids)},
+            headers=headers,
+        )
+        if response.status_code == 200:
+            counts = response.json().get("counts", {})
+            return {event_id: int(counts.get(event_id, 0)) for event_id in event_ids}
+        logger.info("registration_counts got status %s", response.status_code)
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
+        logger.info("registration_counts raised %r", exc)
+    finally:
+        logger.info(
+            "registration_counts(%d events) took %.3fs", len(event_ids), time.perf_counter() - start
+        )
+    return None
 
 
 def organisation_names(authorization: str | None = None) -> dict[str, str]:
@@ -113,6 +160,11 @@ ARRANGEMENTS_UNREACHABLE = (
     "Venue bookings and equipment reservations could not be checked right now, "
     "so the change was not saved. Please try again shortly."
 )
+# SPM-87: a reschedule is never applied with its arrangements unchecked.
+RESCHEDULE_UNCHECKED = (
+    "Venue bookings and equipment reservations could not be checked at the new time right now, so the event "
+    "was not rescheduled. Please try again shortly."
+)
 # Equipment reservation statuses that still hold stock for the event.
 HOLDING_RESERVATION_STATUSES = ("active", "reserved")
 
@@ -136,13 +188,13 @@ def _arrangement_rows(
 
 
 def _venue_arrangement(row: dict) -> dict:
-    starts = datetime.fromisoformat(row["startsAt"])
-    ends = datetime.fromisoformat(row["endsAt"])
+    starts = to_sgt(datetime.fromisoformat(row["startsAt"]))
+    ends = to_sgt(datetime.fromisoformat(row["endsAt"]))
     venue = row.get("venueName") or row["venueId"]
     return {
         "kind": "venue",
         "id": row["bookingId"],
-        "summary": f"Venue booking at {venue}, {starts:%d %b %Y %H:%M} to {ends:%d %b %Y %H:%M} UTC",
+        "summary": f"Venue booking at {venue}, {starts:%d %b %Y %H:%M} to {ends:%d %b %Y %H:%M} SGT",
     }
 
 
@@ -195,6 +247,70 @@ def flag_technical_arrangements(event_id: str, reason: str, authorization: str |
         json={"eventId": event_id, "reason": reason},
     )
     return [_equipment_arrangement(row) for row in reservations]
+
+
+def _period(event_id: str, starts_at: datetime, ends_at: datetime) -> dict:
+    return {"eventId": event_id, "startsAt": starts_at.isoformat(), "endsAt": ends_at.isoformat()}
+
+
+def preview_venue_reschedule(event_id: str, starts_at: datetime, ends_at: datetime, authorization: str | None) -> list[dict]:
+    """SPM-87 AC2: each of the event's bookings judged at the new time. Nothing moves."""
+    return _arrangement_rows(
+        "POST",
+        f"{settings.venue_service_url}/venues/bookings/reschedule/preview",
+        authorization,
+        RESCHEDULE_UNCHECKED,
+        json=_period(event_id, starts_at, ends_at),
+    )
+
+
+def preview_equipment_reschedule(
+    event_id: str, starts_at: datetime, ends_at: datetime, authorization: str | None
+) -> list[dict]:
+    """SPM-87 AC2: each held reservation judged at the new time. Nothing moves."""
+    return _arrangement_rows(
+        "POST",
+        f"{settings.equipment_service_url}/equipment/reservations/reschedule/preview",
+        authorization,
+        RESCHEDULE_UNCHECKED,
+        json=_period(event_id, starts_at, ends_at),
+    )
+
+
+def reschedule_venues(
+    event_id: str, starts_at: datetime, ends_at: datetime, reason: str, carry: bool, authorization: str | None
+) -> list[dict]:
+    """SPM-87 AC3 to AC5: carry the free and suitable bookings across, release the rest.
+    A 409 (a venue taken at the new time meanwhile) is passed on, so the coordinator sees it."""
+    headers = {"Authorization": authorization} if authorization else {}
+    url = f"{settings.venue_service_url}/venues/bookings/reschedule"
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.post(
+                url, headers=headers, json={**_period(event_id, starts_at, ends_at), "reason": reason, "carry": carry}
+            )
+    except httpx.HTTPError as exc:
+        logger.info("POST %s raised %r", url, exc)
+        raise service_unavailable(RESCHEDULE_UNCHECKED) from exc
+    if response.status_code == 409:
+        raise conflict(response.json().get("detail") or "A venue could not be moved to the new time.")
+    if response.status_code != 200:
+        logger.info("POST %s got status %s", url, response.status_code)
+        raise service_unavailable(RESCHEDULE_UNCHECKED)
+    return response.json()
+
+
+def reschedule_equipment(
+    event_id: str, starts_at: datetime, ends_at: datetime, reason: str, authorization: str | None
+) -> list[dict]:
+    """SPM-87 AC6: move the held reservations, flagging any that cannot be met."""
+    return _arrangement_rows(
+        "POST",
+        f"{settings.equipment_service_url}/equipment/reservations/reschedule",
+        authorization,
+        RESCHEDULE_UNCHECKED,
+        json={**_period(event_id, starts_at, ends_at), "reason": reason},
+    )
 
 
 def flag_arrangements(event_id: str, reason: str, authorization: str | None) -> list[dict]:
@@ -258,16 +374,59 @@ def booked_venue_capacities(event_id: str, layout: str | None, authorization: st
         venue = _arrangement_rows(
             "GET", f"{settings.venue_service_url}/venues/{booking['venueId']}", authorization, VENUE_UNREACHABLE
         )
-        by_layout = {row["name"].lower(): row["capacity"] for row in venue.get("layouts", [])}
-        in_layout = by_layout.get(layout.lower()) if layout else None
-        capacities.append(
-            {
-                "venueName": venue["name"],
-                "layout": layout if in_layout is not None else None,
-                "capacity": in_layout if in_layout is not None else venue["capacity"],
-            }
-        )
+        capacities.append({"venueName": venue["name"], **venue_capacity_in(venue, layout)})
     return capacities
+
+
+def venue_capacity_in(venue: dict, layout: str | None) -> dict:
+    """How many a venue holds in a layout, as {"layout", "capacity"}. Without a
+    layout, or one the venue does not offer, the venue's largest layout applies
+    (layout None), as in the suitability check (SPM-62)."""
+    by_layout = {row["name"].lower(): row["capacity"] for row in venue.get("layouts", [])}
+    in_layout = by_layout.get(layout.lower()) if layout else None
+    if in_layout is None:
+        return {"layout": None, "capacity": venue["capacity"]}
+    return {"layout": layout, "capacity": in_layout}
+
+
+# SPM-85: the impact assessment only reads, and each part says when it could not.
+IMPACT_UNCHECKED = "This part of the impact assessment could not be checked right now."
+
+
+def confirmed_bookings(event_id: str, authorization: str | None) -> list[dict]:
+    """SPM-85 AC2: the event's approved venue bookings."""
+    return _arrangement_rows(
+        "GET",
+        f"{settings.venue_service_url}/venues/bookings",
+        authorization,
+        IMPACT_UNCHECKED,
+        params={"eventId": event_id, "status": "approved"},
+    )
+
+
+def venue_suitability(event_id: str, venue_id: str, needs: dict, authorization: str | None) -> dict:
+    """SPM-85 AC3: the SPM-62 suitability check for one venue, with `needs`
+    (startsAt, endsAt, layout, expectedAttendance) standing in for the event's
+    own values. The event's own bookings never clash with it."""
+    return _arrangement_rows(
+        "POST",
+        f"{settings.venue_service_url}/venues/suitability",
+        authorization,
+        IMPACT_UNCHECKED,
+        json={"eventId": event_id, "venueId": venue_id, **needs},
+    )
+
+
+def equipment_free(equipment_id: str, starts_at: datetime, ends_at: datetime, authorization: str | None) -> int:
+    """SPM-85 AC5: serviceable units of a type that no reservation holds during the period."""
+    body = _arrangement_rows(
+        "POST",
+        f"{settings.equipment_service_url}/equipment/availability",
+        authorization,
+        IMPACT_UNCHECKED,
+        json={"equipmentId": equipment_id, "startsAt": starts_at.isoformat(), "endsAt": ends_at.isoformat()},
+    )
+    return int(body["availableQuantity"])
 
 
 # SPM-120: a safety review is only submitted once the venue and equipment it
@@ -299,8 +458,13 @@ def venue_details(venue_id: str, authorization: str | None) -> dict:
 
 def equipment_requests_for(event_id: str, authorization: str | None) -> list[dict]:
     rows = _arrangement_rows(
-        "GET", f"{settings.equipment_service_url}/equipment/requests", authorization, ARRANGEMENTS_UNCHECKED
+        "GET",
+        f"{settings.equipment_service_url}/equipment/requests",
+        authorization,
+        ARRANGEMENTS_UNCHECKED,
+        params={"eventId": event_id},
     )
+    # Kept as a guard: an older equipment-service ignores the filter and answers with every event.
     return [row for row in rows if row.get("eventId") == event_id]
 
 
@@ -359,6 +523,18 @@ def _service_get(url: str, params: dict | None = None):
     return response.json()
 
 
+def handoff_arrangements(event_id: str) -> tuple[list, list, list]:
+    """SPM-120, change 6: the event's venue bookings, equipment requests and reservations, read
+    with the service key. Venue Staff may not read equipment rows and technical support may not
+    read venue bookings, yet each sends their part of the same handoff. Strict like the user-token
+    reads: 503 when either service cannot be read, so nothing is judged unchecked."""
+    bookings = _service_get(f"{settings.venue_service_url}/internal/venues/bookings", {"eventId": event_id})
+    equipment = _service_get(f"{settings.equipment_service_url}/internal/equipment/events/{event_id}/arrangements")
+    if not isinstance(bookings, list) or not isinstance(equipment, dict):
+        raise service_unavailable(ARRANGEMENTS_UNCHECKED)
+    return bookings, equipment.get("requests", []), equipment.get("reservations", [])
+
+
 def arrangement_inputs(event_id: str) -> tuple[list, list, dict] | None:
     """SPM-95: an event's equipment requests, equipment reservations and venue summary, as
     the readiness view reads them. None when either service cannot be read, so an outage is
@@ -368,6 +544,22 @@ def arrangement_inputs(event_id: str) -> tuple[list, list, dict] | None:
     if not isinstance(equipment, dict) or not isinstance(venue, dict):
         return None
     return equipment.get("requests", []), equipment.get("reservations", []), venue
+
+
+def expired_holds(since: datetime, until: datetime) -> list[dict] | None:
+    """SPM-93 AC4: venue holds that ran out in (since, until]. None when venue-service cannot be read."""
+    rows = _service_get(
+        f"{settings.venue_service_url}/internal/venues/holds/expired",
+        {"since": since.isoformat(), "until": until.isoformat()},
+    )
+    return rows if isinstance(rows, list) else None
+
+
+def venue_catalogue_options() -> dict[str, list[str]] | None:
+    """SPM-80: the layouts, facilities and accessibility features the active venues offer.
+    None when venue-service cannot be read."""
+    options = _service_get(f"{settings.venue_service_url}/internal/venues/catalogue-options")
+    return options if isinstance(options, dict) else None
 
 
 def users_with_roles(roles: list[str]) -> dict[str, dict] | None:
@@ -471,6 +663,74 @@ def release_event_venue_bookings(event_id: str, authorization: str | None) -> No
             )
     except httpx.HTTPError as exc:
         logger.info("release_event_venue_bookings(%s) raised %r", event_id, exc)
+
+
+class ReleaseFailed(Exception):
+    """SPM-88 AC9: a cancellation's release did not go through, so the cancellation must not either."""
+
+
+def _release_call(url: str, body: dict, authorization: str | None, what: str) -> list[dict]:
+    """POST with the caller's token; the reply on success. Anything else raises ReleaseFailed."""
+    try:
+        response = httpx.post(url, json=body, headers={"Authorization": authorization or ""}, timeout=10.0)
+    except httpx.HTTPError as exc:
+        logger.warning("%s for %s raised %r", what, body.get("eventId"), exc)
+        raise ReleaseFailed(what) from exc
+    if response.status_code != 200:
+        logger.warning("%s for %s got status %s", what, body.get("eventId"), response.status_code)
+        raise ReleaseFailed(what)
+    return response.json()
+
+
+def release_venue_for_cancellation(event_id: str, authorization: str | None) -> list[dict]:
+    """SPM-88 AC5: free every pending request and approved booking. Raises ReleaseFailed."""
+    return _release_call(
+        f"{settings.venue_service_url}/venues/bookings/release", {"eventId": event_id}, authorization, "venue release"
+    )
+
+
+def release_equipment_for_cancellation(event_id: str, reason: str, authorization: str | None) -> list[dict]:
+    """SPM-88 AC6: free every reservation's stock. Raises ReleaseFailed."""
+    return _release_call(
+        f"{settings.equipment_service_url}/equipment/reservations/release-for-event",
+        {"eventId": event_id, "reason": f"The event was cancelled: {reason}"},
+        authorization,
+        "equipment release",
+    )
+
+
+def restore_venue_after_failed_cancellation(event_id: str, released: list[dict], authorization: str | None) -> bool:
+    """SPM-88 AC9: give back what the venue release freed. False when that did not work either."""
+    if not released:
+        return True
+    bookings = [{"bookingId": row["bookingId"], "status": row["previousStatus"]} for row in released]
+    try:
+        _release_call(
+            f"{settings.venue_service_url}/venues/bookings/restore",
+            {"eventId": event_id, "bookings": bookings},
+            authorization,
+            "venue restore",
+        )
+    except ReleaseFailed:
+        return False
+    return True
+
+
+def restore_equipment_after_failed_cancellation(event_id: str, released: list[dict], authorization: str | None) -> bool:
+    """SPM-88 AC9: hold again what the equipment release freed. False when that did not work either."""
+    if not released:
+        return True
+    reservations = [{"reservationId": row["reservationId"], "status": row["previousStatus"]} for row in released]
+    try:
+        _release_call(
+            f"{settings.equipment_service_url}/equipment/reservations/restore-for-event",
+            {"eventId": event_id, "reservations": reservations},
+            authorization,
+            "equipment restore",
+        )
+    except ReleaseFailed:
+        return False
+    return True
 
 
 def send_notification(to: str, subject: str, body: str, authorization: str | None) -> bool:

@@ -66,9 +66,9 @@
         <dl>
           <dt>Code</dt><dd>{{ selected.code }}</dd>
           <dt>Category</dt><dd>{{ sentenceCase(selected.category) }}</dd>
-          <dt>Description</dt><dd>{{ selected.description || "—" }}</dd>
-          <dt>Home location</dt><dd>{{ selected.homeLocation || "—" }}</dd>
-          <dt>Technical notes</dt><dd>{{ selected.technicalNotes || "—" }}</dd>
+          <dt>Description</dt><dd>{{ selected.description || "None" }}</dd>
+          <dt>Home location</dt><dd>{{ selected.homeLocation || "Not set" }}</dd>
+          <dt>Technical notes</dt><dd>{{ selected.technicalNotes || "None" }}</dd>
           <dt>Total owned</dt><dd>{{ selected.totalQuantity }}</dd>
           <dt>Damaged</dt><dd>{{ selected.outOfService.damaged }}</dd>
           <dt>Under maintenance</dt><dd>{{ selected.outOfService.maintenance }}</dd>
@@ -76,8 +76,8 @@
           <dt>Serviceable</dt><dd>{{ selected.serviceableQuantity }}</dd>
         </dl>
         <form class="availability" @submit.prevent="checkWindow">
-          <label>From<input v-model="windowStart" type="datetime-local" required /></label>
-          <label>Until<input v-model="windowEnd" type="datetime-local" required /></label>
+          <label>From (SGT)<input v-model="windowStart" type="datetime-local" :min="today" required /></label>
+          <label>Until (SGT)<input v-model="windowEnd" type="datetime-local" :min="laterInput(today, windowStart)" required /></label>
           <button type="submit" class="btn btn-ghost small">Check available</button>
           <p v-if="availableForWindow !== null" class="available-result">{{ availableForWindow }} available in this period</p>
         </form>
@@ -98,6 +98,7 @@ import {
   updateEquipment,
 } from '../../api/equipmentService.js'
 import { session } from '../../store/session.js'
+import { fromSgtInput, laterInput, sgtMinInput } from '../../utils/datetime.js'
 import EquipmentForm from './EquipmentForm.vue'
 import EquipmentActivityLog from './EquipmentActivityLog.vue'
 import RequestAvailability from './RequestAvailability.vue'
@@ -209,13 +210,16 @@ async function onSave(payload) {
   }
 }
 
+// Availability is checked for a period to come, so the window starts at today.
+const today = sgtMinInput()
+
 async function checkWindow() {
   if (!selected.value) return
   try {
     const { data } = await checkEquipmentAvailability({
       equipmentId: selected.value.equipmentId,
-      startsAt: new Date(windowStart.value).toISOString(),
-      endsAt: new Date(windowEnd.value).toISOString(),
+      startsAt: fromSgtInput(windowStart.value),
+      endsAt: fromSgtInput(windowEnd.value),
     })
     availableForWindow.value = data.availableQuantity
   } catch {
@@ -226,7 +230,8 @@ async function checkWindow() {
 onMounted(async () => {
   try {
     await refreshList()
-    if (items.value.length) await selectItem(items.value[0].equipmentId)
+    // Skipped if Add equipment was clicked while the list loaded, so the open form is kept.
+    if (items.value.length && mode.value === 'view') await selectItem(items.value[0].equipmentId)
   } catch {
     error.value = 'Unable to load the equipment catalogue. Please try again.'
   } finally {
@@ -249,7 +254,7 @@ onMounted(async () => {
   min-width: 0;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 12px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -267,7 +272,7 @@ onMounted(async () => {
 .filters select {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 12px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 13px;
@@ -300,7 +305,7 @@ onMounted(async () => {
   text-align: left;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 10px 12px;
   cursor: pointer;
   color: inherit;
@@ -312,7 +317,7 @@ onMounted(async () => {
   background: linear-gradient(90deg, rgba(124, 77, 255, .22), rgba(124, 77, 255, .04));
 }
 .item-name {
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   font-weight: 500;
   color: var(--text);
   font-size: 14px;
@@ -330,7 +335,7 @@ onMounted(async () => {
 .item-detail {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 26px;
 }
 .item-detail.empty { display: flex; align-items: center; justify-content: center; color: var(--muted); min-height: 180px; }
@@ -360,7 +365,7 @@ dd { margin: 0; font-size: 14px; line-height: 1.6; color: var(--body); }
 .availability input {
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 13px;

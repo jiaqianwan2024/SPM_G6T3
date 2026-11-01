@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test'
-import { login } from './support/auth.js'
+import { login, logout } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { eventApi } from './support/event.js'
 import { notificationRequest, venueRequest } from './support/venue.js'
 import { equipmentApi } from './support/equipment.js'
+import { bookVenue, planningEvent } from './support/confirmation.js'
 import { notificationApi } from './support/registration.js'
 
 // Marina Hall A is open 08:00–22:00 every day. A window that starts at the current
@@ -54,11 +55,11 @@ test.describe('SPM-86 Re-verify arrangements affected by a significant change', 
     await page.goto('/app/events/e2/readiness')
     await expect(page.getByTestId('readiness-reverify')).toBeVisible()
     await page.goto('/app')
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await logout(page)
     await login(page, account('VS-01'))
     await page.goto('/app/venues/v1/calendar')
     await expect(page.getByTestId('calendar-reverify')).toBeVisible()
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await logout(page)
     await login(page, account('TS-01'))
     await page.goto('/app')
     await expect(page.getByTestId('tech-reverification-er-e2')).toBeVisible()
@@ -103,38 +104,28 @@ test.describe('SPM-86 Re-verify arrangements affected by a significant change', 
   test('TC-SPM86-AC06 when the venue is unsuitable or unavailable, the booking is released and the coordinator is prompted to search again', async ({
     page,
   }) => {
-    const event = await eventApi('GET', '/e2', 'EC-01')
-    expect(event.status).toBe(200)
-    const created = await venueRequest('POST', '/venues/bookings', 'EC-01', {
-      venueId: 'v2',
-      eventId: 'e2',
-      startsAt: event.body.proposedStartAt,
-      endsAt: event.body.proposedEndAt,
-      requirementsSnapshot: 'Classroom layout for the re-check.',
-      acknowledgeWarnings: true,
-    })
-    expect(created.status, JSON.stringify(created.body)).toBe(201)
-    const approved = await venueRequest('POST', `/venues/bookings/${created.body.bookingId}/approve`, 'VS-01', {
-      reason: 'Free for the re-check.',
-    })
-    expect(approved.status, JSON.stringify(approved.body)).toBe(200)
-    const flagged = await eventApi('PATCH', '/e2', 'EC-01', {
+    // An event and booking of its own (Marina Hall A at the event's time), not seeded e2.
+    const event = await planningEvent('SPM86-release')
+    const booking = await bookVenue(event)
+    const flagged = await eventApi('PATCH', `/${event.eventId}`, 'EC-01', {
       expectedAttendance: 46,
       confirmSignificantChange: true,
     })
     expect(flagged.status, JSON.stringify(flagged.body)).toBe(200)
-    const blocked = await venueRequest('POST', '/venues/v2/unavailability', 'VS-01', {
-      startsAt: event.body.proposedStartAt,
-      endsAt: event.body.proposedEndAt,
+    const blocked = await venueRequest('POST', '/venues/v1/unavailability', 'VS-01', {
+      startsAt: event.period.startsAt,
+      endsAt: event.period.endsAt,
       reason: 'maintenance',
       acknowledgeConflicts: true,
     })
     expect(blocked.status, JSON.stringify(blocked.body)).toBe(201)
-    const released = await venueRequest('POST', `/venues/bookings/${created.body.bookingId}/reconfirm`, 'VS-01')
+    const released = await venueRequest('POST', `/venues/bookings/${booking.bookingId}/reconfirm`, 'VS-01')
     expect(released.status, JSON.stringify(released.body)).toBe(409)
     expect(JSON.stringify(released.body)).toMatch(/released|search for a venue again/i)
+    // Free the venue again for other tests on the same day.
+    await venueRequest('DELETE', `/venues/v1/unavailability/${blocked.body.unavailabilityId}`, 'VS-01')
     await login(page, account('EC-01'))
-    await page.goto('/app/events/e2')
+    await page.goto(`/app/events/${event.eventId}`)
     await expect(page.getByTestId('search-venue-again')).toBeVisible()
   })
 

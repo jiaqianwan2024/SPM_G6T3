@@ -26,7 +26,7 @@
     <form v-else class="modal edit-modal" data-testid="event-edit-form" novalidate @submit.prevent="save(false)">
       <h3>Edit event</h3>
 
-      <label for="edit-eventName">Event name</label>
+      <label for="edit-eventName">Event name <span class="req">*</span></label>
       <input id="edit-eventName" v-model.trim="form.eventName" type="text" maxlength="255" />
 
       <div class="row">
@@ -60,25 +60,25 @@
 
         <div class="row">
           <div class="col">
-            <label for="edit-start">Starts</label>
-            <input id="edit-start" v-model="form.proposedStartAt" type="datetime-local" />
+            <label for="edit-start">Starts (SGT) <span class="req">*</span></label>
+            <input id="edit-start" v-model="form.proposedStartAt" type="datetime-local" :min="startMin" />
           </div>
           <div class="col">
-            <label for="edit-end">Ends</label>
-            <input id="edit-end" v-model="form.proposedEndAt" type="datetime-local" />
+            <label for="edit-end">Ends (SGT) <span class="req">*</span></label>
+            <input id="edit-end" v-model="form.proposedEndAt" type="datetime-local" :min="laterInput(endMin, form.proposedStartAt)" />
           </div>
         </div>
 
         <div class="row">
           <div class="col">
-            <label for="edit-attendance">Expected attendance</label>
+            <label for="edit-attendance">Expected attendance <span class="req">*</span></label>
             <input id="edit-attendance" v-model.number="form.expectedAttendance" type="number" min="0" step="1" />
           </div>
           <div class="col">
             <label for="edit-layout">Required layout</label>
             <input id="edit-layout" v-model.trim="form.layoutPreference" type="text" list="edit-layout-types" />
             <datalist id="edit-layout-types">
-              <option v-for="layout in LAYOUT_TYPES" :key="layout" :value="layout" />
+              <option v-for="layout in choices.layouts" :key="layout" :value="layout" />
             </datalist>
           </div>
         </div>
@@ -104,8 +104,10 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { updateEvent } from '../../api/eventService.js'
-import { EVENT_CATEGORIES, LAYOUT_TYPES } from '../../config/eventFields.js'
+import { useRequirementOptions } from '../../composables/requirementOptions.js'
+import { EVENT_CATEGORIES } from '../../config/eventFields.js'
 import { eventStatusLabel } from '../../config/eventStatus.js'
+import { fromSgtInput, laterInput, sgtMinInput, toSgtInput } from '../../utils/datetime.js'
 
 const props = defineProps({
   event: { type: Object, required: true },
@@ -114,11 +116,14 @@ const props = defineProps({
 const emit = defineEmits(['close', 'saved'])
 
 const CATEGORIES = EVENT_CATEGORIES
+// SPM-80: the layouts the active venues offer, and the categories event-service accepts.
+const { options: choices } = useRequirementOptions()
 // Cleared, these go to the API as null rather than "".
 const CLEARABLE = ['category', 'layoutPreference']
 
-// datetime-local inputs need "YYYY-MM-DDTHH:mm"; the API returns full ISO strings.
-const toInputDatetime = (iso) => (iso ? iso.slice(0, 16) : '')
+// datetime-local inputs need "YYYY-MM-DDTHH:mm" in Singapore time; the API returns UTC ISO strings.
+const toInputDatetime = (iso) => toSgtInput(iso)
+const DATETIMES = ['proposedStartAt', 'proposedEndAt']
 
 const knownCategory = (value) =>
   CATEGORIES.find((option) => option.toLowerCase() === String(value || '').toLowerCase()) || value || ''
@@ -138,13 +143,19 @@ const original = {
   equipmentRequirements: props.event.equipmentRequirements || '',
 }
 const form = reactive({ ...original })
+// A new date cannot be in the past. The saved one stays allowed, so an event that has
+// already started can still be edited without moving it.
+const startMin = sgtMinInput(original.proposedStartAt)
+const endMin = sgtMinInput(original.proposedEndAt)
 const saving = ref(false)
 const error = ref('')
 const pending = ref(null)
 
-// An existing category outside the usual four stays selectable.
+// An existing category outside the published list stays selectable.
 const categoryOptions = computed(() =>
-  original.category && !CATEGORIES.includes(original.category) ? [...CATEGORIES, original.category] : CATEGORIES,
+  original.category && !choices.categories.includes(original.category)
+    ? [...choices.categories, original.category]
+    : choices.categories,
 )
 
 // Only the fields that changed are sent, so an untouched field is never logged as edited.
@@ -153,7 +164,8 @@ const changes = computed(() => {
   for (const [field, before] of Object.entries(original)) {
     const value = form[field]
     if (value === before) continue
-    changed[field] = CLEARABLE.includes(field) && value === '' ? null : value
+    if (DATETIMES.includes(field)) changed[field] = fromSgtInput(value)
+    else changed[field] = CLEARABLE.includes(field) && value === '' ? null : value
   }
   return changed
 })
@@ -162,6 +174,7 @@ const hasChanges = computed(() => Object.keys(changes.value).length > 0)
 function validate() {
   if (!form.eventName) return 'Event name is required.'
   if (!form.proposedStartAt || !form.proposedEndAt) return 'Start and end are both required.'
+  if (form.proposedStartAt < startMin || form.proposedEndAt < endMin) return 'Pick dates from today onwards.'
   if (new Date(form.proposedEndAt) <= new Date(form.proposedStartAt)) return 'The end must be after the start.'
   if (!Number.isInteger(form.expectedAttendance) || form.expectedAttendance < 0) {
     return 'Enter an attendance of 0 or more.'
@@ -208,7 +221,7 @@ async function save(confirmSignificantChange) {
   background: linear-gradient(160deg, #1A0C3B, #0D0524);
   border: 1px solid rgba(167, 139, 250, .28);
   box-shadow: 0 30px 90px rgba(4, 1, 12, .7), 0 0 60px rgba(124, 77, 255, .18);
-  border-radius: 18px;
+  border-radius: var(--radius);
   padding: 30px;
   width: 440px;
   max-width: 100%;
@@ -237,13 +250,13 @@ textarea {
   box-sizing: border-box;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 0 12px;
   height: 42px;
   margin-bottom: 16px;
   font-size: 14px;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
 }
 textarea { height: auto; padding: 10px 12px; resize: vertical; line-height: 1.5; }
 input:focus, select:focus, textarea:focus {
@@ -259,7 +272,7 @@ select option { background: #1A1030; color: #F3EEFF; }
 .significant {
   border: 1px solid rgba(255, 196, 120, .28);
   background: rgba(255, 196, 120, .04);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 16px 16px 2px;
   margin-top: 4px;
 }
@@ -279,7 +292,7 @@ select option { background: #1A1030; color: #F3EEFF; }
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 12px 0 0;
 }

@@ -1,18 +1,21 @@
 import { test, expect } from '@playwright/test'
-import { account } from './support/test-data.js'
-import { bearer, firebaseIdToken } from './support/auth.js'
+import { bearer, cachedIdToken } from './support/auth.js'
 import { equipmentRequestPayload, serviceUrls } from './support/api-data.js'
 import { assignCoordinator } from './support/event.js'
-import { THEATRE_EVENT, approvedEvent, freshPeriod } from './support/venue-request.js'
+import { THEATRE_EVENT, approvedEvent } from './support/venue-request.js'
+import { createSuiteVenue, period, retireSuiteVenue } from './support/venue-suite.js'
 
 // EC-01 is u2 and EC-02 is u6. Every test makes its own event, approved for
-// planning and assigned to EC-01, so no test changes a seeded event.
+// planning and assigned to EC-01, so no test changes a seeded event. Venue requests
+// go to the suite's own hall on a fixed day, so they never meet another run's bookings.
+
+let hall
 
 async function api(method, url, id, body) {
   const response = await fetch(url, {
     method,
     headers: {
-      ...bearer(await firebaseIdToken(null, account(id))),
+      ...bearer(await cachedIdToken(id)),
       'Content-Type': 'application/json',
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -24,15 +27,26 @@ function requestEquipment(event, id, sequence) {
   return api('POST', `${serviceUrls.equipment}/equipment/requests`, id, equipmentRequestPayload(sequence, event.eventId))
 }
 
+let nextDay = 0
+
 function sendVenueRequest(event, id) {
+  nextDay += 1
   return api('POST', `${serviceUrls.venue}/venues/bookings`, id, {
     eventId: event.eventId,
-    venueId: 'v1',
-    ...freshPeriod(),
+    venueId: hall.venueId,
+    ...period(nextDay),
   })
 }
 
 test.describe('SPM-46 Assigned Coordinator Event Permissions (API)', () => {
+  test.beforeAll(async () => {
+    hall = await createSuiteVenue('SPM46 Hall', { layouts: [{ name: 'Theatre', capacity: 300 }] })
+  })
+
+  test.afterAll(async () => {
+    await retireSuiteVenue(hall)
+  })
+
   test('TC-SPM46-AC01 assigned coordinator can edit, book a venue, and request equipment', async () => {
     const event = await approvedEvent(THEATRE_EVENT)
 
@@ -98,7 +112,21 @@ test.describe('SPM-46 Assigned Coordinator Event Permissions (API)', () => {
   })
 
   test('TC-SPM46-AC01 confirming event arrangements is limited to the assigned coordinator', async () => {
-    test.skip(true, 'Confirming an event is SPM-72, which is not built yet; remove this skip when it ships.')
+    const event = await approvedEvent(THEATRE_EVENT)
+    const confirm = (id) => api('POST', `${serviceUrls.event}/events/${event.eventId}/confirm`, id)
+
+    const otherCoordinator = await confirm('EC-02')
+    const venueStaff = await confirm('VS-01')
+    const assigned = await confirm('EC-01')
+
+    expect([otherCoordinator.status, otherCoordinator.body.detail]).toEqual([
+      403,
+      "Only the event's assigned coordinator can confirm it",
+    ])
+    expect(venueStaff.status).toBe(403)
+    // The assigned coordinator is let through to the arrangement check, which refuses
+    // (409) only because nothing is arranged yet (SPM-72), not for lack of permission.
+    expect(assigned.status, JSON.stringify(assigned.body)).toBe(409)
   })
 
   test('TC-SPM46-AC02 unassigned internal staff can read event details', async () => {

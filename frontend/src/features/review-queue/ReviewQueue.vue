@@ -20,6 +20,23 @@
         >
           Unassigned only
         </button>
+        <label class="include-completed">
+          <input
+            v-model="includeCompleted"
+            type="checkbox"
+            data-testid="queue-include-completed"
+            @change="loadEvents"
+          />
+          Include completed events
+        </label>
+        <button
+          class="filter-btn"
+          :class="{ active: sortMode === 'date' }"
+          data-testid="queue-sort-date"
+          @click="setSort('date')"
+        >
+          Sort by event date
+        </button>
         <button
           class="filter-btn"
           :class="{ active: sortMode === 'name-asc' }"
@@ -59,12 +76,13 @@
           <div class="event-name-row">
             <span class="event-name">{{ event.eventName }}</span>
             <span v-if="event.dateNear" class="near-flag">Date is near</span>
+            <span v-else-if="event.datePassed" class="near-flag passed">Date has passed</span>
           </div>
           <span data-testid="queue-status" class="status-pill">{{ event.status }}</span>
         </div>
         <div v-if="event.organisationName" class="event-org">{{ event.organisationName }}</div>
         <div class="event-when" data-testid="queue-datetime">
-          {{ formatLocal(event.proposedStartAt) }} – {{ formatLocal(event.proposedEndAt) }}
+          {{ formatSgtRange(event.proposedStartAt, event.proposedEndAt) }}
         </div>
         <div class="event-wait" data-testid="queue-submitted-at">
           Submitted {{ formatSubmitted(event.submittedAt) }} · waiting {{ waitingFor(event.submittedAt) }}
@@ -168,12 +186,12 @@
     <div v-if="rejecting" class="modal-backdrop" @click.self="rejecting = null">
       <div class="modal">
         <h3>Reject {{ rejecting.eventName }}</h3>
-        <label for="reject-reason">Reason</label>
+        <label for="reject-reason">Reason <span class="req">*</span></label>
         <select id="reject-reason" v-model="rejectReason" data-testid="reject-reason">
           <option value="" disabled>Choose a reason</option>
           <option v-for="reason in REJECTION_REASONS" :key="reason" :value="reason">{{ reason }}</option>
         </select>
-        <label for="reject-explanation">Explanation for the organiser</label>
+        <label for="reject-explanation">Explanation for the organiser <span class="req">*</span></label>
         <textarea
           id="reject-explanation"
           v-model="rejectExplanation"
@@ -206,6 +224,7 @@ import { IN_REVIEW_EVENT_STATUSES, REJECTION_REASONS } from '../../config/eventS
 import { session } from '../../store/session.js'
 import ApproveEventDialog from '../event-detail/ApproveEventDialog.vue'
 import AssignCoordinatorDialog from '../event-detail/AssignCoordinatorDialog.vue'
+import { formatSgt, formatSgtRange, parseServerTime } from '../../utils/datetime.js'
 
 const events = ref([])
 const loading = ref(true)
@@ -229,6 +248,8 @@ const isLead = computed(() => session.role === 'coordinatorlead')
 // userId -> name, so the Lead sees who each request is with. Display only.
 const coordinatorNames = ref({})
 const query = ref('')
+// SPM-73 AC5: completed events are left out of the queue unless asked for.
+const includeCompleted = ref(false)
 // 'waiting' keeps the server order (longest-waiting first).
 const sortMode = ref('waiting')
 const myUserId = ref(null)
@@ -264,11 +285,9 @@ function assigneeLabel(event) {
   return event.coordinatorId ? `Assigned to ${coordinatorName(event.coordinatorId)}` : 'Unassigned'
 }
 
-// submittedAt is stamped with utcnow() on the server and serialised without a
-// timezone marker, and new Date() reads a marker-less string as *local* time -
-// which made every request look hours older than it was. Treat it as UTC.
-// (Proposed start/end are different: they come from local datetime-local
-// inputs, so they are intentionally left as local time.)
+// The server sends UTC without a zone marker, and new Date() reads a
+// marker-less string as *local* time, so read it as UTC. Every time is shown
+// in Singapore time.
 function parseUtc(value) {
   if (!value) return null
   const hasZone = /(Z|[+-]\d{2}:?\d{2})$/.test(value)
@@ -287,13 +306,8 @@ function waitingFor(submittedAt) {
   return `${days}d ${hours % 24}h`
 }
 
-function formatLocal(value) {
-  return value ? new Date(value).toLocaleString() : ''
-}
-
 function formatSubmitted(value) {
-  const date = parseUtc(value)
-  return date ? date.toLocaleString() : ''
+  return formatSgt(value)
 }
 
 const filteredEvents = computed(() => {
@@ -306,6 +320,11 @@ const filteredEvents = computed(() => {
       const organisation = (event.organisationName || '').toLowerCase()
       return name.includes(term) || organisation.includes(term)
     })
+  }
+  if (sortMode.value === 'date') {
+    // SPM-65 AC4: soonest proposed date first; a request with no date goes last.
+    const time = (event) => parseServerTime(event.proposedStartAt)?.getTime() ?? Infinity
+    list = [...list].sort((a, b) => (time(a) === time(b) ? 0 : time(a) < time(b) ? -1 : 1))
   }
   if (sortMode.value === 'name-asc' || sortMode.value === 'name-desc') {
     const direction = sortMode.value === 'name-asc' ? 1 : -1
@@ -347,8 +366,8 @@ function detailRows(event) {
     { label: 'Waiting', value: waitingFor(event.submittedAt) },
     { label: 'Assigned coordinator', value: event.coordinatorId ? coordinatorName(event.coordinatorId) : '' },
     { label: 'Category', value: event.category },
-    { label: 'Proposed start', value: formatLocal(event.proposedStartAt) },
-    { label: 'Proposed end', value: formatLocal(event.proposedEndAt) },
+    { label: 'Proposed start', value: formatSgt(event.proposedStartAt) },
+    { label: 'Proposed end', value: formatSgt(event.proposedEndAt) },
     { label: 'Expected attendance', value: event.expectedAttendance != null ? String(event.expectedAttendance) : '' },
     { label: 'Purpose', value: event.purpose },
     { label: 'Description', value: event.description },
@@ -360,8 +379,8 @@ function detailRows(event) {
   ].map((row) => ({ ...row, wide: wideLabels.has(row.label) }))
   if (event.registrationEnabled) {
     rows.push(
-      { label: 'Registration opens', value: formatLocal(event.registrationOpensAt) },
-      { label: 'Registration closes', value: formatLocal(event.registrationClosesAt) },
+      { label: 'Registration opens', value: formatSgt(event.registrationOpensAt) },
+      { label: 'Registration closes', value: formatSgt(event.registrationClosesAt) },
       { label: 'Capacity', value: event.capacity != null ? String(event.capacity) : '' },
     )
   }
@@ -388,7 +407,7 @@ async function loadEvents() {
     // by submittedAt ascending (longest-waiting first). A coordinator gets
     // only their own requests; the Lead's "unassigned" filter is applied
     // client-side below (filteredEvents) against this list.
-    const { data } = await getSubmissionQueue()
+    const { data } = await getSubmissionQueue({ includeCompleted: includeCompleted.value })
     events.value = data
   } catch (err) {
     error.value = err.response?.data?.detail || 'Could not load the review queue. Please try again.'
@@ -484,7 +503,7 @@ onUnmounted(() => clearInterval(ticker))
   width: 100%;
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -508,6 +527,7 @@ onUnmounted(() => clearInterval(ticker))
   cursor: pointer;
   transition: border-color .3s var(--ease-out), color .3s var(--ease-out), background .3s var(--ease-out);
 }
+.include-completed { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; }
 .filter-btn:hover { border-color: rgba(167, 139, 250, .4); color: var(--text); }
 .filter-btn.active {
   color: var(--text);
@@ -532,7 +552,7 @@ onUnmounted(() => clearInterval(ticker))
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 18px 20px;
   cursor: pointer;
   transition: border-color .4s var(--ease-out), background .4s var(--ease-out);
@@ -541,7 +561,7 @@ onUnmounted(() => clearInterval(ticker))
 .event-card:hover { border-color: rgba(167, 139, 250, .3); background: var(--glass-strong); }
 .event-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .event-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-.event-name { font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: var(--text); font-size: 16px; line-height: 1.35; }
+.event-name { font-family: var(--font); font-weight: 500; color: var(--text); font-size: 16px; line-height: 1.35; }
 .event-org { font-size: 13px; color: var(--body); }
 .event-when,
 .event-wait { font-size: 13px; color: var(--muted); line-height: 1.45; }
@@ -560,11 +580,16 @@ onUnmounted(() => clearInterval(ticker))
   font-size: 10px;
   letter-spacing: .06em;
   text-transform: uppercase;
-  color: #FF8A76;
-  background: rgba(255, 138, 118, .12);
-  border: 1px solid rgba(255, 138, 118, .3);
+  color: #FFD9A8;
+  background: rgba(255, 196, 120, .1);
+  border: 1px solid rgba(255, 196, 120, .35);
   border-radius: 999px;
   padding: 2px 8px;
+}
+.near-flag.passed {
+  color: #FF8A76;
+  background: rgba(255, 138, 118, .12);
+  border-color: rgba(255, 138, 118, .3);
 }
 
 .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: auto; }
@@ -588,7 +613,7 @@ onUnmounted(() => clearInterval(ticker))
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 
@@ -603,7 +628,7 @@ onUnmounted(() => clearInterval(ticker))
   background: linear-gradient(160deg, #1A0C3B, #0D0524);
   border: 1px solid rgba(167, 139, 250, .28);
   box-shadow: 0 30px 90px rgba(4, 1, 12, .7), 0 0 60px rgba(124, 77, 255, .18);
-  border-radius: 18px;
+  border-radius: var(--radius);
   padding: 30px;
   width: 360px;
 }
@@ -617,11 +642,11 @@ onUnmounted(() => clearInterval(ticker))
   width: 100%;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 12px;
   font-size: 14px;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
   resize: vertical;
   line-height: 1.6;
 }

@@ -4,14 +4,15 @@ The venue-only rules (location, layout and capacity, facilities,
 accessibility, opening hours) live here. Availability is the shared SPM-64
 rule, `VenueService.commitments`, which `VenueService.search_venues` applies.
 
-All times are UTC, and a venue's opening hours are read as UTC hours.
+Times are stored and sent in UTC; a venue's opening hours are Singapore time
+(SGT), so they are compared after converting (see suitability).
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from app.schemas.venue import VenueOut
-from app.services.suitability import _missing, _opening_hours
+from app.services.suitability import _missing, _opening_hours, wanted_layout
 
 
 @dataclass
@@ -31,10 +32,12 @@ class SearchFilters:
 
 def layout_capacity(venue: VenueOut, layout: str | None) -> int | None:
     """AC5: capacity in the layout searched for, the venue's overall capacity
-    when none was given, or None when the venue does not offer that layout."""
-    if not layout or not layout.strip():
+    when none was given (or no preference), or None when the venue does not
+    offer that layout."""
+    layout = wanted_layout(layout)
+    if layout is None:
         return venue.capacity
-    wanted = layout.strip().casefold()
+    wanted = layout.casefold()
     match = next((item for item in venue.layouts if item.name.casefold() == wanted), None)
     return match.capacity if match else None
 

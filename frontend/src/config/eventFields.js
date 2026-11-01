@@ -18,19 +18,17 @@ export const FIELD_LABELS = {
   capacity: 'Capacity',
 }
 
-export const fieldLabel = (field) => FIELD_LABELS[field] || field
+// Only a change request can ask for these (SPM-85), so they are not offered as clarification fields.
+const CHANGE_REQUEST_LABELS = { equipmentLines: 'Equipment' }
+
+export const fieldLabel = (field) => FIELD_LABELS[field] || CHANGE_REQUEST_LABELS[field] || field
 
 // SPM-106: the fields a change request can propose (GET /events/changeable-fields lists the same).
 export const CHANGEABLE_FIELDS = [
   'eventName', 'description', 'purpose', 'category', 'proposedStartAt', 'proposedEndAt',
-  'expectedAttendance', 'layoutPreference', 'accessibilityNeeds', 'equipmentRequirements',
+  'expectedAttendance', 'layoutPreference', 'accessibilityNeeds', 'equipmentRequirements', 'equipmentLines',
 ]
 
+// The categories event-service accepts; forms read them from /events/requirement-options and
+// fall back to this copy only while it cannot be read.
 export const EVENT_CATEGORIES = ['Conference', 'Workshop', 'Networking', 'Meeting']
-
-// Same guided list as the venue form; any other layout can still be typed.
-export const LAYOUT_TYPES = [
-  'Theatre', 'Classroom', 'Boardroom', 'U-Shape', 'Hollow Square',
-  'Banquet', 'Cabaret', 'Exhibition', 'Reception / Cocktail', 'Herringbone',
-  'Auditorium', 'Workshop / Breakout Pods',
-]

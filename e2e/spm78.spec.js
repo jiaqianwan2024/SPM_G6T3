@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login } from './support/auth.js'
+import { login, logout } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { eventApi } from './support/event.js'
 import { equipmentPeriod } from './support/api-data.js'
@@ -137,7 +137,7 @@ test.describe('SPM-78 Adjust or release an equipment reservation', () => {
     await expect(page.getByTestId('equipment-request-outcome')).toContainText(/released|reason|inspection/i)
     // Log out lives on the dashboard, not the event page.
     await page.goto('/app')
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await logout(page)
     await login(page, account('EO-01'))
     await page.goto('/app/events/e1')
     await expect(page.getByTestId('organiser-arrangements')).toContainText(/equipment|released|attention/i)

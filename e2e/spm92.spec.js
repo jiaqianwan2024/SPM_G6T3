@@ -90,6 +90,12 @@ test.describe('SPM-92 View my registrations and their status', () => {
   test('TC-SPM92-AC08 an attendee with no registrations is pointed at browsing events', async ({
     page,
   }) => {
+    // An attendee who never registered. Registration records are kept after a withdrawal (SPM-12
+    // AC4) and other specs register as ATT-02, so registration-service's list is answered as empty.
+    await page.route(
+      (url) => url.port === '8005' && url.pathname === '/registrations/me',
+      (route) => route.fulfill({ json: [] }),
+    )
     await login(page, account('ATT-02'))
     await page.locator('.nav-item').getByText('My Registrations', { exact: true }).click()
     const empty = page.getByTestId('my-registrations-empty')

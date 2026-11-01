@@ -9,13 +9,18 @@ from app.dao.venue_booking_dao import VenueBookingDAO
 from app.dao.venue_dao import VenueDAO
 from app.dao.venue_unavailability_dao import VenueUnavailabilityDAO
 from app.db.session import get_db
-from app.orchestration.clients import fetch_event_facts, notify_coordinator, notify_venue_staff
+from app.orchestration.clients import fetch_event_facts, notify_coordinator, notify_role, notify_venue_staff
 from app.schemas.venue import (
     BookingClashOut,
     BookingRecheck,
     BookingRecheckOut,
     BookingReleaseRequest,
+    BookingReschedule,
+    BookingRestoreRequest,
+    ReleasedBookingOut,
+    BookingReschedulePreview,
     BookingReverificationRequest,
+    RescheduledBookingOut,
     HoldRequest,
     SuitabilityOut,
     SuitabilityRequest,
@@ -29,7 +34,9 @@ from app.schemas.venue import (
     VenueBookingRejection,
     VenueArrangementOut,
     VenueBookingOut,
+    VenueCalendarOut,
     VenueCreate,
+    VenueDashboardOut,
     VenueOut,
     VenueSearchResult,
     VenueUpdate,
@@ -45,10 +52,11 @@ router = APIRouter(
     responses=error_responses(401),
 )
 
-# SPM-17 AC1/AC5: only these roles can reach the catalogue at all; Event
+# SPM-17 AC1/AC5: only internal roles can reach the catalogue at all; Event
 # Organisers and Attendees are excluded, enforced here rather than only by
-# hiding the tab in the frontend.
-CATALOGUE_READER_ROLES = {"coordinator", "venue", "techsupport"}
+# hiding the tab in the frontend. The Coordinator Lead and the Safety Officer read
+# it too, since the venue calendar picks its venue from it (SPM-108 AC7).
+CATALOGUE_READER_ROLES = {"coordinator", "coordinatorlead", "venue", "techsupport", "safety"}
 # SPM-62: coordinators check before requesting a venue; Venue Staff can run
 # the same check when assessing a request.
 SUITABILITY_ROLES = {"coordinator", "venue"}
@@ -57,6 +65,8 @@ BOOKING_READER_ROLES = {"coordinator", "venue"}
 # SPM-61: coordinators shortlist venues for their events; Venue Staff can use the
 # same search to find an alternative to suggest when they reject a request (SPM-10).
 SEARCH_ROLES = {"coordinator", "venue"}
+# SPM-108 AC8: every internal role reads any venue's calendar; organisers and attendees are clients.
+CALENDAR_READER_ROLES = {"coordinator", "coordinatorlead", "venue", "techsupport", "safety"}
 
 
 def get_venue_service(db: Session = Depends(get_db)) -> VenueService:
@@ -82,6 +92,25 @@ def list_venues(
 ):
     resolve_caller(authorization, settings.user_service_url, allowed_roles=CATALOGUE_READER_ROLES)
     return service.list_venues(include_retired=includeRetired)
+
+
+@router.get(
+    "/dashboard",
+    response_model=VenueDashboardOut,
+    summary="Venue Staff dashboard",
+    description=(
+        "SPM-57. Venue Staff only, as the Booking Requests screen is. Requests awaiting a decision (oldest "
+        "first), confirmed bookings flagged for re-verification, and confirmed bookings under way or starting "
+        "within `upcomingDays` (both soonest first). Bookings of events that have ended are left out."
+    ),
+    responses=error_responses(403, 503),
+)
+def venue_dashboard(
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    resolve_caller(authorization, settings.user_service_url, allowed_roles={"venue"})
+    return service.venue_dashboard()
 
 
 @router.get(
@@ -334,6 +363,30 @@ def list_unavailability(
     return service.list_unavailability(venue_id)
 
 
+@router.get(
+    "/{venue_id}/calendar",
+    response_model=VenueCalendarOut,
+    summary="A venue's calendar",
+    description=(
+        "SPM-108. Coordinators, the Coordinator Lead, Venue Staff, Technical Support and Safety Officers. "
+        "Every confirmed booking, pending request, active or expired tentative hold, and unavailability "
+        "period whose window overlaps the range, earliest first. A booking's window is its occupied window, "
+        "setup and turnaround included; `eventStartsAt` / `eventEndsAt` are the advertised times. Opening "
+        "hours are Singapore time. Leave out `from` and `to` for everything. An empty range returns no entries."
+    ),
+    responses=error_responses(403, 404, 503),
+)
+def venue_calendar(
+    venue_id: str = Path(..., description="Venue id, e.g. `v1`."),
+    starts_at: datetime | None = Query(None, alias="from", description="Range start (UTC unless an offset is given)."),
+    ends_at: datetime | None = Query(None, alias="to", description="Range end; must be after `from`."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    resolve_caller(authorization, settings.user_service_url, allowed_roles=CALENDAR_READER_ROLES)
+    return service.calendar(venue_id, starts_at, ends_at, authorization)
+
+
 @router.patch(
     "/{venue_id}/unavailability/{unavailability_id}",
     response_model=UnavailabilityOut,
@@ -427,7 +480,7 @@ def get_venue_activity_log(
     description=(
         "Coordinators and venue staff. Returns `suitable`, `suitable with warnings`, or `not suitable`, "
         "with a reason for every failure or warning. Anything not sent is taken from the event record. "
-        "All times are UTC."
+        "Times are sent in UTC; opening hours, and the times in each reason, are Singapore time (SGT)."
     ),
     responses=error_responses(403, 404, 503),
 )
@@ -487,7 +540,7 @@ def flag_bookings_for_reverification(
 
 @router.post(
     "/bookings/release",
-    response_model=list[VenueBookingOut],
+    response_model=list[ReleasedBookingOut],
     summary="Release every open venue booking for an event",
     description=(
         "The event's assigned coordinator, or an organiser from the event's own client organisation. For event "
@@ -504,6 +557,67 @@ def release_event_bookings(
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"organiser", "coordinator"})
     service.check_release_allowed(caller, fetch_event_facts(body.eventId, authorization))
     return service.release_event_bookings(body.eventId)
+
+
+@router.post(
+    "/bookings/restore",
+    response_model=list[VenueBookingOut],
+    summary="Undo a cancellation's venue release",
+    description=(
+        "SPM-88 AC9. The same people as the release. Event-service calls it when a cancellation fails after its "
+        "venue release, so the event and its bookings never disagree. Each named booking of the event that is "
+        "still `cancelled` gets back the status it had, and any tentative hold the release ended. 409 when a "
+        "booking's venue was approved for someone else in the meantime."
+    ),
+    responses=error_responses(403, 404, 409, 503),
+)
+def restore_event_bookings(
+    body: BookingRestoreRequest,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"organiser", "coordinator"})
+    service.check_release_allowed(caller, fetch_event_facts(body.eventId, authorization))
+    return service.restore_event_bookings(body.eventId, body.bookings)
+
+
+@router.post(
+    "/bookings/reschedule/preview",
+    response_model=list[RescheduledBookingOut],
+    summary="Check an event's bookings at a new date and time",
+    description="SPM-87 AC2. The event's assigned coordinator only. Each pending request and approved booking is "
+    "judged at the new occupied window with the same suitability check as a new request, the event's own bookings "
+    "left out: `free` when nothing else holds the venue then, `suitable` when it passes every other point. "
+    "Nothing is moved.",
+    responses=error_responses(403, 404, 422, 503),
+)
+def preview_reschedule(
+    body: BookingReschedulePreview,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    return service.preview_reschedule(body, caller, fetch_event_facts(body.eventId, authorization))
+
+
+@router.post(
+    "/bookings/reschedule",
+    response_model=list[RescheduledBookingOut],
+    summary="Move an event's bookings to its new date and time",
+    description="SPM-87. The event's assigned coordinator only; event-service calls it when a reschedule is "
+    "applied. An approved booking that is free and suitable at the new time is carried across and flagged for "
+    "Venue Staff to re-confirm, and they are notified. Any other approved booking, or every one when `carry` is "
+    "false, is released. A pending request takes the new time. The old times are freed only here. 409 when "
+    "another event took a venue at the new time meanwhile; nothing is moved then.",
+    responses=error_responses(403, 404, 409, 422, 503),
+)
+def reschedule_bookings(
+    body: BookingReschedule,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: VenueService = Depends(get_venue_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    return service.reschedule_bookings(body, caller, fetch_event_facts(body.eventId, authorization), authorization)
 
 
 @router.post(
@@ -572,7 +686,9 @@ def request_replacement(
     original = service.get_booking(booking_id)
     event = fetch_event_facts(original.eventId, authorization)
     created = service.request_replacement(booking_id, body, caller, event)
-    notify_venue_staff(*service.venue_staff_notice(created, "requested"), authorization)
+    # SPM-93 AC4b: Venue Staff also get a readable in-app notice, not just the email.
+    title, notice = service.venue_staff_notice(created, "requested")
+    notify_role("venue", created.eventId, title, notice, authorization, "venue.replacement")
     notify_venue_staff(*service.venue_staff_notice(service.get_booking(booking_id), "cancelled"), authorization)
     return created
 
@@ -670,7 +786,7 @@ def reconfirm_booking(
         "its occupied window (event start minus setup time to event end plus turnaround time), and records who "
         "approved it and when. Refused with 409, leaving the request pending, when the booking is no longer "
         "`pending` or the window overlaps a confirmed booking, an active tentative hold, or an unavailability "
-        "period. An expired hold does not block approval."
+        "period. An expired hold does not block approval. The event's assigned coordinator is told in the app."
     ),
     responses=error_responses(403, 404, 409, 503),
 )
@@ -681,7 +797,9 @@ def approve_booking(
     service: VenueService = Depends(get_venue_service),
 ):
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"venue"})
-    return service.approve_booking(booking_id, caller["userId"], body.reason, caller.get("userName"))
+    booking = service.approve_booking(booking_id, caller["userId"], body.reason, caller.get("userName"))
+    _tell_coordinator_of_decision(service, booking, authorization)
+    return booking
 
 
 @router.post(
@@ -693,7 +811,8 @@ def approve_booking(
         "names another active venue (422 when it is unknown, retired, or the same venue). The request becomes "
         "`rejected`, leaves the pending queue, ends any tentative hold so it reserves nothing, and records who "
         "rejected it, why, and when. Fails with 409 if the booking is no longer `pending`, so a rejected request "
-        "can no longer be approved or changed."
+        "can no longer be approved or changed. The event's assigned coordinator is told in the app, with the reason and "
+        "any suggested venue."
     ),
     responses=error_responses(403, 404, 409, 422, 503),
 )
@@ -704,6 +823,20 @@ def reject_booking(
     service: VenueService = Depends(get_venue_service),
 ):
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"venue"})
-    return service.reject_booking(
+    booking = service.reject_booking(
         booking_id, caller["userId"], body.reason, caller.get("userName"), body.suggestedVenueId
     )
+    _tell_coordinator_of_decision(service, booking, authorization)
+    return booking
+
+
+def _tell_coordinator_of_decision(service: VenueService, booking: VenueBookingOut, authorization: str | None) -> None:
+    """Best effort, after the decision is saved: the event's assigned coordinator is told in the app.
+    An unreachable event-service only skips the notice."""
+    try:
+        event = fetch_event_facts(booking.eventId, authorization)
+    except Exception:
+        return
+    if event.coordinatorId:
+        title, body, notice_type = service.decision_notice(booking, event)
+        notify_coordinator(event.coordinatorId, booking.eventId, title, body, authorization or "", notice_type)

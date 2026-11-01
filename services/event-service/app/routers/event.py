@@ -1,6 +1,7 @@
+import logging
 from typing import Literal
 
-from fastapi import APIRouter, Body, Depends, Path, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -15,12 +16,13 @@ from app.dao.event_safety_handoff_dao import EventSafetyHandoffDAO
 from app.dao.event_safety_review_dao import EventSafetyReviewDAO
 from app.dao.event_status_history_dao import EventStatusHistoryDAO
 from app.db.session import get_db
-from app.orchestration.clients import current_organiser, current_technical_support
+from app.orchestration.clients import current_organiser, current_technical_support, registered_event_ids
 from app.schemas.event import (
     ChangeableFieldsOut,
     ChangeRequestAccept,
     ChangeRequestCreate,
     ChangeRequestDecline,
+    ChangeRequestImpactOut,
     ChangeRequestOut,
     ClarificationCreate,
     ClarificationOut,
@@ -34,6 +36,7 @@ from app.schemas.event import (
     EventAssignmentCreate,
     EventAssignmentOut,
     EventCoordinatorOut,
+    EventCancellation,
     EventRejection,
     EventRejectionOut,
     EventIntake,
@@ -51,6 +54,10 @@ from app.schemas.event import (
     RegistrationAccessOut,
     RegistrationSettingsOut,
     RegistrationSettingsUpdate,
+    RescheduleIn,
+    RescheduleOut,
+    ReschedulePreviewIn,
+    ReschedulePreviewOut,
     ReverificationSettleOut,
     SafetyApproval,
     SafetyChangeRequest,
@@ -64,16 +71,33 @@ from app.schemas.event import (
 )
 from app.schemas.followup import OpenEventOut, ReadinessCreate, ReadinessItemOut, ReadinessPatch
 from app.services.event_followup import EventFollowUp
-from app.services.event_service import COORDINATOR_LEAD, EventService
+from app.services.event_service import COORDINATOR_LEAD, EventService, require_organisation_access
+from app.services.reminders import EventReminders
 from shared.auth.deps import forwarded_bearer
 from shared.auth.roles import resolve_caller
+from shared.exceptions.http import forbidden
 from shared.openapi import error_responses
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/events",
     tags=["events"],
     responses=error_responses(401),
 )
+
+
+# SPM-127: an attendee sees only confirmed event pages and their own registrations.
+ATTENDEE_REFUSAL = "Attendees can open only confirmed event pages and their own registrations."
+
+
+def _refuse_attendees(authorization: str | None) -> dict:
+    """The full event record, event lists and the activity log are staff or organiser pages (403).
+    Returns the caller, so each route can also apply SPM-47's organisation rule."""
+    caller = resolve_caller(authorization, settings.user_service_url)
+    if caller.get("role") == "attendee":
+        raise forbidden(ATTENDEE_REFUSAL)
+    return caller
 
 
 def get_followup(db: Session = Depends(get_db)) -> EventFollowUp:
@@ -98,13 +122,15 @@ def get_event_service(db: Session = Depends(get_db)) -> EventService:
     "",
     response_model=list[EventOut],
     summary="List events",
-    description="Every event, including rejected ones. `registeredCount` is fetched from registration-service.",
+    description="Every event, including rejected ones, except drafts. An organiser gets only their own "
+    "organisation's events (SPM-47, SPM-56). `registeredCount` is fetched from registration-service.",
 )
 def list_events(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
-    return service.list_events(authorization)
+    caller = _refuse_attendees(authorization)
+    return service.list_events(authorization, caller)
 
 
 @router.post(
@@ -125,9 +151,11 @@ def create_event(
         return service.create_draft(
             body.to_draft(), organiser["userId"], organiser.get("organisationId"), authorization
         )
-    return service.create_event(
-        body.to_create(), organiser["userId"], organiser.get("organisationId"), authorization
-    )
+    try:
+        create = body.to_create()
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
+    return service.create_event(create, organiser["userId"], organiser.get("organisationId"), authorization)
 
 @router.post("/drafts", response_model=EventOut, status_code=201)
 def create_draft(
@@ -198,7 +226,8 @@ def list_all_events(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
-    return service.list_all_events(authorization)
+    caller = _refuse_attendees(authorization)
+    return service.list_all_events(authorization, caller)
 
 
 @router.get(
@@ -211,7 +240,8 @@ def list_confirmed_events(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
-    return service.list_confirmed_events(authorization)
+    caller = _refuse_attendees(authorization)
+    return service.list_confirmed_events(authorization, caller)
 
 
 @router.get(
@@ -221,12 +251,14 @@ def list_confirmed_events(
     description="Event Coordinator Lead and Event Coordinators. Submitted / under-review / changes-requested "
     "events, ordered by submission time - longest-waiting first, unless `sort=proposedStartAt`. The Lead sees "
     "every request, unassigned ones included, and can pass `assignedTo` (a coordinator userId) to see one "
-    "coordinator's assignments. A coordinator only ever sees the requests assigned to them.",
+    "coordinator's assignments. A coordinator only ever sees the requests assigned to them. Completed events "
+    "are left out unless `includeCompleted` is true (SPM-73).",
     responses=error_responses(403, 503),
 )
 def list_submission_queue(
     sort: str | None = Query(default=None, description="`proposedStartAt` to sort by event date instead of wait time."),
     assignedTo: str | None = Query(default=None, description="Lead only: a coordinator userId."),
+    includeCompleted: bool = Query(default=False, description="Also list completed events."),
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
@@ -234,14 +266,18 @@ def list_submission_queue(
     if caller["role"] == "coordinator":
         # Each coordinator manages only the requests assigned to them.
         assignedTo = caller["userId"]
-    return service.list_submission_queue(authorization, sort=sort, assigned_to=assignedTo)
+    return service.list_submission_queue(
+        authorization, sort=sort, assigned_to=assignedTo, include_completed=includeCompleted
+    )
 
 
 @router.get(
     "/mine",
     response_model=list[EventOut],
     summary="My events",
-    description="Organiser only. Every event the caller organises, at any stage, except ones they discarded.",
+    description="Organiser only (SPM-47). Every event of the caller's client organisation at any stage, "
+    "colleagues' included, with only the caller's own drafts and nothing discarded. An organiser with no "
+    "organisation sees just their own events.",
     responses=error_responses(403),
 )
 def list_my_events(
@@ -249,7 +285,39 @@ def list_my_events(
     service: EventService = Depends(get_event_service),
 ):
     organiser = current_organiser(authorization)
-    return service.list_my_events(organiser["userId"], authorization)
+    return service.list_my_events(organiser["userId"], authorization, organiser.get("organisationId"))
+
+
+@router.get(
+    "/mine/change-requests",
+    response_model=list[ChangeRequestOut],
+    summary="Change requests on my events",
+    description="SPM-56. Organiser only. Every change request on the events the caller's organisation can see, "
+    "newest first, in one call for the dashboard. The per-event list is `/events/{id}/change-requests`.",
+    responses=error_responses(403),
+)
+def list_my_change_requests(
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    organiser = current_organiser(authorization)
+    return service.list_my_change_requests(organiser["userId"], organiser.get("organisationId"))
+
+
+@router.get(
+    "/assigned",
+    response_model=list[EventOut],
+    summary="My assigned events",
+    description="Event Coordinators only. Every event assigned to the caller, at any stage except draft and "
+    "discarded, ordered by `proposedStartAt`. Unassigned requests are on the Lead's queue, not here.",
+    responses=error_responses(403, 503),
+)
+def list_assigned_events(
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    return service.list_assigned_events(caller["userId"], authorization)
 
 
 @router.get(
@@ -371,25 +439,44 @@ def get_open_for_registration(
     "/{event_id}",
     response_model=EventOut,
     summary="Get event",
-    description="Single event plus live `registeredCount` from registration-service.",
-    responses=error_responses(404),
+    description="Single event plus live `registeredCount` from registration-service. An organiser can open "
+    "only their own organisation's events (403 otherwise, SPM-47). Attendees get 403.",
+    responses=error_responses(403, 404),
 )
 def get_event(
     event_id: str = Path(..., description="Event id, e.g. `e1`."),
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
-    return service.get_event(event_id, authorization)
+    caller = _refuse_attendees(authorization)
+    return service.get_event(event_id, authorization, caller)
 
 
-@router.get("/{event_id}/attendee-card", response_model=OpenEventOut)
+@router.get(
+    "/{event_id}/attendee-card",
+    response_model=OpenEventOut,
+    summary="Public event page",
+    description="Public details only. An attendee can open a confirmed event, or one they hold a registration "
+    "for (SPM-127); any other event is 403 for them. Staff and organisers can open any event.",
+    responses=error_responses(403, 404, 503),
+)
 def attendee_card(
     event_id: str,
     authorization: str | None = Depends(forwarded_bearer),
     followup: EventFollowUp = Depends(get_followup),
 ):
-    resolve_caller(authorization, settings.user_service_url)
-    return followup.attendee_card(event_id, authorization)
+    caller = resolve_caller(authorization, settings.user_service_url)
+    card = followup.attendee_card(event_id, authorization)
+    if caller.get("role") == "organiser" and card.status != "confirmed":
+        # SPM-47: before it is confirmed, the page is another organisation's planning data.
+        require_organisation_access(followup.event_record(event_id), caller)
+    if (
+        caller.get("role") == "attendee"
+        and card.status != "confirmed"
+        and event_id not in registered_event_ids(authorization)
+    ):
+        raise forbidden(ATTENDEE_REFUSAL)
+    return card
 
 
 @router.get("/{event_id}/readiness", response_model=list[ReadinessItemOut])
@@ -399,9 +486,10 @@ def list_readiness(
     authorization: str | None = Depends(forwarded_bearer),
     followup: EventFollowUp = Depends(get_followup),
 ):
-    resolve_caller(
+    caller = resolve_caller(
         authorization, settings.user_service_url, allowed_roles={"coordinator", "organiser", "techsupport"}
     )
+    require_organisation_access(followup.event_record(event_id), caller)
     return followup.list_readiness(event_id, authorization, dueSoon)
 
 
@@ -423,9 +511,10 @@ def get_readiness_item(
     authorization: str | None = Depends(forwarded_bearer),
     followup: EventFollowUp = Depends(get_followup),
 ):
-    resolve_caller(
+    caller = resolve_caller(
         authorization, settings.user_service_url, allowed_roles={"coordinator", "organiser", "techsupport"}
     )
+    require_organisation_access(followup.event_record(event_id), caller)
     return followup.get_item(event_id, item_id)
 
 
@@ -507,6 +596,22 @@ def notify_attendees_of_change(
     return service.notify_attendees_of_change(event_id, body.change, authorization)
 
 
+@router.post(
+    "/{event_id}/capacity-notice",
+    summary="Tell the organiser and coordinator that registration is full",
+    description="SPM-11 AC9. Registration-service calls this, with the registering attendee's token, after "
+    "the last place is taken. The count is checked here, and each capacity is announced once.",
+    responses=error_responses(404),
+)
+def notify_capacity_reached(
+    event_id: str,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    resolve_caller(authorization, settings.user_service_url)
+    return service.notify_capacity_reached(event_id, authorization)
+
+
 @router.patch(
     "/{event_id}",
     response_model=EventUpdateOut,
@@ -542,6 +647,69 @@ def update_event(
     except ValidationError as exc:
         raise RequestValidationError(exc.errors()) from exc
     return service.update_event(event_id, body, caller["userId"], authorization)
+
+
+@router.post(
+    "/{event_id}/reschedule/preview",
+    response_model=ReschedulePreviewOut,
+    summary="Preview a reschedule",
+    description="SPM-87 AC2. The assigned coordinator only, for an approved, planning, or confirmed event. For "
+    "each booked venue, whether it is free (nothing else holds the new occupied window) and suitable at the new "
+    "time; for each held equipment reservation, whether its quantity is free then; and where registration would "
+    "close. Nothing is moved or released (AC5). 422 for an end at or before the start or a start in the past; "
+    "409 when the event cannot be rescheduled or is already at that time; 503 when the arrangements cannot be checked.",
+    responses=error_responses(403, 404, 409, 422, 503),
+)
+def preview_reschedule(
+    body: ReschedulePreviewIn,
+    event_id: str = Path(..., description="Event id, e.g. `e3`."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    return service.preview_reschedule(event_id, caller["userId"], body.proposedStartAt, body.proposedEndAt, authorization)
+
+
+@router.post(
+    "/{event_id}/reschedule",
+    response_model=RescheduleOut,
+    summary="Reschedule an event",
+    description="SPM-87. The assigned coordinator only, for an approved, planning, or confirmed event, with a "
+    "reason. Booked venues that are free and suitable at the new occupied window are carried across and Venue "
+    "Staff are asked to re-confirm them (AC3); with `carryVenueBooking: false` every booked venue is released "
+    "instead. A booked venue that is not available is named in a 409 (`requiresConfirmation`, "
+    "`unavailableVenues`) until `confirmVenueUnavailable` is true, which releases it and keeps the others (AC4). "
+    "The old times are freed only now (AC5). Equipment reservations move and any that cannot be met are flagged "
+    "(AC6). A registration close after the new start is brought forward (AC8). A confirmed event reads as "
+    "reconsidering until the venue is re-confirmed, and a safety review or approval is withdrawn, as for any "
+    "significant change (SPM-71). The move is in the activity log (AC9); the organiser, Venue Staff, technical "
+    "support and registered attendees are notified (AC7), and the approaching-event reminder follows the new "
+    "date (AC10).",
+    responses=error_responses(403, 404, 409, 422, 503),
+)
+def reschedule_event(
+    body: RescheduleIn,
+    event_id: str = Path(..., description="Event id, e.g. `e3`."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+    db: Session = Depends(get_db),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    moved = service.reschedule(
+        event_id,
+        caller["userId"],
+        body.proposedStartAt,
+        body.proposedEndAt,
+        body.reason,
+        authorization,
+        carry_venue=body.carryVenueBooking,
+        confirm_venue_unavailable=body.confirmVenueUnavailable,
+    )
+    try:
+        EventReminders(db).run_for_event(event_id)
+    except Exception:  # Best effort: the reschedule is saved; the scheduled run catches up.
+        logger.warning("could not refresh the reminder for %s after its reschedule", event_id)
+    return moved
 
 
 @router.patch(
@@ -918,6 +1086,28 @@ def withdraw_change_request(
     return service.withdraw_change_request(event_id, change_request_id, caller, authorization)
 
 
+@router.get(
+    "/{event_id}/change-requests/{change_request_id}/impact",
+    response_model=ChangeRequestImpactOut,
+    summary="Change request impact assessment",
+    description="Assigned coordinator only (SPM-85 AC2 to AC5), while the request is pending (409 after). Names the "
+    "confirmed venue bookings, equipment reservations, and registrations the change would affect; re-runs each "
+    "booked venue's suitability check when the date, time, or layout changes (`venueSuitability`); compares the "
+    "attendance with each booked venue's capacity in the layout (`capacity`); and says whether a raised equipment "
+    "quantity is available for the event's period (`equipmentAvailability`). A part that cannot be read right now "
+    "is listed in `unchecked`. Nothing is changed. 422 for an older request whose values cannot be applied.",
+    responses=error_responses(403, 404, 409, 422),
+)
+def assess_change_request(
+    event_id: str = Path(..., description="Event id, e.g. `e1`."),
+    change_request_id: str = Path(..., description="Change request id."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    return service.assess_change_request(event_id, change_request_id, caller["userId"], authorization)
+
+
 @router.post(
     "/{event_id}/change-requests/{change_request_id}/accept",
     response_model=ChangeRequestOut,
@@ -944,7 +1134,8 @@ def accept_change_request(
     response_model=ChangeRequestOut,
     summary="Decline a change request",
     description="Assigned coordinator only (SPM-106 AC7). A reason is required; the organiser is notified "
-    "with it. The event is unchanged.",
+    "with it. The event is unchanged. To accept only part of a request, decline it with `askNarrower: true` and "
+    "the organiser is asked to raise a narrower one (SPM-85 AC8); nothing is ever partly applied.",
     responses=error_responses(403, 404, 409),
 )
 def decline_change_request(
@@ -996,7 +1187,9 @@ def discard_event(
     response_model=list[EventActivityOut],
     summary="Event activity log",
     description="Every recorded status change (`kind: status`) and field edit (`kind: edit`, with the "
-    "field and its previous and new values) for this event, with who made it and when. Oldest first.",
+    "field and its previous and new values) for this event, with who made it and when. A decided change request "
+    "is a `kind: change_request` entry with the `decision`, each field's previous and proposed value in "
+    "`changes`, the deciding coordinator, and the time (SPM-85 AC9). Oldest first.",
     responses=error_responses(404),
 )
 def get_activity_log(
@@ -1004,7 +1197,8 @@ def get_activity_log(
     authorization: str | None = Depends(forwarded_bearer),
     service: EventService = Depends(get_event_service),
 ):
-    return service.get_activity_log(event_id, authorization)
+    caller = _refuse_attendees(authorization)
+    return service.get_activity_log(event_id, authorization, caller)
 
 
 @router.post(
@@ -1147,6 +1341,30 @@ def complete_event(
 ):
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
     return service.complete_event(event_id, caller["userId"], authorization)
+
+
+@router.post(
+    "/{event_id}/cancel",
+    response_model=EventOut,
+    summary="Cancel an event",
+    description="SPM-88. The organiser (any of their organisation's events) or the assigned coordinator. Takes "
+    "effect at once, with no approval step, from any live status (not draft, discarded, rejected, completed or "
+    "already cancelled: 409). A reason is required (422). Every venue booking and request, and every equipment "
+    "reservation, is released first; if any release fails, what was released is given back, the event is left "
+    "as it was, and 503 says so. Cancelled is terminal. The reason is kept, the change is logged, a pending "
+    "change request is closed, and attendees and staff are notified.",
+    responses=error_responses(403, 404, 409, 422, 503),
+)
+def cancel_event(
+    body: EventCancellation,
+    background: BackgroundTasks,
+    event_id: str = Path(..., description="Event id, e.g. `e1`."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"organiser", "coordinator"})
+    # Attendees and staff are told just after the reply, so the organiser does not wait on it.
+    return service.cancel_event(event_id, body.reason, caller, authorization, background.add_task)
 
 
 @router.post(

@@ -2,19 +2,20 @@
 
 Unit tests and the Coverage.py demo are in [unit-tests.md](unit-tests.md). Integration tests are in [integration-tests.md](integration-tests.md).
 
-Before pushing, especially after a merge, run `npm run test:ci` for the fast suite, then `npm run test:e2e` for Playwright. `test:ci` is unit coverage plus the SQLite workflows; it needs no Docker or Firebase, and it skips the venue MySQL overlap file when Docker is down. GitHub Actions runs every passing automated suite: the `test` job starts MySQL, migrates, and runs unit plus all integration tests; the `e2e` job runs the Playwright specs that `npm run test:acceptance` selects, which also needs Docker and the Firebase secrets listed under Run. Specs for stories that are not built yet (the ones `test:acceptance` omits, such as SPM-04) stay out of the pipeline until those stories exist; `test:e2e` still runs them locally.
+Before pushing, especially after a merge, run `npm run test:ci` for the fast suite, then `npm run test:e2e` for Playwright. `test:ci` is unit coverage plus the SQLite workflows; it needs no Docker or Firebase, and it skips the venue MySQL overlap file when Docker is down. GitHub Actions runs every passing automated suite: the `test` job starts MySQL, migrates, and runs unit plus all integration tests; the `e2e` job runs the Playwright specs that `npm run test:acceptance` selects, which also needs Docker and the Firebase secrets listed under Run. The stories `test:acceptance` omits stay out of the pipeline until their specs pass reliably there; `test:e2e` still runs them locally.
 
-Playwright covers SPM-43, the current SPM-45 API, the current SPM-46 API,
-the SPM-47 tenant-isolation contract, the role-home contracts for
+Playwright covers SPM-43, SPM-45 and SPM-46 (API and UI),
+SPM-47 tenant isolation (API and UI), SPM-127 attendee access, the role-home contracts for
 SPM-55 through SPM-59, the venue-catalogue contracts for SPM-8, SPM-9,
-SPM-10, SPM-17, SPM-60 through SPM-64, SPM-108, SPM-112, SPM-116, and SPM-122, and the
+SPM-10, SPM-17, SPM-60 through SPM-64, SPM-108, SPM-112, SPM-115, SPM-116, and SPM-122, the
 planning-review contracts for SPM-5, SPM-15, and SPM-65 through SPM-73,
-and the equipment contracts for SPM-2, SPM-3, SPM-4, and SPM-75 through
-SPM-78, and the request-and-change contracts for SPM-14, SPM-79 through
-SPM-83, SPM-85 through SPM-88, and SPM-106, and the
-registration-and-notification contracts for SPM-11, SPM-12, SPM-89
-through SPM-95, SPM-105, and SPM-6, and the Firebase auth contract for
-SPM-51. Case tables live in the team
+coordinator assignment for SPM-117 through SPM-119,
+the equipment contracts for SPM-2, SPM-3, SPM-4, and SPM-75 through
+SPM-78, the request-and-change contracts for SPM-14, SPM-79 through
+SPM-83, SPM-85 through SPM-88, and SPM-106, the safety review for SPM-120 and SPM-121,
+the registration-and-notification contracts for SPM-11, SPM-12, SPM-89
+through SPM-95, SPM-105, and SPM-6, the Firebase auth contract for
+SPM-51, and Singapore-time display and input (`e2e/sgt.spec.js`). Case tables live in the team
 test-case document. This folder is the run guide.
 
 ## Prerequisites
@@ -23,7 +24,7 @@ test-case document. This folder is the run guide.
 - Python deps for the services
 - `npm install` at the repo root and in `frontend/`
 - `npx playwright install chromium`
-- Repo-root `.env` from `.env.example` (Firebase web + Admin credentials)
+- A repo-root `.env` (gitignored) with the Firebase web settings `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, and `VITE_FIREBASE_APP_ID`, and `FIREBASE_CREDENTIALS_PATH` pointing to the Firebase Admin service account JSON. Ask a teammate for the values; CI writes the same file from its secrets
 - Seeded accounts from `Test Data/credentials-valid.txt`
 
 ## Run
@@ -35,10 +36,16 @@ npm run test:acceptance
 ```
 
 This starts MySQL, migrates, seeds, starts the backends and Vue app, then runs
-the filtered suite. `npm run test:e2e` does the same preparation and then runs
-every spec under `e2e/`, including the stories that `test:acceptance` omits.
-That is the command the `e2e` job runs on pushes to `dev` and `main`, and on
-pull requests into either branch.
+the filtered suite. That is the command the `e2e` job runs on pushes to `dev`
+and `main`, and on pull requests into either branch. `npm run test:e2e` does the
+same preparation and then runs every spec under `e2e/`, including the stories
+that `test:acceptance` omits. Playwright reuses backends and a Vue app that are
+already running.
+
+To run one test case from a known state, load its setup SQL first:
+`python scripts/test_setup.py TC-SPM43-AC01` resets the test database to the
+seed. Every case has one in `docs/testing/setup/`; see "Test case setup SQL" in
+the root README.
 
 The job reads these Actions secrets and writes them to a gitignored `.env` on
 the runner. They must be the Firebase project that owns the accounts in
@@ -80,7 +87,6 @@ npm run test:spm115
 npm run test:spm05
 npm run test:spm15
 npm run test:spm65
-npm run test:spm66
 npm run test:spm68
 npm run test:spm69
 npm run test:spm70
@@ -117,17 +123,71 @@ npm run test:spm93
 npm run test:spm94
 npm run test:spm95
 npm run test:spm51
+npm run test:spm117
+npm run test:spm118
+npm run test:spm119
+npm run test:spm120
+npm run test:spm121
+npm run test:spm127
 ```
 
-`test:acceptance` omits SPM-45 (its API specs collide with the seeded e1/v1 bookings), SPM-47, SPM-55 through SPM-59, the venue epic
-above, the planning-review epic (SPM-5, SPM-15, SPM-65 through SPM-73),
-the equipment epic (SPM-2, SPM-3, SPM-4, SPM-75 through SPM-78), the
-request-and-change epic (SPM-14, SPM-79 through SPM-83, SPM-85 through
-SPM-88, and SPM-106), and the registration-and-notification epic
-(SPM-11, SPM-12, SPM-89 through SPM-95, SPM-105, and SPM-6), and
-SPM-51. Use the story commands as their contracts.
+`e2e/sgt.spec.js` and `e2e/lead-dashboard.spec.js` have no story command; run them with `npx playwright test e2e/sgt.spec.js` (after `npm run test:prepare` on a fresh database).
+
+`test:acceptance` (what CI's e2e job runs) omits SPM-55, SPM-56, SPM-58, SPM-59,
+SPM-9, SPM-17, SPM-108, SPM-110, SPM-115, SPM-117 through SPM-119, the
+planning-review epic (SPM-5, SPM-15, SPM-65 through SPM-73), the equipment epic
+(SPM-2, SPM-3, SPM-4, SPM-75 through SPM-78), the request-and-change epic (SPM-14,
+SPM-79 through SPM-83, SPM-85 through SPM-88, and SPM-106), the
+registration-and-notification epic (SPM-11, SPM-12, SPM-89 through SPM-95, SPM-105,
+and SPM-6), SPM-120, SPM-121, SPM-123 and SPM-124. Use the story commands as their
+contracts. Each id in the omit list ends with `\b`, so it matches only that story:
+`SPM-11\b` omits SPM-11 but not SPM-112. CI runs every other spec, including SPM-8,
+SPM-10, SPM-43, SPM-45, SPM-46, SPM-47, SPM-51, SPM-60 through SPM-64, SPM-112, SPM-116,
+SPM-122, SPM-127, the Singapore-time spec, and the lead dashboard spec. Before removing a story from the list, run its spec twice in a row on a
+database with old test data, so it passes the same way every time.
 
 Failures: `test-results/`. HTML report: `playwright-report/`.
+
+## Test-case results CSV
+
+Results are kept in the team's test-case template: Test Case ID, Test Scenario,
+Pre-conditions, Test Steps, Test Data, Expected Result, Created By, Date of Creation,
+then Actual Result, Pass/Fail/Not Executed/Blocked, Remarks, Executed By and Date of
+Execution. Two columns are added: Test Level (Acceptance, Unit, Integration) and Story.
+
+- **Design half**: [`test-cases.csv`](test-cases.csv), one row per acceptance test case
+  ID. `npm run test:catalogue` adds any new ID from `traceability.md` or a spec, taking
+  Created By and Date of Creation from the commit that added the ID. It never
+  overwrites a filled cell, so write Pre-conditions, Test Steps, Test Data and
+  Expected Result straight into the file (Excel is fine).
+- **Results half**: every test run writes raw results to `test-reports/` (gitignored).
+  Playwright writes `e2e.jsonl`; `npm run test:unit` and `npm run test:integration`
+  write `unit.jsonl` and `integration.jsonl`.
+- **The CSVs**: `npm run test:report` joins the two into `test-reports/test-results.csv`
+  (one row per test case) and rolls that up into `test-reports/story-summary.csv` (one
+  row per user story, plus one per service for unit and integration tests, with
+  counts and the failed or blocked case IDs). `npm run test:report:save` also keeps
+  dated copies of both in `docs/testing/results/` to commit for a report or
+  submission. Run the full suites first, so the copies aren't a partial run.
+
+An acceptance case is Pass only when every test for its ID passes, Fail if any
+fails, and Blocked if any is skipped (the rule under the traceability table). A
+case none of whose tests ran is Not Executed, with the reason in Remarks: excluded
+from CI by `test:acceptance`, or not part of the run. Tests without a TC- ID are
+listed as `E2E-<spec>-NN` until they get one. Unit and integration tests have no
+case IDs, so each test is its own row (`UT-…`, `IT-…`), named after the test method.
+A story takes the worst status of its cases (Fail, then Blocked, then Not Executed,
+then Pass), so it is Pass only when every case passed; a partly run story is Not
+Executed, with how many cases didn't run in Remarks.
+
+In GitHub Actions the `report` job builds both CSVs after the `test` and `e2e` jobs,
+even when they fail. Download them as the `test-results` artifact on the run's page
+(kept 90 days); the page also shows a pass/fail table, the failed cases, and every
+story's status.
+
+Run unit tests while no backend is running. The venue-service unit tests reach a
+live event-service if one is up, which skips their error paths and drops coverage
+below 100%.
 
 ## Writing reliable specs
 
@@ -153,14 +213,17 @@ FIRST principles and the Week 9 advice on flaky tests, through `e2e/support/venu
 |---|---|---|
 | SPM-43 | TC-SPM43-AC01–AC07 | `e2e/spm43.spec.js` |
 | SPM-45 API | TC-SPM45-AC01–AC04 | `e2e/spm45-api.spec.js` |
-| SPM-45 UI | TC-SPM45-AC01–AC04 | `e2e/spm45-ui.contract.spec.js` (skipped until those screens exist) |
+| SPM-45 UI | TC-SPM45-AC01–AC04 | `e2e/spm45-ui.contract.spec.js` |
 | SPM-46 API | TC-SPM46-AC01–AC03 | `e2e/spm46-api.spec.js` |
-| SPM-46 UI | TC-SPM46-AC01–AC03 | `e2e/spm46-ui.contract.spec.js` (skipped until event details exists) |
-| SPM-47 API | TC-SPM47-AC01–AC03 | `e2e/spm47-api.spec.js` (fails until tenant isolation ships) |
-| SPM-47 UI | TC-SPM47-AC01–AC03 | `e2e/spm47-ui.contract.spec.js` (skipped until those screens exist) |
+| SPM-46 UI | TC-SPM46-AC01–AC03 | `e2e/spm46-ui.contract.spec.js` |
+| SPM-47 API | TC-SPM47-AC01 to AC04 | `e2e/spm47-api.spec.js` |
+| SPM-47 UI | TC-SPM47-AC01, AC03, AC04 | `e2e/spm47-ui.contract.spec.js` |
+| SPM-127 | TC-SPM127-AC01–AC03 (and AC01b, AC01c, AC03b, AC03c) | `e2e/spm127.spec.js` |
+| Singapore time | TC-SGT-AC01–AC05 (and AC01b, AC03b) | `e2e/sgt.spec.js` |
+| Lead dashboard | Lead dashboard prototype | `e2e/lead-dashboard.spec.js` |
 | SPM-55 | TC-SPM55-AC01–AC07 | `e2e/spm55.spec.js` |
 | SPM-56 | TC-SPM56-AC01–AC07 | `e2e/spm56.spec.js` |
-| SPM-57 | TC-SPM57-AC01–AC06 | `e2e/spm57.spec.js` |
+| SPM-57 | TC-SPM57-AC01 to AC06, AC01b | `e2e/spm57.spec.js` (in CI; makes its own venue and bookings) |
 | SPM-58 | TC-SPM58-AC01–AC07 | `e2e/spm58.spec.js` |
 | SPM-59 | TC-SPM59-AC01–AC06 | `e2e/spm59.spec.js` |
 | SPM-8 | TC-SPM08-AC01–AC11 (and AC01b, AC02b, AC06b, AC06c) | `e2e/spm08.spec.js` |
@@ -180,7 +243,6 @@ FIRST principles and the Week 9 advice on flaky tests, through `e2e/support/venu
 | SPM-5 | TC-SPM05-AC01–AC09 | `e2e/spm05.spec.js` |
 | SPM-15 | TC-SPM15-AC01–AC09 | `e2e/spm15.spec.js` |
 | SPM-65 | TC-SPM65-AC01–AC07 | `e2e/spm65.spec.js` |
-| SPM-66 | TC-SPM66-AC01–AC08 | `e2e/spm66.spec.js` |
 | SPM-68 | TC-SPM68-AC01–AC08 | `e2e/spm68.spec.js` |
 | SPM-69 | TC-SPM69-AC01–AC06 | `e2e/spm69.spec.js` |
 | SPM-70 | TC-SPM70-AC01–AC07 | `e2e/spm70.spec.js` |
@@ -219,16 +281,14 @@ FIRST principles and the Week 9 advice on flaky tests, through `e2e/support/venu
 | SPM-105 | TC-SPM105-AC01–AC06 | `e2e/spm105.spec.js` |
 | SPM-6 | TC-SPM06-AC01–AC04 | `e2e/spm06.spec.js` |
 | SPM-93 | TC-SPM93-AC01–AC11 | `e2e/spm93.spec.js` |
-| SPM-94 | TC-SPM94-AC01–AC08 | `e2e/spm94.spec.js` |
+| SPM-94 | TC-SPM94-AC01–AC12 | `e2e/spm94.spec.js` |
 | SPM-95 | TC-SPM95-AC01–AC08 | `e2e/spm95.spec.js` |
 | SPM-51 | TC-SPM51-AC01–AC04 | `e2e/spm51.spec.js` |
 
 SPM-43 uses `Test Data/credentials-valid.txt` and `credentials-invalid.txt`.
-SPM-45 through SPM-95 and SPM-51 use valid credentials only. Invalid login is 401;
+Every other spec uses valid credentials only. Invalid login is 401;
 wrong role or cross-tenant access is 403 or 404.
 
-When a skipped UI screen ships, remove the matching `test.skip` and re-run the
-story command. Assignment-gated 403s stay skipped until venue/equipment APIs
-check assignment, not only role.
+No spec skips a test. A spec for a story that is not built yet fails until the story ships, so keep its id in the `test:acceptance` omit list until then.
 
 See [traceability.md](traceability.md).

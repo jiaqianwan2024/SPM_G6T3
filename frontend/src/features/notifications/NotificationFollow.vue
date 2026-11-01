@@ -15,6 +15,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { markNotificationRead } from '../../api/notificationService.js'
 import { refreshUnreadCount } from './unreadCount.js'
 import { notificationTarget } from './target.js'
+import { session } from '../../store/session.js'
 
 // SPM-94 AC3 and AC5: opening a notification marks it read and goes to the
 // event or resource it concerns. A notification that is gone, or that is not
@@ -38,7 +39,7 @@ onMounted(async () => {
   try {
     const { data } = await markNotificationRead(route.params.id)
     refreshUnreadCount()
-    const target = notificationTarget(data)
+    const target = notificationTarget(data, session.role)
     if (target) {
       router.replace(target)
       return
@@ -58,7 +59,7 @@ onMounted(async () => {
 .panel {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 28px 24px;
 }
 .panel h1 { margin: 0 0 8px; font-size: 20px; font-weight: 500; color: var(--text); }

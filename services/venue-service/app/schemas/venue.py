@@ -257,6 +257,20 @@ class BookingReleaseRequest(BaseModel):
     model_config = ConfigDict(json_schema_extra={"example": {"eventId": "e1"}})
 
 
+class RestoredBooking(BaseModel):
+    """SPM-88 AC9: one booking a cancellation released, and the status to give back."""
+
+    bookingId: str = Field(min_length=1)
+    status: Literal["pending", "approved"]
+
+
+class BookingRestoreRequest(BaseModel):
+    """SPM-88 AC9: the cancellation failed further on, so its venue release is undone."""
+
+    eventId: str = Field(min_length=1)
+    bookings: list[RestoredBooking]
+
+
 class UnavailabilityCreate(BaseModel):
     """SPM-9: Venue Staff record a block. This does not change any event or booking."""
 
@@ -358,6 +372,46 @@ class BookingReverificationRequest(BaseModel):
     )
 
 
+class BookingReschedulePreview(BaseModel):
+    """SPM-87 AC2: try an event's new date and time against each of its bookings. Nothing is saved."""
+
+    eventId: str = Field(min_length=1)
+    startsAt: datetime
+    endsAt: datetime
+
+
+class BookingReschedule(BookingReschedulePreview):
+    """SPM-87: move an event's bookings to its new date and time."""
+
+    reason: str = Field(default="", description="Why the event moved, kept on each booking's note.")
+    carry: bool = Field(
+        default=True,
+        description="Carry each approved booking that is free and suitable at the new time across (AC3). False "
+        "releases every approved booking so the coordinator can search again.",
+    )
+
+
+class RescheduledBookingOut(BaseModel):
+    """One of the event's bookings judged at the new time (SPM-87 AC2), and on apply what happened to it."""
+
+    bookingId: str
+    venueId: str
+    venueName: str
+    status: str = Field(description="The booking's status: `pending` or `approved` before, as it is after on apply.")
+    free: bool = Field(description="No confirmed booking, active hold, or unavailability overlaps the new occupied window.")
+    suitable: bool = Field(description="The venue passes every other suitability point at the new time.")
+    verdict: Literal["suitable", "suitable with warnings", "not suitable"]
+    reasons: list[str] = Field(default=[], description="Failures first, then warnings.")
+    outcome: Literal["carried", "released", "moved"] | None = Field(
+        default=None,
+        description="Apply only. `carried`: an approved booking moved to the new time and flagged for Venue Staff "
+        "to re-confirm. `released`: an approved booking cancelled because it is not free or suitable (or not "
+        "carried), freeing the old time. `moved`: a pending request now asks for the new time.",
+    )
+    startsAt: datetime
+    endsAt: datetime
+
+
 class VenueBookingOut(BaseModel):
     bookingId: str
     venueId: str
@@ -420,6 +474,25 @@ class VenueBookingOut(BaseModel):
             }
         }
     )
+
+
+
+class VenueDashboardOut(BaseModel):
+    """SPM-57: Venue Staff's home screen. Every list holds bookings as the Booking Requests screen shows them."""
+
+    pending: list[VenueBookingOut] = Field(description="AC1: requests awaiting a decision, oldest first.")
+    reverification: list[VenueBookingOut] = Field(
+        description="AC2: confirmed bookings flagged after a significant change to their event, soonest first."
+    )
+    upcoming: list[VenueBookingOut] = Field(
+        description="AC3: confirmed bookings under way or starting within `upcomingDays`, soonest first."
+    )
+    upcomingDays: int = Field(description="How many days ahead `upcoming` looks.")
+
+class ReleasedBookingOut(VenueBookingOut):
+    """SPM-88: a booking an event cancellation released, with what it was, so the release can be undone."""
+
+    previousStatus: str = Field(description="`pending` or `approved`: the booking's status before the release.")
 
 
 class SuitabilityRequest(BaseModel):
@@ -505,6 +578,41 @@ class BookingClashOut(BaseModel):
     second: ClashingBooking
     overlapStartsAt: datetime = Field(description="When the two occupied windows start to overlap (UTC).")
     overlapEndsAt: datetime = Field(description="When they stop overlapping (UTC).")
+
+
+class CalendarEntryOut(BaseModel):
+    """SPM-108: one entry on a venue's calendar."""
+
+    kind: Literal["confirmed", "pending", "hold", "expired-hold", "unavailable"] = Field(
+        description=(
+            "`confirmed` an approved booking; `pending` a request with no active or expired hold; `hold` a "
+            "request on an active tentative hold; `expired-hold` a still-pending request whose hold has lapsed; "
+            "`unavailable` an unavailability period."
+        )
+    )
+    id: str = Field(description="The booking id, or the unavailability id for `unavailable`.")
+    startsAt: datetime = Field(
+        description="A booking's occupied window starts at its setup (SPM-112); a block starts when it starts."
+    )
+    endsAt: datetime = Field(description="A booking's occupied window ends after its turnaround; a block's end.")
+    eventId: str | None = None
+    eventName: str | None = Field(default=None, description="From the request, else event-service, else the event id.")
+    clientOrganisation: str | None = None
+    eventStartsAt: datetime | None = Field(default=None, description="The event's advertised start.")
+    eventEndsAt: datetime | None = Field(default=None, description="The event's advertised end.")
+    booking: VenueBookingOut | None = None
+    unavailability: UnavailabilityOut | None = None
+
+
+class VenueCalendarOut(BaseModel):
+    """SPM-108: what holds a venue in a period, with its opening hours (Singapore time)."""
+
+    venueId: str
+    venueName: str
+    operatingHours: list[OperatingHours]
+    setupMinutes: int
+    turnaroundMinutes: int
+    entries: list[CalendarEntryOut] = Field(description="Earliest first. Empty when nothing holds the venue.")
 
 
 class SuitabilityReason(BaseModel):

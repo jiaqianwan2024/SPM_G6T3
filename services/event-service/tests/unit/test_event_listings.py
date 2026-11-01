@@ -1,11 +1,73 @@
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 from app.core.config import settings
 from tests.unit.support import EventCase, draft_payload, event_create, insert_event
 
 
 class TestEventListings(EventCase):
+    def test_my_events_include_colleagues_submitted_events_but_not_their_drafts(self):
+        insert_event(self.db, eventId="e-mine", organiserId="u1", organisationId="org-1", status="confirmed")
+        insert_event(self.db, eventId="e-colleague", organiserId="u8", organisationId="org-1", status="confirmed")
+        insert_event(self.db, eventId="e-colleague-draft", organiserId="u8", organisationId="org-1", status="draft")
+        insert_event(self.db, eventId="e-foreign", organiserId="u7", organisationId="org-2", status="confirmed")
+
+        with_org = {row.eventId for row in self.service.list_my_events("u1", None, "org-1")}
+        without_org = {row.eventId for row in self.service.list_my_events("u1")}
+
+        self.assertEqual(with_org, {"e-mine", "e-colleague"})
+        self.assertEqual(without_org, {"e-mine"})
+
+    def test_the_full_list_for_an_organiser_stays_inside_their_organisation_and_has_no_drafts(self):
+        insert_event(self.db, eventId="e-mine", organiserId="u1", organisationId="org-1", status="confirmed")
+        insert_event(self.db, eventId="e-my-draft", organiserId="u1", organisationId="org-1", status="draft")
+        insert_event(self.db, eventId="e-colleague", organiserId="u8", organisationId="org-1", status="submitted")
+        insert_event(self.db, eventId="e-foreign", organiserId="u7", organisationId="org-2", status="confirmed")
+
+        caller = {"userId": "u1", "role": "organiser", "organisationId": "org-1"}
+        listed = {row.eventId for row in self.service.list_events(None, caller)}
+
+        self.assertEqual(listed, {"e-mine", "e-colleague"})
+
+    def test_an_organiser_can_open_only_their_own_organisations_event(self):
+        insert_event(self.db, eventId="e-own", organiserId="u1", organisationId="org-1", status="confirmed")
+        insert_event(self.db, eventId="e-foreign", organiserId="u7", organisationId="org-2", status="confirmed")
+        caller = {"userId": "u1", "role": "organiser", "organisationId": "org-1"}
+
+        self.assertEqual(self.service.get_event("e-own", None, caller).eventId, "e-own")
+        with self.assertRaises(HTTPException) as refused:
+            self.service.get_event("e-foreign", None, caller)
+        self.assertEqual(refused.exception.status_code, 403)
+        self.assertEqual(self.service.get_event("e-foreign", None, {"role": "coordinator"}).eventId, "e-foreign")
+
+    def test_a_list_reads_every_registration_count_in_one_call(self):
+        one = self.service.create_event(event_create(eventName="One"), "org-1", "o1")
+        two = self.service.create_event(event_create(eventName="Two"), "org-1", "o1")
+        batch = {one.eventId: 4, two.eventId: 0}
+        with (
+            patch("app.services.event_service.registration_counts", return_value=batch) as counts,
+            patch("app.services.event_service.registration_count") as single,
+        ):
+            rows = {row.eventId: row.registeredCount for row in self.service.list_my_events("org-1")}
+
+        self.assertEqual(rows[one.eventId], 4)
+        self.assertEqual(rows[two.eventId], 0)
+        counts.assert_called_once()
+        single.assert_not_called()
+
+    def test_a_list_falls_back_to_one_count_per_event_when_the_batch_fails(self):
+        event = self.service.create_event(event_create(eventName="Fallback"), "org-1", "o1")
+        with (
+            patch("app.services.event_service.registration_counts", return_value=None),
+            patch("app.services.event_service.registration_count", return_value=7) as single,
+        ):
+            rows = {row.eventId: row.registeredCount for row in self.service.list_my_events("org-1")}
+
+        self.assertEqual(rows[event.eventId], 7)
+        single.assert_called()
+
     def test_lists_filter_by_status_and_owner(self):
         submitted = self.service.create_event(event_create(eventName="Submitted"), "org-1", "o1")
         draft = self.service.create_draft(draft_payload(), "org-1", "o1")
@@ -98,7 +160,33 @@ class TestEventListings(EventCase):
         self.assertEqual(queue, ["e-0", "e-1", "e-2"])
         self.assertEqual(self.service.list_submission_queue(assigned_to="nobody"), [])
 
-    def test_a_proposed_date_is_near_on_the_threshold_and_not_one_second_later(self):
+    def test_completed_events_join_the_queue_only_when_asked_for(self):
+        insert_event(self.db, eventId="e-open", status="submitted", submittedAt=datetime(2026, 1, 1))
+        insert_event(self.db, eventId="e-done", status="completed", submittedAt=datetime(2026, 1, 2))
+
+        default = [row.eventId for row in self.service.list_submission_queue()]
+        included = [row.eventId for row in self.service.list_submission_queue(include_completed=True)]
+
+        self.assertEqual(default, ["e-open"])
+        self.assertEqual(included, ["e-open", "e-done"])
+
+    def test_assigned_events_are_the_coordinators_own_soonest_first_without_drafts(self):
+        insert_event(self.db, eventId="e-late", status="planning", coordinatorId="coord-1",
+                     proposedStartAt=datetime(2026, 12, 1, 9))
+        insert_event(self.db, eventId="e-soon", status="confirmed", coordinatorId="coord-1",
+                     proposedStartAt=datetime(2026, 11, 1, 9))
+        insert_event(self.db, eventId="e-done", status="completed", coordinatorId="coord-1",
+                     proposedStartAt=datetime(2026, 11, 15, 9))
+        insert_event(self.db, eventId="e-gone", status="discarded", coordinatorId="coord-1")
+        insert_event(self.db, eventId="e-other", status="planning", coordinatorId="coord-2")
+        insert_event(self.db, eventId="e-unassigned", status="submitted")
+
+        assigned = [row.eventId for row in self.service.list_assigned_events("coord-1")]
+
+        self.assertEqual(assigned, ["e-soon", "e-done", "e-late"])
+        self.assertEqual(self.service.list_assigned_events("nobody"), [])
+
+    def test_a_proposed_date_is_near_from_now_to_the_threshold_and_passed_once_gone_by(self):
         now = datetime(2026, 10, 3, 12, 0)
         limit = timedelta(days=settings.event_proposed_date_near_days)
         starts = {
@@ -107,6 +195,7 @@ class TestEventListings(EventCase):
             "e-inside": now + limit - timedelta(seconds=1),
             "e-on": now + limit,
             "e-past-limit": now + limit + timedelta(seconds=1),
+            "e-just-gone": now - timedelta(seconds=1),
             "e-already": now - timedelta(days=1),
         }
         for event_id, start in starts.items():
@@ -114,14 +203,16 @@ class TestEventListings(EventCase):
 
         with patch("app.services.event_service.datetime") as clock:
             clock.utcnow.return_value = now
-            flags = {row.eventId: row.dateNear for row in self.service.list_submission_queue()}
+            flags = {row.eventId: (row.dateNear, row.datePassed) for row in self.service.list_submission_queue()}
 
-        self.assertFalse(flags["e-none"])
-        self.assertTrue(flags["e-now"])
-        self.assertTrue(flags["e-inside"])
-        self.assertTrue(flags["e-on"])
-        self.assertFalse(flags["e-past-limit"])
-        self.assertTrue(flags["e-already"])
+        near, passed = (True, False), (False, True)
+        self.assertEqual(flags["e-none"], (False, False))
+        self.assertEqual(flags["e-now"], near)
+        self.assertEqual(flags["e-inside"], near)
+        self.assertEqual(flags["e-on"], near)
+        self.assertEqual(flags["e-past-limit"], (False, False))
+        self.assertEqual(flags["e-just-gone"], passed)
+        self.assertEqual(flags["e-already"], passed)
 
     def test_an_event_ending_at_this_instant_is_upcoming_and_one_microsecond_earlier_is_not(self):
         now = datetime(2026, 10, 3, 12, 0)

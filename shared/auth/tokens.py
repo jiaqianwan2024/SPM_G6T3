@@ -11,6 +11,7 @@ GOOGLE_APPLICATION_CREDENTIALS.
 """
 import json
 import os
+import threading
 from pathlib import Path
 
 import firebase_admin
@@ -20,13 +21,23 @@ from firebase_admin import auth as firebase_auth, credentials
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 _firebase_app: firebase_admin.App | None = None
+# A page can open with several requests to a service that has not served one yet.
+# Without the lock each would initialise the app, and every one after the first
+# fails with "The default Firebase app already exists", reported as a 401.
+_firebase_app_lock = threading.Lock()
 
 
 def get_firebase_app() -> firebase_admin.App:
     global _firebase_app
     if _firebase_app is not None:
         return _firebase_app
+    with _firebase_app_lock:
+        if _firebase_app is None:
+            _firebase_app = _initialize_firebase_app()
+    return _firebase_app
 
+
+def _initialize_firebase_app() -> firebase_admin.App:
     cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
     if cred_json:
         cred = credentials.Certificate(json.loads(cred_json))
@@ -38,8 +49,7 @@ def get_firebase_app() -> firebase_admin.App:
                 "(service account JSON) or FIREBASE_CREDENTIALS_PATH (a key file)."
             )
         cred = credentials.Certificate(cred_path)
-    _firebase_app = firebase_admin.initialize_app(cred)
-    return _firebase_app
+    return firebase_admin.initialize_app(cred)
 
 
 def verify_firebase_token(token: str) -> dict:

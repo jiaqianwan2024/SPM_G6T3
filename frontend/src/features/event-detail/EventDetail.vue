@@ -82,6 +82,15 @@
             </button>
             <button
               v-if="session.role === 'organiser' && event.status === 'draft'"
+              class="btn btn-solid"
+              data-testid="event-submit"
+              :disabled="submitting"
+              @click="submitFromPage"
+            >
+              {{ submitting ? 'Submitting…' : 'Submit request' }}
+            </button>
+            <button
+              v-if="session.role === 'organiser' && event.status === 'draft'"
               class="btn btn-outline"
               data-testid="event-discard"
               @click="openDiscardConfirm"
@@ -96,8 +105,35 @@
             >
               Mark completed
             </button>
+            <button
+              v-if="canReschedule"
+              class="btn btn-outline"
+              data-testid="event-reschedule"
+              @click="openReschedule"
+            >
+              Reschedule
+            </button>
+            <button
+              v-if="canCancel"
+              class="btn btn-outline danger"
+              data-testid="event-cancel"
+              @click="openCancel"
+            >
+              Cancel event
+            </button>
           </div>
         </header>
+
+        <!-- SPM-87 AC7: everyone who can open the event sees that it moved, and why. -->
+        <p v-if="lastReschedule && event.status !== 'cancelled'" class="notice" data-testid="event-rescheduled">
+          This event was rescheduled from {{ lastReschedule.oldValue }} to {{ lastReschedule.newValue }}.
+          <template v-if="lastReschedule.note">Reason: {{ lastReschedule.note }}</template>
+        </p>
+
+        <p v-if="event.status === 'cancelled'" class="notice" data-testid="event-cancelled-reason">
+          This event was cancelled<template v-if="event.cancelledAt"> on {{ formatSgt(event.cancelledAt) }}</template>.
+          <template v-if="event.cancellationReason">Reason: {{ event.cancellationReason }}</template>
+        </p>
 
         <p v-if="event.status === 'reconsidering'" class="notice attention" data-testid="event-reconsidering">
           <span data-testid="reverify-flag">
@@ -123,7 +159,7 @@
         >
           <p>
             <strong>Approved</strong><template v-if="decidedByName"> by {{ decidedByName }}</template>
-            on {{ formatUtc(decision.decidedAt) }}. ConnectSphere has taken this event on and preparation has started.
+            on {{ formatSgt(decision.decidedAt) }}. ConnectSphere has taken this event on and preparation has started.
           </p>
           <p v-if="decision.decisionNote">
             {{ session.role === 'organiser' ? 'Note from your coordinator' : 'Note to the organiser' }}:
@@ -139,13 +175,16 @@
         >
           <p>
             <strong>Rejected</strong><template v-if="decidedByName"> by {{ decidedByName }}</template>
-            on {{ formatUtc(decision.decidedAt) }}. Any venue or equipment held for this event has been released.
+            on {{ formatSgt(decision.decidedAt) }}. Any venue or equipment held for this event has been released.
             You can submit a new request at any time.
           </p>
           <p>Reason: {{ decision.decisionReason }}</p>
           <p v-if="decision.decisionNote">Explanation: {{ decision.decisionNote }}</p>
         </div>
         <p v-if="savedNote" class="notice" data-testid="event-edit-saved">{{ savedNote }}</p>
+        <!-- SPM-14 AC3: the organiser sees at once that the request went in, with its reference. -->
+        <p v-if="submittedNote" class="notice" data-testid="submit-confirmation">{{ submittedNote }}</p>
+        <p v-if="submitError" class="form-error" data-testid="submit-missing-fields">{{ submitError }}</p>
 
         <section
           v-if="session.role === 'organiser'"
@@ -189,6 +228,7 @@
           type="button"
           class="notice attention"
           data-testid="organiser-needs-action"
+          @click="openClarifications"
         >
           A clarification needs action.
         </button>
@@ -219,6 +259,7 @@
                 <dt>Expected attendance</dt>
                 <dd>{{ event.expectedAttendance }}</dd>
               </div>
+              <div class="wide" data-testid="event-organiser"><dt>Organiser</dt><dd>{{ [event.organisationName, organiser?.userName, organiser?.email].filter(Boolean).join(' · ') || event.organiserId }}</dd></div>
               <div
                 v-if="coordinator"
                 class="wide"
@@ -241,6 +282,11 @@
                 <dt>Registration</dt>
                 <dd v-if="event.registrationEnabled">
                   Needed · capacity {{ event.capacity }} · {{ registrationPeriod }}
+                  <span
+                    v-if="event.registrationDetailsOutstanding"
+                    class="status-pill attention"
+                    data-testid="registration-details-outstanding"
+                  >Details outstanding</span>
                 </dd>
                 <dd v-else class="muted">Not needed</dd>
               </div>
@@ -360,6 +406,21 @@
       @rejected="onRejected"
     />
 
+    <RescheduleEventDialog
+      v-if="rescheduling"
+      :event="event"
+      @close="rescheduling = false"
+      @rescheduled="onRescheduled"
+    />
+
+    <CancelEventDialog
+      v-if="cancelling"
+      :event="event"
+      :venue-name="venue.venueName"
+      @close="cancelling = false"
+      @cancelled="onCancelled"
+    />
+
     <EventEditForm
       v-if="editing"
       :event="event"
@@ -417,23 +478,29 @@ import { useRoute, useRouter } from 'vue-router'
 import { getReservationSummary, getEventReservations } from '../../api/equipmentService.js'
 import {
   getEvent,
+  submitDraft,
   discardEvent,
   completeEvent,
+  getActivityLog,
   getEventCoordinator,
   getEventDecision,
   getInternalNotes,
 } from '../../api/eventService.js'
 import { getPublicVenue, getVenueBookings } from '../../api/venueService.js'
+import { getUsers } from '../../api/userService.js'
 import {
   IN_REVIEW_EVENT_STATUSES,
   LOCKED_EVENT_STATUSES,
   REGISTRATION_SETUP_STATUSES,
+  RESCHEDULABLE_STATUSES,
   eventStatusLabel,
 } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt, formatSgtDate, formatSgtRange, formatSgtTime, parseServerTime } from '../../utils/datetime.js'
 import ApproveEventDialog from './ApproveEventDialog.vue'
 import RejectEventDialog from './RejectEventDialog.vue'
+import CancelEventDialog from './CancelEventDialog.vue'
+import RescheduleEventDialog from './RescheduleEventDialog.vue'
 import AssignCoordinatorDialog from './AssignCoordinatorDialog.vue'
 import EventChangeRequests from './EventChangeRequests.vue'
 import EventSafetyHandoff from './EventSafetyHandoff.vue'
@@ -446,6 +513,12 @@ import EventRequirements from './EventRequirements.vue'
 
 const route = useRoute()
 const router = useRouter()
+
+// SPM-15 AC4: the notice opens the clarification that is waiting on the organiser.
+function openClarifications() {
+  router.replace({ hash: '#clarifications' })
+  document.getElementById('clarifications')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 const event = ref(null)
 const loading = ref(true)
@@ -464,6 +537,7 @@ const editing = ref(false)
 const savedNote = ref('')
 
 const coordinator = ref(null)
+const organiser = ref(null)
 const assigning = ref(false)
 const decision = ref(null)
 const approving = ref(false)
@@ -473,9 +547,71 @@ function onRequirementsSaved(updated) {
   savedNote.value = 'Requirements saved.'
 }
 
+const cancelling = ref(false)
 const dialogOpen = computed(
-  () => assigning.value || approving.value || rejecting.value || editing.value || confirming.value || completing.value,
+  () =>
+    assigning.value ||
+    approving.value ||
+    rejecting.value ||
+    editing.value ||
+    confirming.value ||
+    completing.value ||
+    cancelling.value,
 )
+
+// SPM-88 AC1: the organiser, or the assigned coordinator, while the event is still live.
+// The server applies the same rule, including the organiser's own organisation.
+const canCancel = computed(
+  () =>
+    !!event.value &&
+    !LOCKED_EVENT_STATUSES.includes(event.value.status) &&
+    (session.role === 'organiser' ||
+      (session.role === 'coordinator' && event.value.coordinatorId === session.userId)),
+)
+
+function openCancel() {
+  savedNote.value = ''
+  cancelling.value = true
+}
+
+// SPM-87 AC1: the assigned coordinator, while the event is approved through confirmed.
+const rescheduling = ref(false)
+const lastReschedule = ref(null)
+const canReschedule = computed(
+  () =>
+    session.role === 'coordinator' &&
+    !!event.value?.coordinatorId &&
+    event.value.coordinatorId === session.userId &&
+    RESCHEDULABLE_STATUSES.includes(event.value.status),
+)
+
+function openReschedule() {
+  savedNote.value = ''
+  rescheduling.value = true
+}
+
+function onRescheduled(moved) {
+  rescheduling.value = false
+  event.value = moved
+  savedNote.value = ['The event was rescheduled.', ...(moved.messages || [])].join(' ')
+  loadReschedule()
+  loadArrangements()
+}
+
+async function loadReschedule() {
+  try {
+    const { data } = await getActivityLog(event.value.eventId)
+    lastReschedule.value = [...data].reverse().find((row) => row.kind === 'reschedule') || null
+  } catch {
+    lastReschedule.value = null
+  }
+}
+
+function onCancelled(cancelled) {
+  cancelling.value = false
+  event.value = cancelled
+  savedNote.value = 'The event was cancelled. Its venue and equipment were released, and everyone involved was told.'
+}
 
 // SPM-69 AC1/AC5: only the assigned coordinator, and only once the request is
 // under review — so never while it is unassigned. The server enforces the same.
@@ -497,7 +633,7 @@ const canSetUpRegistration = computed(
 const registrationPeriod = computed(() => {
   const { registrationOpensAt: opens, registrationClosesAt: closes } = event.value || {}
   if (!opens && !closes) return 'period not set yet'
-  const when = (value) => (value ? new Date(value).toLocaleString() : 'not set')
+  const when = (value) => (value ? formatSgt(value) : 'not set')
   return `opens ${when(opens)}, closes ${when(closes)}`
 })
 const decidedByName = computed(() =>
@@ -521,12 +657,12 @@ const releasedOutcome = computed(() => outcomes.value.find((row) => row.status =
 
 const confirmedDate = computed(() => {
   if (!event.value?.proposedStartAt) return ''
-  return new Date(event.value.proposedStartAt).toLocaleDateString()
+  return formatSgtDate(event.value.proposedStartAt)
 })
 
 const confirmedTime = computed(() => {
   if (!event.value?.proposedStartAt) return ''
-  return new Date(event.value.proposedStartAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return `${formatSgtTime(event.value.proposedStartAt)} SGT`
 })
 
 const equipmentSummary = computed(() => {
@@ -570,7 +706,7 @@ const canComplete = computed(
     event.value.coordinatorId === session.userId &&
     event.value.status === 'confirmed' &&
     !!event.value.proposedEndAt &&
-    new Date(event.value.proposedEndAt).getTime() <= Date.now(),
+    parseServerTime(event.value.proposedEndAt).getTime() <= Date.now(),
 )
 
 const showEquipment = computed(
@@ -601,7 +737,7 @@ function goBack() {
 function formatRange(start, end) {
   if (!start && !end) return 'No date set yet'
   if (!start || !end) return 'Date incomplete'
-  return `${new Date(start).toLocaleString()} – ${new Date(end).toLocaleString()}`
+  return formatSgtRange(start, end)
 }
 
 async function load() {
@@ -620,6 +756,8 @@ async function load() {
     loading.value = false
   }
   if (event.value && session.role === 'coordinator') loadInternalNotes()
+  if (event.value && session.role !== 'attendee') loadOrganiser()
+  if (event.value) loadReschedule()
   if (event.value && CONTACT_ROLES.includes(session.role)) {
     loadCoordinator()
     loadDecision()
@@ -726,6 +864,16 @@ function onApproved(approved) {
   savedNote.value = 'Request approved. The organiser has been notified.'
 }
 
+// Who raised the request, so staff know who they are asking before a clarification. Best effort.
+async function loadOrganiser() {
+  try {
+    const { data } = await getUsers()
+    organiser.value = data.find((user) => user.userId === event.value.organiserId) || null
+  } catch {
+    organiser.value = null
+  }
+}
+
 // SPM-66 AC5: the organiser's one person to deal with. Best effort, like the notes.
 async function loadCoordinator() {
   try {
@@ -778,6 +926,40 @@ function onSaved(updated) {
   savedNote.value = flagged.length
     ? `Changes saved. Marked for re-verification: ${flagged.map((item) => item.summary).join('; ')}.`
     : 'Changes saved.'
+}
+
+// SPM-14 AC1: the field names the server lists as missing, as the form labels them.
+const SUBMIT_LABELS = {
+  eventName: 'Event name',
+  category: 'Category',
+  purpose: 'Purpose',
+  proposedStartAt: 'Start',
+  proposedEndAt: 'End',
+  expectedAttendance: 'Expected attendance',
+}
+const submitting = ref(false)
+const submittedNote = ref('')
+const submitError = ref('')
+
+async function submitFromPage() {
+  submitting.value = true
+  submittedNote.value = ''
+  submitError.value = ''
+  try {
+    const { data } = await submitDraft(event.value.eventId)
+    event.value = data
+    submittedNote.value = `${data.eventName} was submitted to ConnectSphere. Reference: ${data.eventId}.`
+  } catch (err) {
+    const detail = err.response?.data?.detail
+    const missing = typeof detail === 'string' && detail.startsWith('Missing ')
+      ? detail.slice(8).split(', ').map((field) => SUBMIT_LABELS[field] || field)
+      : null
+    submitError.value = missing
+      ? `Still needed to submit: ${missing.join(', ')}. Edit the draft to add them.`
+      : (typeof detail === 'string' && detail) || 'The request could not be submitted. Please try again.'
+  } finally {
+    submitting.value = false
+  }
 }
 
 function openDiscardConfirm() {
@@ -846,7 +1028,7 @@ onMounted(load)
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin-top: 16px;
 }
@@ -895,7 +1077,7 @@ onMounted(load)
   color: var(--halo);
   background: rgba(124, 77, 255, .1);
   border: 1px solid rgba(167, 139, 250, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 0;
 }
@@ -912,6 +1094,8 @@ div.notice p + p { margin-top: 6px; }
   background: rgba(255, 170, 80, .08);
   border-color: rgba(255, 196, 120, .3);
 }
+/* SPM-88: cancelling is final, so its button reads as a warning. */
+.btn-outline.danger { color: #ffb4b4; border-color: rgba(255, 180, 180, .5); }
 
 .layout { display: grid; gap: 18px; }
 .layout.split { grid-template-columns: minmax(280px, 0.9fr) minmax(340px, 1.1fr); align-items: start; }
@@ -921,7 +1105,7 @@ div.notice p + p { margin-top: 6px; }
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
 }
 .panel h2 { margin: 0 0 16px; font-size: 16px; font-weight: 500; }
@@ -952,7 +1136,7 @@ div.notice p + p { margin-top: 6px; }
   background: linear-gradient(160deg, #1A0C3B, #0D0524);
   border: 1px solid rgba(167, 139, 250, .28);
   box-shadow: 0 30px 90px rgba(4, 1, 12, .7), 0 0 60px rgba(124, 77, 255, .18);
-  border-radius: 18px;
+  border-radius: var(--radius);
   padding: 30px;
   width: 360px;
 }

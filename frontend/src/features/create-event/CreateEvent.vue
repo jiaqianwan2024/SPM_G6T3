@@ -1,19 +1,22 @@
 <template>
   <div class="create-event">
     <!-- Success state — the created/submitted event, straight from the API response -->
-    <div v-if="created" class="result-card">
+    <div v-if="created" class="result-card" data-testid="submit-confirmation">
       <h3>Event request submitted</h3>
       <p>
         <strong>{{ created.eventName }}</strong> was saved as a
         <span class="status-pill">{{ created.status }}</span>.
       </p>
       <p class="result-id">Reference: {{ created.eventId }}</p>
+      <p v-if="created.registrationDetailsOutstanding" class="field-note" data-testid="registration-outstanding-note">
+        Registration details (period or capacity) are still to be set. The coordinator has been flagged to follow up.
+      </p>
       <button class="btn btn-solid" @click="startAnother">Create another</button>
     </div>
 
     <form v-else class="form-card" @submit.prevent="submit">
       <p class="form-intro">
-        Fields marked <span class="req">*</span> are required to submit — save a draft any time
+        Fields marked <span class="req">*</span> are required to submit. You can save a draft any time
         with just an event name.
       </p>
       <p v-if="editingEventId" class="draft-banner">Editing a saved draft.</p>
@@ -24,6 +27,7 @@
           <input
             id="eventName"
             v-model.trim="form.eventName"
+            data-testid="event-name-input"
             type="text"
             placeholder="e.g. Q3 Partner Summit"
           />
@@ -31,13 +35,14 @@
 
           <div class="row">
             <div class="col">
-              <label for="proposedStartAt">Starts <span class="req">*</span></label>
-              <input id="proposedStartAt" v-model="form.proposedStartAt" type="datetime-local" />
+              <label for="proposedStartAt">Starts (SGT) <span class="req">*</span></label>
+              <input id="proposedStartAt" v-model="form.proposedStartAt" type="datetime-local" :min="today" />
               <p v-if="submitted && !form.proposedStartAt" class="field-error">Start date is required.</p>
+              <p v-else-if="submitted && startInPast" class="field-error">Pick a start from today onwards.</p>
             </div>
             <div class="col">
-              <label for="proposedEndAt">Ends <span class="req">*</span></label>
-              <input id="proposedEndAt" v-model="form.proposedEndAt" type="datetime-local" />
+              <label for="proposedEndAt">Ends (SGT) <span class="req">*</span></label>
+              <input id="proposedEndAt" v-model="form.proposedEndAt" type="datetime-local" :min="laterInput(today, form.proposedStartAt)" />
               <p v-if="submitted && !form.proposedEndAt" class="field-error">End date is required.</p>
               <p v-else-if="submitted && endBeforeStart" class="field-error">
                 End must be after the start.
@@ -48,22 +53,30 @@
           <div class="row">
             <div class="col">
               <label for="expectedAttendance">Expected attendance <span class="req">*</span></label>
-              <input id="expectedAttendance" v-model.number="form.expectedAttendance" type="number" min="0" />
+              <input
+                id="expectedAttendance"
+                v-model.number="form.expectedAttendance"
+                type="number"
+                min="1"
+                data-testid="expected-attendance"
+              />
               <p v-if="submitted && !isValidAttendance" class="field-error">
-                Enter an attendance of 0 or more.
+                Enter an attendance of at least 1.
               </p>
             </div>
             <div class="col">
-              <label for="category">Category</label>
-              <select id="category" v-model="form.category">
-                <option :value="null">Not specified</option>
+              <label for="category">Category <span class="req">*</span></label>
+              <select id="category" v-model="form.category" data-testid="create-category">
+                <option :value="null" disabled>Choose a category</option>
                 <option v-for="option in categories" :key="option" :value="option">{{ option }}</option>
               </select>
+              <p v-if="submitted && !form.category" class="field-error">Choose a category.</p>
             </div>
           </div>
 
-          <label for="purpose">Purpose</label>
-          <input id="purpose" v-model.trim="form.purpose" type="text" placeholder="What is this event for?" />
+          <label for="purpose">Purpose <span class="req">*</span></label>
+          <input id="purpose" v-model.trim="form.purpose" type="text" placeholder="What is this event for?" data-testid="create-purpose" />
+          <p v-if="submitted && !form.purpose" class="field-error">Purpose is required.</p>
 
           <label for="description">Description</label>
           <textarea
@@ -72,6 +85,57 @@
             rows="5"
             placeholder="Any extra detail a coordinator should know"
           ></textarea>
+
+          <fieldset class="checks registration" data-testid="registration-section">
+            <legend>Attendee registration <span class="req">*</span></legend>
+            <label>
+              <input v-model="form.registrationEnabled" type="radio" name="registrationNeeded" :value="true" data-testid="registration-needed" />
+              Registration is needed
+            </label>
+            <label>
+              <input v-model="form.registrationEnabled" type="radio" name="registrationNeeded" :value="false" data-testid="registration-not-needed" />
+              Not needed
+            </label>
+            <p v-if="submitted && form.registrationEnabled === null" class="field-error wide">
+              Say whether attendee registration is needed.
+            </p>
+
+            <div v-if="form.registrationEnabled" class="registration-details">
+              <p class="hint">
+                Optional. Leave anything blank and the coordinator will be told it is still to be set.
+              </p>
+              <label for="registrationOpensAt">Opens</label>
+              <input id="registrationOpensAt" v-model="form.registrationOpensAt" type="datetime-local" :min="today" data-testid="registration-opens" />
+              <label for="registrationClosesAt">Closes</label>
+              <input id="registrationClosesAt" v-model="form.registrationClosesAt" type="datetime-local" :min="laterInput(today, form.registrationOpensAt)" data-testid="registration-closes" />
+              <p v-if="closeNotAfterOpen" class="field-error" data-testid="registration-close-error">
+                Registration must close after it opens.
+              </p>
+              <p v-else-if="closeAfterStart" class="field-error" data-testid="registration-close-error">
+                Registration must close no later than the event starts.
+              </p>
+              <label for="registrationCapacity">Registration capacity</label>
+              <input
+                id="registrationCapacity"
+                v-model.number="form.capacity"
+                type="number"
+                min="0"
+                data-testid="registration-capacity"
+              />
+            </div>
+          </fieldset>
+
+          <div v-if="capacityWarning" class="capacity-warning" role="alert" data-testid="capacity-above-attendance-warning">
+            <p>
+              Registration capacity ({{ form.capacity }}) is above the expected attendance
+              ({{ form.expectedAttendance }}). You can go ahead; the coordinator will check it against the
+              real venue capacity.
+            </p>
+            <button class="btn btn-solid" type="button" data-testid="capacity-proceed" @click="proceedDespiteCapacity">
+              Proceed anyway
+            </button>
+            <button class="btn btn-outline" type="button" @click="capacityWarning = false">Change it</button>
+          </div>
         </div>
 
         <div class="form-col">
@@ -120,6 +184,9 @@
         </div>
       </div>
 
+      <p v-if="submitted && missingFields.length" class="form-error" data-testid="submit-missing-fields">
+        Still needed to submit: {{ missingFields.join(', ') }}.
+      </p>
       <p v-if="error" class="form-error">{{ error }}</p>
       <p v-if="draftError" class="form-error">{{ draftError }}</p>
       <p v-if="draftSavedMessage" class="draft-saved">{{ draftSavedMessage }}</p>
@@ -129,11 +196,12 @@
           class="btn btn-outline"
           type="button"
           :disabled="!form.eventName || draftSaving"
+          data-testid="event-save-draft"
           @click="saveAsDraft"
         >
           {{ draftSaving ? 'Saving draft…' : 'Save as draft' }}
         </button>
-        <button class="btn btn-solid" type="submit" :disabled="saving">
+        <button class="btn btn-solid" type="submit" :disabled="saving" data-testid="event-submit">
           {{ saving ? 'Saving…' : 'Create event request' }}
         </button>
       </div>
@@ -143,14 +211,19 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { createEvent, getEvent, getRequirementOptions, saveDraft, submitDraft, updateDraft } from '../../api/eventService.js'
-import { EVENT_CATEGORIES } from '../../config/eventFields.js'
+import { createEvent, getEvent, saveDraft, submitDraft, updateDraft } from '../../api/eventService.js'
+import { useRequirementOptions } from '../../composables/requirementOptions.js'
 import { consumeEditingId, setDirty } from '../../store/draftEditor.js'
+import { fromSgtInput, laterInput, sgtMinInput, toSgtInput } from '../../utils/datetime.js'
 
-const categories = EVENT_CATEGORIES
-const layouts = ref(['No preference', 'Theatre', 'Boardroom', 'Classroom', 'Banquet'])
-const facilities = ref(['Projector', 'PA system', 'Video-conferencing', 'Stage'])
-const accessibility = ref(['Wheelchair accessible', 'Hearing loop'])
+// SPM-80: what the active venues offer, and the categories event-service accepts.
+const { options: choices, ready: choicesReady } = useRequirementOptions()
+// A choice saved before the lists changed stays on screen, so it can still be seen and undone.
+const withChosen = (list, chosen) => [...list, ...[].concat(chosen || []).filter((value) => value && !list.includes(value))]
+const categories = computed(() => choices.categories)
+const layouts = computed(() => withChosen(choices.layouts, form.layoutPreference))
+const facilities = computed(() => withChosen(choices.facilities, form.requiredFacilities))
+const accessibility = computed(() => withChosen(choices.accessibility, form.accessibilityNeeds))
 
 function blankForm() {
   return {
@@ -167,20 +240,28 @@ function blankForm() {
     preferredLocation: '',
     requiredFacilities: [],
     accessibilityNeeds: [],
-    accessibilityNote: ''
+    accessibilityNote: '',
+    // null until the organiser answers: submitting needs a Yes or a No (SPM-81 AC1).
+    registrationEnabled: null,
+    registrationOpensAt: '',
+    registrationClosesAt: '',
+    capacity: null
   }
 }
 
-// datetime-local inputs need "YYYY-MM-DDTHH:mm"; the API returns full ISO
-// strings (or null, for a draft that never got that far).
+// A request cannot be for a date that has passed, so the pickers start at today.
+const today = sgtMinInput()
+
+// datetime-local inputs need "YYYY-MM-DDTHH:mm" in Singapore time; the API returns
+// UTC ISO strings (or null, for a draft that never got that far).
 function toInputDatetime(iso) {
-  return iso ? iso.slice(0, 16) : ''
+  return toSgtInput(iso)
 }
 
-// The reverse: an empty input must become null, not "", to satisfy the
+// The reverse, as UTC: an empty input must become null, not "", to satisfy the
 // backend's Optional[datetime] draft schema.
 function toPayloadDatetime(value) {
-  return value || null
+  return fromSgtInput(value) || null
 }
 
 const fieldLabels = {
@@ -197,7 +278,11 @@ const fieldLabels = {
   preferredLocation: 'Preferred location',
   requiredFacilities: 'Facilities',
   accessibilityNeeds: 'Accessibility',
-  accessibilityNote: 'Accessibility note'
+  accessibilityNote: 'Accessibility note',
+  registrationEnabled: 'Registration needed',
+  registrationOpensAt: 'Registration opens',
+  registrationClosesAt: 'Registration closes',
+  capacity: 'Registration capacity'
 }
 
 function errorText(detail, fallback) {
@@ -222,8 +307,9 @@ const draftSavedMessage = ref('')
 const draftError = ref('')
 const lastSaved = ref('')
 
+// SPM-14 AC1: at least one person is expected. A draft may still save any number.
 const isValidAttendance = computed(
-  () => typeof form.expectedAttendance === 'number' && form.expectedAttendance >= 0
+  () => typeof form.expectedAttendance === 'number' && form.expectedAttendance >= 1
 )
 const endBeforeStart = computed(
   () =>
@@ -232,13 +318,63 @@ const endBeforeStart = computed(
     new Date(form.proposedEndAt) <= new Date(form.proposedStartAt)
 )
 
+const startInPast = computed(() => !!form.proposedStartAt && form.proposedStartAt < today)
+
+// SPM-81 AC4/AC5: mirrors the server's registration-period rules.
+const closeNotAfterOpen = computed(
+  () =>
+    !!form.registrationEnabled &&
+    !!form.registrationOpensAt &&
+    !!form.registrationClosesAt &&
+    new Date(form.registrationClosesAt) <= new Date(form.registrationOpensAt)
+)
+const closeAfterStart = computed(
+  () =>
+    !!form.registrationEnabled &&
+    !!form.registrationClosesAt &&
+    !!form.proposedStartAt &&
+    new Date(form.registrationClosesAt) > new Date(form.proposedStartAt)
+)
+// SPM-81 AC6: a warning, never a block.
+const capacityAboveAttendance = computed(
+  () =>
+    !!form.registrationEnabled &&
+    typeof form.capacity === 'number' &&
+    typeof form.expectedAttendance === 'number' &&
+    form.capacity > form.expectedAttendance
+)
+const capacityWarning = ref(false)
+const capacityAcknowledged = ref(false)
+let afterCapacityWarning = null
+
+// SPM-14 AC1 / SPM-82 AC1: every required field still missing, listed by the submit button.
+const missingFields = computed(() =>
+  [
+    ['Event name', !form.eventName],
+    ['Category', !form.category],
+    ['Purpose', !form.purpose],
+    ['Start', !form.proposedStartAt],
+    ['End', !form.proposedEndAt],
+    ['Expected attendance', !isValidAttendance.value],
+    ['Attendee registration', form.registrationEnabled === null],
+  ]
+    .filter(([, missing]) => missing)
+    .map(([label]) => label)
+)
+
 const isValid = computed(
   () =>
     !!form.eventName &&
+    !!form.category &&
+    !!form.purpose &&
     !!form.proposedStartAt &&
     !!form.proposedEndAt &&
+    !startInPast.value &&
     !endBeforeStart.value &&
-    isValidAttendance.value
+    isValidAttendance.value &&
+    form.registrationEnabled !== null &&
+    !closeNotAfterOpen.value &&
+    !closeAfterStart.value
 )
 
 const isDirty = computed(() => JSON.stringify(form) !== lastSaved.value)
@@ -252,7 +388,7 @@ function populateFormFromEvent(data) {
   form.eventName = data.eventName || ''
   form.purpose = data.purpose || ''
   form.description = data.description || ''
-  form.category = categories.find((option) => option.toLowerCase() === String(data.category || '').toLowerCase()) ?? data.category ?? null
+  form.category = categories.value.find((option) => option.toLowerCase() === String(data.category || '').toLowerCase()) ?? data.category ?? null
   form.proposedStartAt = toInputDatetime(data.proposedStartAt)
   form.proposedEndAt = toInputDatetime(data.proposedEndAt)
   form.expectedAttendance = data.expectedAttendance ?? null
@@ -263,6 +399,11 @@ function populateFormFromEvent(data) {
   form.requiredFacilities = [...(data.requiredFacilities || [])]
   form.accessibilityNeeds = [...(data.accessibilitySelections || [])]
   form.accessibilityNote = data.accessibilityNote || ''
+  // A draft that never answered comes back as not needed; show it as unanswered so submitting asks.
+  form.registrationEnabled = data.registrationEnabled ? true : null
+  form.registrationOpensAt = toInputDatetime(data.registrationOpensAt)
+  form.registrationClosesAt = toInputDatetime(data.registrationClosesAt)
+  form.capacity = data.registrationEnabled ? data.capacity ?? null : null
 }
 
 function buildPayload() {
@@ -280,9 +421,39 @@ function buildPayload() {
     preferredLocation: form.preferredLocation,
     requiredFacilities: form.requiredFacilities,
     accessibilityNeeds: form.accessibilityNeeds,
-    accessibilityNote: form.accessibilityNote
+    accessibilityNote: form.accessibilityNote,
+    registrationEnabled: form.registrationEnabled,
+    registrationOpensAt: form.registrationEnabled ? toPayloadDatetime(form.registrationOpensAt) : null,
+    registrationClosesAt: form.registrationEnabled ? toPayloadDatetime(form.registrationClosesAt) : null,
+    capacity: form.registrationEnabled ? form.capacity ?? 0 : 0
   }
 }
+
+// Holds the save or submit while the capacity warning is shown; "Proceed anyway" resumes it.
+function warnOnceAboutCapacity(action) {
+  if (capacityAboveAttendance.value && !capacityAcknowledged.value) {
+    capacityWarning.value = true
+    afterCapacityWarning = action
+    return true
+  }
+  return false
+}
+
+function proceedDespiteCapacity() {
+  capacityAcknowledged.value = true
+  capacityWarning.value = false
+  const action = afterCapacityWarning
+  afterCapacityWarning = null
+  if (action) action()
+}
+
+watch(
+  () => [form.capacity, form.expectedAttendance, form.registrationEnabled],
+  () => {
+    capacityAcknowledged.value = false
+    capacityWarning.value = false
+  }
+)
 
 function handleBeforeUnload(event) {
   if (isDirty.value) {
@@ -296,6 +467,8 @@ function startAnother() {
   submitted.value = false
   error.value = ''
   created.value = null
+  capacityWarning.value = false
+  capacityAcknowledged.value = false
   editingEventId.value = null
   draftSavedMessage.value = ''
   draftError.value = ''
@@ -306,6 +479,8 @@ async function saveAsDraft() {
   draftError.value = ''
   draftSavedMessage.value = ''
   if (!form.eventName) return // Save as draft is disabled without a name (AC1); nothing else is required.
+  if (closeNotAfterOpen.value || closeAfterStart.value) return // The message is already showing.
+  if (warnOnceAboutCapacity(saveAsDraft)) return
 
   draftSaving.value = true
   try {
@@ -328,6 +503,7 @@ async function submit() {
   // Mirrors the server's own rules so obvious mistakes don't cost a round trip;
   // the API re-validates everything regardless.
   if (!isValid.value) return
+  if (warnOnceAboutCapacity(submit)) return
 
   saving.value = true
   try {
@@ -344,14 +520,7 @@ async function submit() {
 }
 
 onMounted(async () => {
-  try {
-    const { data } = await getRequirementOptions()
-    if (data.layouts?.length) layouts.value = data.layouts
-    if (data.facilities?.length) facilities.value = data.facilities
-    if (data.accessibility?.length) accessibility.value = data.accessibility
-  } catch {
-    // The published fallback lists above still let a draft be saved.
-  }
+  await choicesReady
   const id = consumeEditingId()
   if (id) {
     try {
@@ -388,14 +557,14 @@ onUnmounted(() => {
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 26px 28px;
 }
 
 .form-intro { font-size: 13px; line-height: 1.7; color: var(--muted); margin: 0 0 18px; }
 .checks {
   border: 1px solid var(--hairline);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 12px 14px 8px;
   margin: 0 0 16px;
   display: flex;
@@ -420,12 +589,36 @@ onUnmounted(() => {
   color: var(--body);
 }
 .checks input { width: auto; height: auto; margin: 0; }
+.registration .wide { flex-basis: 100%; }
+.registration-details { flex-basis: 100%; }
+/* The details are ordinary stacked fields, not radio options: undo the .checks styling above. */
+.registration-details label {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.registration-details input { width: 100%; height: 42px; margin: 0 0 16px; }
+.registration-details .hint, .field-note { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
+.capacity-warning {
+  font-size: 13px;
+  color: var(--body);
+  background: rgba(255, 196, 87, .08);
+  border: 1px solid rgba(255, 196, 87, .3);
+  border-radius: var(--radius);
+  padding: 11px 14px;
+  margin: 0 0 16px;
+}
+.capacity-warning p { margin: 0 0 10px; }
+.capacity-warning .btn { margin-right: 10px; }
 .draft-banner {
   font-size: 12px;
   color: var(--halo);
   background: rgba(124, 77, 255, .12);
   border: 1px dashed rgba(167, 139, 250, .35);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 8px 12px;
   margin: 0 0 18px;
 }
@@ -446,13 +639,13 @@ textarea {
   width: 100%;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 0 12px;
   height: 42px;
   margin-bottom: 16px;
   font-size: 14px;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
   transition: border-color .35s var(--ease-out), box-shadow .35s var(--ease-out);
 }
 textarea { height: auto; padding: 11px 12px; resize: vertical; line-height: 1.6; }
@@ -461,6 +654,14 @@ input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: rgba(167, 139, 250, .6);
   box-shadow: 0 0 0 3px rgba(124, 77, 255, .16);
+}
+select {
+  appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23FFFFFF' d='M1.4.6 6 5.2 10.6.6 12 2 6 8 0 2z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  cursor: pointer;
 }
 select option { background: #1A1030; color: #F3EEFF; }
 
@@ -473,7 +674,7 @@ select option { background: #1A1030; color: #F3EEFF; }
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 4px 0 16px;
 }
@@ -482,7 +683,7 @@ select option { background: #1A1030; color: #F3EEFF; }
   font-size: 13px;
   background: rgba(124, 77, 255, .1);
   border: 1px solid rgba(167, 139, 250, .3);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 4px 0 16px;
 }

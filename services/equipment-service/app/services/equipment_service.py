@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from uuid import uuid4
 
 import httpx
@@ -7,7 +7,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.orchestration.clients import event_recipients, publish_notification
+from typing import Callable
+
+from app.orchestration.clients import event_recipients, publish_notification, technical_support_recipients
 
 from app.dao.equipment_activity_log_dao import EquipmentActivityLogDAO
 from app.dao.equipment_dao import EquipmentDAO
@@ -30,6 +32,15 @@ from app.schemas.equipment import (
     EquipmentReservationOut,
     EquipmentUpdate,
     OutOfServiceCounts,
+    ReleasedReservationOut,
+    RescheduledReservationOut,
+    ReservationReschedule,
+    ReservationReschedulePreview,
+    RestoredReservation,
+    SuppliedEventOut,
+    TechDashboardOut,
+    TechWorkItemOut,
+    UpcomingEventOut,
 )
 from shared.exceptions.http import conflict, forbidden
 from shared.services.base import BaseService
@@ -46,6 +57,37 @@ def _naive(value: datetime) -> datetime:
     if value.tzinfo is not None:
         return value.astimezone(timezone.utc).replace(tzinfo=None)
     return value
+
+
+def _reschedule_period(data: ReservationReschedulePreview) -> tuple[datetime, datetime]:
+    starts_at, ends_at = _naive(data.startsAt), _naive(data.endsAt)
+    if ends_at <= starts_at:
+        raise HTTPException(status_code=422, detail="The end time must be after the start time.")
+    return starts_at, ends_at
+
+
+_RESERVED_DONE = {"reserved", "complete", "resolved"}
+_PARTLY = _RESERVED_DONE | {"partial"}
+_UNAVAILABLE = {"unavailable", "rejected"}
+_NEEDS_ATTENTION = {"attention", "partial", "unavailable"}
+
+
+def _equipment_state(statuses: list[str]) -> str:
+    """SPM-4 AC3: where an event's equipment requests stand, from their statuses."""
+    if not statuses:
+        return "awaiting_review"
+    if all(item in _RESERVED_DONE for item in statuses):
+        return "fully_reserved"
+    if any(item in _PARTLY for item in statuses):
+        return "partly_reserved"
+    if any(item in _UNAVAILABLE for item in statuses):
+        return "unavailable"
+    return "awaiting_review"
+
+
+def _event_start(event: dict) -> datetime | None:
+    value = event.get("proposedStartAt")
+    return _naive(datetime.fromisoformat(value)) if value else None
 
 
 def _counts(damaged: int, maintenance: int, retired: int) -> dict:
@@ -86,6 +128,10 @@ def _conflicting_events(rows: list[EquipmentReservation]) -> list[dict]:
     for row in rows:
         totals[row.eventId] = totals.get(row.eventId, 0) + row.quantity
     return [{"eventId": event_id, "quantity": totals[event_id]} for event_id in sorted(totals)]
+
+
+# SPM-78 AC4: an event already confirmed, including one being reconsidered after a change (SPM-71).
+CONFIRMED_EVENT_STATUSES = ("confirmed", "reconsidering")
 
 
 def _events_over_serviceable(rows: list[EquipmentReservation], serviceable: int) -> list[str]:
@@ -341,7 +387,9 @@ class EquipmentService(BaseService):
         self.db.refresh(row)
         return self._equipment_out(row)
 
-    def update_equipment(self, equipment_id: str, data: EquipmentUpdate, caller: dict) -> EquipmentOut:
+    def update_equipment(
+        self, equipment_id: str, data: EquipmentUpdate, caller: dict, authorization: str | None = None
+    ) -> EquipmentOut:
         row = self._require_equipment(equipment_id)
         total = data.totalQuantity if data.totalQuantity is not None else row.totalQuantity
         damaged = data.outOfService.damaged if data.outOfService is not None else row.damagedCount
@@ -388,7 +436,26 @@ class EquipmentService(BaseService):
             self.db.rollback()
             raise conflict("An equipment record with this code already exists") from exc
         self.db.refresh(row)
+        self._notify_short_events(row, blocked, caller, authorization)
         return self._equipment_out(row)
+
+    def _notify_short_events(
+        self, row: EquipmentInfo, event_ids: list[str], caller: dict, authorization: str | None
+    ) -> None:
+        """SPM-75 AC6: once technical support acknowledge that fewer units are in service than
+        are reserved, each affected event's coordinator is told. Best effort: the change is saved."""
+        at = datetime.utcnow()
+        for event_id in event_ids:
+            record = _event_record(event_id, authorization) or {"eventId": event_id}
+            publish_notification(
+                "equipment.out_of_service",
+                event_id,
+                f"{event_id}:equipment.out_of_service:{row.equipmentId}:{at:%Y%m%d%H%M%S}",
+                event_recipients(record, ("coordinator",)),
+                {"eventName": record.get("eventName") or event_id, "equipmentName": row.name},
+                actor_id=caller.get("userId"),
+                resource={"type": "equipment", "id": row.equipmentId},
+            )
 
     def check_availability(self, data: EquipmentAvailabilityIn) -> EquipmentAvailabilityOut:
         row = self._require_equipment(data.equipmentId)
@@ -575,20 +642,51 @@ class EquipmentService(BaseService):
     def get_reservation(self, reservation_id: str) -> EquipmentReservationOut:
         return _reservation_to_out(self._require(self.reservation_dao.get_by_id(reservation_id), "Reservation not found"))
 
-    def release_holds_for_event(self, event_id: str, caller: dict, reason: str) -> list[EquipmentReservationOut]:
-        """Rejecting, cancelling, or completing an event returns its held stock (SPM-3)."""
+    def release_holds_for_event(self, event_id: str, caller: dict, reason: str) -> list[ReleasedReservationOut]:
+        """Rejecting, cancelling, or completing an event returns its held stock (SPM-3). Each reply
+        names the reservation's previous status, so the release can be undone (SPM-88 AC9), and the
+        technical support member who handled its line, who is told of a cancellation (AC8)."""
         rows = self.reservation_dao.list_active_for_event(event_id)
+        previous = {row.reservationId: row.status for row in rows}
         for row in rows:
-            previous = row.quantity
             row.status = "released"
             self._log_change(
                 row.equipmentId,
                 "release",
                 caller,
-                {"eventId": event_id, "previousQuantity": previous, "newQuantity": 0, "reason": reason},
+                {"eventId": event_id, "previousQuantity": row.quantity, "newQuantity": 0, "reason": reason},
             )
         self.db.commit()
-        return [_reservation_to_out(row) for row in rows]
+        return [
+            ReleasedReservationOut(
+                **_reservation_to_out(row).model_dump(),
+                previousStatus=previous[row.reservationId],
+                handledBy=row.request.reviewedBy,
+            )
+            for row in rows
+        ]
+
+    def restore_holds_for_event(
+        self, event_id: str, reservations: list[RestoredReservation], caller: dict
+    ) -> list[EquipmentReservationOut]:
+        """SPM-88 AC9: the cancellation failed after its equipment release, so each reservation it
+        released holds its stock again. One of another event, or no longer released, is left alone,
+        so repeating the undo changes nothing."""
+        restored = []
+        for item in reservations:
+            row = self.reservation_dao.get_by_id(item.reservationId)
+            if row is None or row.eventId != event_id or row.status != "released":
+                continue
+            row.status = item.status
+            self._log_change(
+                row.equipmentId,
+                "restore",
+                caller,
+                {"eventId": event_id, "quantity": row.quantity, "reason": "The event's cancellation did not take effect"},
+            )
+            restored.append(row)
+        self.db.commit()
+        return [_reservation_to_out(row) for row in restored]
 
     def outcome_summary(self, event_id: str) -> list[dict]:
         requests = {row.requestId: row for row in self.request_dao.list_all() if row.eventId == event_id}
@@ -652,9 +750,245 @@ class EquipmentService(BaseService):
             )
         return [_reservation_to_out(row) for row in rows]
 
+    def upcoming_queue(
+        self,
+        events: list[dict],
+        venue_name: Callable[[str], str],
+        state: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> list[UpcomingEventOut]:
+        """SPM-4: upcoming events that have equipment requirements, soonest first, with
+        anything needing attention ahead of the rest on the same date.
+
+        Only events that have an equipment request or equipment lines appear. The
+        caller passes the upcoming events (completed and cancelled are already left out)
+        and a lookup for each event's booked venue.
+        """
+        requests_by_event: dict[str, list[EquipmentRequest]] = {}
+        for row in self.request_dao.list_all():
+            if row.status != "cancelled":
+                requests_by_event.setdefault(row.eventId, []).append(row)
+        flagged = {row.eventId for row in self.reservation_dao.list_needing_reverification()}
+
+        rows = []
+        for event in events:
+            event_id = event["eventId"]
+            requests = requests_by_event.get(event_id, [])
+            lines = event.get("equipmentLines") or []
+            if not requests and not lines:
+                continue
+            statuses = [row.status for row in requests]
+            equipment_state = _equipment_state(statuses)
+            start = _event_start(event)
+            if state and equipment_state != state:
+                continue
+            if start and date_from and start.date() < date_from:
+                continue
+            if start and date_to and start.date() > date_to:
+                continue
+            if requests:
+                parts = [f"{row.quantity} × {self._equipment_label(row.equipmentId)}" for row in requests]
+            else:
+                parts = [f"{line.get('quantity', 1)} × {self._equipment_label(line.get('equipmentId', ''))}" for line in lines]
+            rows.append(
+                (
+                    start,
+                    UpcomingEventOut(
+                        eventId=event_id,
+                        eventName=event.get("eventName", ""),
+                        status=event.get("status", ""),
+                        proposedStartAt=event.get("proposedStartAt"),
+                        proposedEndAt=event.get("proposedEndAt"),
+                        venueName=venue_name(event_id),
+                        coordinatorId=event.get("coordinatorId"),
+                        equipmentSummary=", ".join(parts),
+                        equipmentState=equipment_state,
+                        needsAttention=event_id in flagged or any(item in _NEEDS_ATTENTION for item in statuses),
+                        needsReverification=event_id in flagged,
+                    ),
+                )
+            )
+        latest = datetime.max
+        rows.sort(
+            key=lambda pair: (
+                (pair[0] or latest).date(),
+                not pair[1].needsAttention,
+                pair[0] or latest,
+            )
+        )
+        return [row for _start, row in rows]
+
+    def _judged_at(
+        self, event_id: str, starts_at: datetime, ends_at: datetime, lock: bool = False
+    ) -> list[tuple[EquipmentReservation, RescheduledReservationOut]]:
+        """SPM-87: each reservation still holding stock for the event, judged at the new time.
+        The event's own reservations all move together, so they are left out of what is held,
+        and its reservations of the same equipment share what is free, earliest first."""
+        judged = []
+        remaining: dict[str, int] = {}
+        for row in self.reservation_dao.list_active_for_event(event_id):
+            if row.equipmentId not in remaining:
+                equipment = self._locked_equipment(row.equipmentId) if lock else self._require_equipment(row.equipmentId)
+                held = [item for item in self._active_reservations(row.equipmentId) if item.eventId != event_id]
+                remaining[row.equipmentId] = self._equipment_out(equipment).serviceableQuantity - _overlapping_quantity(
+                    held, starts_at, ends_at
+                )
+            available = max(0, remaining[row.equipmentId])
+            remaining[row.equipmentId] -= row.quantity
+            judged.append(
+                (
+                    row,
+                    RescheduledReservationOut(
+                        reservationId=row.reservationId,
+                        equipmentId=row.equipmentId,
+                        equipmentName=self._equipment_label(row.equipmentId),
+                        quantity=row.quantity,
+                        availableQuantity=available,
+                        canMeet=row.quantity <= available,
+                        shortfall=max(0, row.quantity - available),
+                        needsReverification=bool(row.needsReverification),
+                        startsAt=row.startsAt,
+                        endsAt=row.endsAt,
+                    ),
+                )
+            )
+        return judged
+
+    def preview_reschedule(self, data: ReservationReschedulePreview) -> list[RescheduledReservationOut]:
+        """SPM-87 AC2: whether the reserved equipment is free at the new time. Nothing moves (AC5)."""
+        starts_at, ends_at = _reschedule_period(data)
+        return [out for _row, out in self._judged_at(data.eventId, starts_at, ends_at)]
+
+    def reschedule_reservations(
+        self, data: ReservationReschedule, caller: dict, authorization: str | None = None
+    ) -> list[RescheduledReservationOut]:
+        """SPM-87 AC6: the event has moved. Every held reservation moves with it, giving up the old
+        time (AC5). One whose quantity cannot be met at the new time is flagged for technical
+        support, who are told; it is never dropped. The event's open equipment requests take the
+        new time too, so the queue and availability checks read it."""
+        starts_at, ends_at = _reschedule_period(data)
+        reason = data.reason.strip()
+        if reason and reason[-1] not in ".!?":
+            reason += "."
+        results, flagged = [], []
+        for row, out in self._judged_at(data.eventId, starts_at, ends_at, lock=True):
+            row.startsAt, row.endsAt = starts_at, ends_at
+            if out.canMeet:
+                out.outcome = "moved"
+            else:
+                row.needsReverification = True
+                row.reverificationNote = " ".join(
+                    part
+                    for part in (
+                        "Event rescheduled.",
+                        reason,
+                        f"Only {out.availableQuantity} of {row.quantity} {out.equipmentName} are free at the new time.",
+                    )
+                    if part
+                )
+                out.outcome = "flagged"
+                flagged.append(f"{row.quantity} × {out.equipmentName} (short by {out.shortfall})")
+            out.needsReverification = bool(row.needsReverification)
+            out.startsAt, out.endsAt = row.startsAt, row.endsAt
+            self._log_change(
+                row.equipmentId,
+                "reschedule",
+                caller,
+                {"eventId": data.eventId, "startsAt": str(starts_at), "endsAt": str(ends_at), "shortfall": out.shortfall},
+            )
+            results.append(out)
+        for request in self.request_dao.list_for_event(data.eventId):
+            if request.status not in ("rejected", "cancelled"):
+                request.startsAt, request.endsAt = starts_at, ends_at
+        self.db.commit()
+        if flagged:
+            _notify_role(
+                "techsupport",
+                data.eventId,
+                "Equipment needs re-verification",
+                f"{data.eventId} was rescheduled and these reservations cannot be met at the new time: "
+                f"{', '.join(flagged)}. Re-check them.",
+                authorization,
+                "equipment.reverification",
+            )
+        return results
+
     def reverification_queue(self) -> list[EquipmentReservationOut]:
         """SPM-86 AC02 and AC07: held reservations technical support still have to re-check."""
         return [_reservation_to_out(row) for row in self.reservation_dao.list_needing_reverification()]
+
+    def technical_dashboard(self, events: list[dict]) -> TechDashboardOut:
+        """SPM-58: what is waiting on technical support, for the events that are still ahead.
+
+        `events` are the upcoming live events, soonest first (SPM-4's source), so work for an
+        event that has ended or was cancelled drops off. Every list follows the event's start.
+        """
+        order = {event["eventId"]: index for index, event in enumerate(events)}
+        by_id = {event["eventId"]: event for event in events}
+        requests = [row for row in self.request_dao.list_all() if row.eventId in by_id]
+
+        def item(item_id: str, row, note: str, shortfall: int = 0) -> TechWorkItemOut:
+            """`row` is a request, or a reservation for re-verification; both name their request."""
+            event = by_id[row.eventId]
+            return TechWorkItemOut(
+                id=item_id,
+                requestId=row.requestId,
+                eventId=row.eventId,
+                eventName=event.get("eventName") or row.eventId,
+                eventStartsAt=event.get("proposedStartAt"),
+                eventEndsAt=event.get("proposedEndAt"),
+                equipmentId=row.equipmentId,
+                equipmentName=self._equipment_label(row.equipmentId),
+                quantity=row.quantity,
+                status=row.status,
+                shortfall=shortfall,
+                note=note,
+            )
+
+        def soonest(items):
+            return sorted(items, key=lambda entry: (order[entry.eventId], entry.id))
+
+        pending = [item(row.requestId, row, row.technicalRequirements) for row in requests if row.status == "pending"]
+        # AC3: a coordinator who accepts the shortfall resolves it (SPM-77), so only partial and unavailable remain.
+        shortfalls = [
+            item(
+                row.requestId,
+                row,
+                row.decisionReason or row.reviewNote,
+                row.shortfall if row.status == "partial" else row.quantity,
+            )
+            for row in requests
+            if row.status in ("partial", "unavailable")
+        ]
+        reverification = [
+            item(row.reservationId, row, row.reverificationNote or "")
+            for row in self.reservation_dao.list_needing_reverification()
+            if row.eventId in by_id
+        ]
+        held: dict[str, list[EquipmentReservation]] = {}
+        for row in self.reservation_dao.list_supplying():
+            if row.eventId in by_id:
+                held.setdefault(row.eventId, []).append(row)
+        upcoming = [
+            SuppliedEventOut(
+                eventId=event["eventId"],
+                eventName=event.get("eventName") or event["eventId"],
+                eventStartsAt=event.get("proposedStartAt"),
+                eventEndsAt=event.get("proposedEndAt"),
+                equipmentSummary=", ".join(
+                    f"{row.quantity} × {self._equipment_label(row.equipmentId)}" for row in held[event["eventId"]]
+                ),
+            )
+            for event in events
+            if event["eventId"] in held
+        ]
+        return TechDashboardOut(
+            pending=soonest(pending),
+            reverification=soonest(reverification),
+            shortfalls=soonest(shortfalls),
+            upcoming=upcoming,
+        )
 
     def reconfirm_reservation(
         self, reservation_id: str, authorization: str | None = None
@@ -690,8 +1024,13 @@ class EquipmentService(BaseService):
         row = self._require(self.reservation_dao.get_by_id(reservation_id), "Reservation not found")
         if row.status not in ("active", "reserved"):
             raise conflict(f"Reservation is already {row.status}")
-        record = _event_record(row.eventId, authorization) or {}
-        if record.get("status") == "confirmed" and not reason.strip():
+        record = _event_record(row.eventId, authorization)
+        # SPM-78 AC4: a confirmed event, including one whose arrangements are being reconsidered,
+        # may no longer be deliverable, so a release needs a reason. An event that could not be
+        # read for a signed-in caller is treated the same, rather than let it lose stock without one.
+        unreadable = record is None and authorization is not None
+        record = record or {}
+        if (unreadable or record.get("status") in CONFIRMED_EVENT_STATUSES) and not reason.strip():
             raise HTTPException(status_code=422, detail="A reason is required to release a confirmed event's reservation")
         previous = row.quantity
         row.status = "released"
@@ -707,7 +1046,7 @@ class EquipmentService(BaseService):
         )
         self.db.commit()
         self.db.refresh(row)
-        if record.get("status") == "confirmed":
+        if record.get("status") in CONFIRMED_EVENT_STATUSES:
             publish_notification(
                 "equipment.released",
                 row.eventId,
@@ -719,8 +1058,9 @@ class EquipmentService(BaseService):
             )
         return _reservation_to_out(row)
 
-    def list_requests(self) -> list[EquipmentRequestOut]:
-        return [_request_to_out(row) for row in self.request_dao.list_all()]
+    def list_requests(self, event_id: str | None = None) -> list[EquipmentRequestOut]:
+        rows = self.request_dao.list_for_event(event_id) if event_id else self.request_dao.list_all()
+        return [_request_to_out(row) for row in rows]
 
     def get_request(self, request_id: str) -> EquipmentRequestOut:
         return _request_to_out(self._require_request(request_id))
@@ -730,16 +1070,23 @@ class EquipmentService(BaseService):
         request_id: str,
         quantity: int | None,
         technical_requirements: str | None,
+        actor_id: str | None = None,
+        authorization: str | None = None,
     ) -> EquipmentRequestOut:
         row = self._require_request(request_id)
         if row.status != "pending":
             raise conflict(f"Request is already {row.status}")
-        if quantity is not None:
+        changes = []
+        if quantity is not None and quantity != row.quantity:
+            changes.append(f"quantity {row.quantity} to {quantity}")
             row.quantity = quantity
-        if technical_requirements is not None:
+        if technical_requirements is not None and technical_requirements != row.technicalRequirements:
+            changes.append("technical requirements updated")
             row.technicalRequirements = technical_requirements
         self.db.commit()
         self.db.refresh(row)
+        if changes:
+            self._tell_technical_support(row, actor_id, authorization, "; ".join(changes))
         return _request_to_out(row)
 
     def mark_unavailable(
@@ -843,20 +1190,56 @@ class EquipmentService(BaseService):
             resource={"type": "equipment_request", "id": row.requestId},
         )
 
+    def _tell_technical_support(
+        self, row: EquipmentRequest, actor_id: str | None, authorization: str | None, change: str | None = None
+    ) -> None:
+        """Tell technical support a coordinator asked for equipment (no `change`) or changed a request.
+        Only an action made through a route carries a user token, so a direct call sends nothing.
+        Best effort: the coordinator's change is already saved."""
+        if not authorization:
+            return
+        recipients = technical_support_recipients()
+        if not recipients:
+            return
+        record = _event_record(row.eventId, authorization) or {}
+        context = {
+            "eventName": record.get("eventName") or row.eventId,
+            "equipment": f"{row.quantity} × {self._equipment_label(row.equipmentId)}",
+        }
+        if change is None:
+            trigger, occurrence = "equipment.requested", f"{row.eventId}:equipment.requested:{row.requestId}"
+        else:
+            # Every change is news, so each one is its own occurrence.
+            context["change"] = change
+            trigger, occurrence = "equipment.request_changed", f"{row.eventId}:equipment.request_changed:{uuid4()}"
+        publish_notification(
+            trigger,
+            row.eventId,
+            occurrence,
+            recipients,
+            context,
+            actor_id=actor_id,
+            resource={"type": "equipment_request", "id": row.requestId},
+        )
+
     def _equipment_label(self, equipment_id: str) -> str:
         row = self.equipment_dao.get_by_id(equipment_id)
         return row.name if row is not None and row.name else equipment_id
 
-    def accept_shortfall(self, request_id: str, caller: dict) -> EquipmentRequestOut:
+    def accept_shortfall(self, request_id: str, caller: dict, authorization: str | None = None) -> EquipmentRequestOut:
         row = self._require_request(request_id)
         if row.status not in ("partial", "unavailable"):
             raise conflict("There is no shortfall to accept")
+        shortfall = row.shortfall if row.status == "partial" else row.quantity
         row.status = "resolved"
         row.reviewedBy = caller.get("userId", "")
         row.reviewedAt = datetime.utcnow()
         self._log_change(row.equipmentId, "accept-shortfall", caller, {"status": "resolved"})
         self.db.commit()
         self.db.refresh(row)
+        self._tell_technical_support(
+            row, caller.get("userId"), authorization, f"the coordinator accepted the shortfall of {shortfall}, so it is resolved"
+        )
         return _request_to_out(row)
 
     def complete_review(self, request_id: str, caller: dict) -> EquipmentRequestOut:
@@ -869,16 +1252,24 @@ class EquipmentService(BaseService):
         self.db.refresh(row)
         return _request_to_out(row)
 
-    def amend_request(self, request_id: str, quantity: int | None) -> EquipmentRequestOut:
+    def amend_request(
+        self, request_id: str, quantity: int | None, actor_id: str | None = None, authorization: str | None = None
+    ) -> EquipmentRequestOut:
         row = self._require_request(request_id)
+        change = "sent back for review"
+        if quantity is not None and quantity != row.quantity:
+            change += f" with quantity {row.quantity} to {quantity}"
         if quantity is not None:
             row.quantity = quantity
         row.status = "pending"
         self.db.commit()
         self.db.refresh(row)
+        self._tell_technical_support(row, actor_id, authorization, change)
         return _request_to_out(row)
 
-    def create_request(self, data: EquipmentRequestCreate, requested_by: str) -> EquipmentRequestOut:
+    def create_request(
+        self, data: EquipmentRequestCreate, requested_by: str, authorization: str | None = None
+    ) -> EquipmentRequestOut:
         row = EquipmentRequest(
             requestId=str(uuid4()),
             eventId=data.eventId,
@@ -894,9 +1285,12 @@ class EquipmentService(BaseService):
         self.request_dao.add(row)
         self.db.commit()
         self.db.refresh(row)
+        self._tell_technical_support(row, requested_by, authorization)
         return _request_to_out(row)
 
-    def review_request(self, request_id: str, reviewer_id: str, approve: bool, review_note: str) -> EquipmentRequestOut:
+    def review_request(
+        self, request_id: str, reviewer_id: str, approve: bool, review_note: str, authorization: str | None = None
+    ) -> EquipmentRequestOut:
         row = self._require_request(request_id)
         if row.status != "pending":
             raise conflict(f"Request is already {row.status}")
@@ -908,9 +1302,36 @@ class EquipmentService(BaseService):
         row.reviewNote = review_note
         self.db.commit()
         self.db.refresh(row)
+        if approve:
+            self._publish_request_outcome(row, "equipment.approved", reviewer_id, authorization)
+        else:
+            self._publish_request_outcome(row, "equipment.rejected", reviewer_id, authorization, reason=review_note.strip())
         return _request_to_out(row)
 
-    def reserve_request(self, request_id: str) -> EquipmentReservationOut:
+    def _publish_request_outcome(
+        self, row: EquipmentRequest, trigger: str, actor_id: str | None, authorization: str | None, **context: str
+    ) -> None:
+        """The assigned coordinator's in-app notice that technical support approved,
+        rejected, or reserved a request. Best effort: the decision is already saved."""
+        record = _event_record(row.eventId, authorization) or {}
+        publish_notification(
+            trigger,
+            row.eventId,
+            f"{row.eventId}:{trigger}:{row.requestId}",
+            event_recipients(record, ("coordinator",)),
+            {
+                "eventName": record.get("eventName") or row.eventId,
+                "equipmentName": self._equipment_label(row.equipmentId),
+                "quantity": str(row.quantity),
+                **context,
+            },
+            actor_id=actor_id,
+            resource={"type": "equipment_request", "id": row.requestId},
+        )
+
+    def reserve_request(
+        self, request_id: str, actor_id: str | None = None, authorization: str | None = None
+    ) -> EquipmentReservationOut:
         request_row = self._require_request(request_id)
         if request_row.status != "approved":
             raise conflict("Only approved requests can be reserved")
@@ -931,4 +1352,5 @@ class EquipmentService(BaseService):
         request_row.status = "reserved"
         self.db.commit()
         self.db.refresh(row)
+        self._publish_request_outcome(request_row, "equipment.reserved", actor_id, authorization)
         return _reservation_to_out(row)

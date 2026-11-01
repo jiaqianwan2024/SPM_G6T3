@@ -1,3 +1,4 @@
+from datetime import datetime
 from unittest.mock import patch
 
 from fastapi import HTTPException
@@ -7,7 +8,7 @@ from app.dao.registration_window_dao import RegistrationWindowDAO
 from app.schemas.registration import AttendeeOut, RegisterRequest
 from app.services.registration_service import RegistrationService
 from shared.testing.cases import ServiceTestCase
-from tests.unit.support import confirmed_event, make_window
+from tests.unit.support import RecordingClient, confirmed_event, make_window
 
 
 class TestRegistrationService(ServiceTestCase):
@@ -21,8 +22,12 @@ class TestRegistrationService(ServiceTestCase):
             return_value=confirmed_event(),
         )
         self.lookup.start()
+        self.notify = patch("app.services.registration_service.httpx.Client", RecordingClient)
+        self.notify.start()
+        RecordingClient.calls = []
 
     def tearDown(self):
+        self.notify.stop()
         self.lookup.stop()
         super().tearDown()
 
@@ -38,11 +43,17 @@ class TestRegistrationService(ServiceTestCase):
         self.assertEqual(row.userId, "u-1")
         self.assertEqual(row.attendeeEmail, "amy@example.com")
 
-    def test_register_without_a_window_conflicts(self):
-        with self.assertRaises(HTTPException) as ctx:
-            self.service.register("e-no-window", "Amy Wong", "amy@example.com", user_id=None)
+    def test_the_first_registration_creates_the_window_from_the_event(self):
+        # An event confirmed through the app has no window row yet.
+        row = self.service.register("e-new", "Amy Wong", "amy@example.com", user_id=None)
 
-        self.assertEqual(ctx.exception.status_code, 409)
+        window = RegistrationWindowDAO(self.db).get_for_event("e-new")
+        now = datetime.utcnow()
+        self.assertEqual(row.status, "registered")
+        self.assertEqual(window.capacity, 10)
+        # confirmed_event() opens a day ago and closes a day ahead.
+        self.assertLess(window.opensAt, now)
+        self.assertGreater(window.closesAt, now)
 
     def test_register_rejects_a_missing_name(self):
         with self.assertRaises(HTTPException) as ctx:
@@ -85,7 +96,7 @@ class TestRegistrationService(ServiceTestCase):
 
         self.assertEqual(first.status, "registered")
         self.assertEqual(ctx.exception.status_code, 409)
-        self.assertEqual(ctx.exception.detail, "This event has reached capacity.")
+        self.assertEqual(ctx.exception.detail, "This event is full: it has reached capacity.")
         self.assertEqual(len(self.service.list_for_event("e1")), 1)
 
     def test_register_conflicts_on_a_duplicate_email(self):
@@ -96,6 +107,31 @@ class TestRegistrationService(ServiceTestCase):
             self.service.register("e1", "Amy Again", "AMY@example.com", user_id=None)
 
         self.assertEqual(ctx.exception.status_code, 409)
+
+    def test_an_attendee_registers_only_with_their_own_email(self):
+        # Nobody registers someone else: the email is the account's, and is filled in when left out.
+        make_window(self.db)
+
+        with self.assertRaises(HTTPException) as ctx:
+            self.service.register(
+                "e1", "Ben Tan", "ben@example.com", user_id="u-amy", account_email="amy@example.com"
+            )
+        row = self.service.register("e1", "Amy Wong", "", user_id="u-amy", account_email="Amy@Example.com")
+
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertEqual(row.attendeeEmail, "Amy@Example.com")
+        self.assertEqual(len(self.service.list_for_event("e1")), 1)
+
+    def test_an_account_holds_one_registration_per_event(self):
+        # SPM-11 AC4: a second registration from the same account is refused, whatever the email.
+        make_window(self.db)
+        self.service.register("e1", "Amy Wong", "amy@example.com", user_id="u-amy")
+
+        with self.assertRaises(HTTPException) as ctx:
+            self.service.register("e1", "Amy Wong", "amy.other@example.com", user_id="u-amy")
+
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertEqual(ctx.exception.detail, "You are already registered for this event.")
 
     def test_list_for_event_returns_only_registered_rows(self):
         make_window(self.db)

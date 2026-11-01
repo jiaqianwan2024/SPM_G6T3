@@ -5,9 +5,10 @@ import { venuePeriod, venueUnavailabilityPayload } from './support/api-data.js'
 import { notificationRequest, venueRequest } from './support/venue.js'
 import { THEATRE_EVENT, approvedEvent, requestVenue } from './support/venue-request.js'
 
-// A booking can only be requested for an event in planning (SPM-63), and v2/v4
-// are closed on Sunday. Pick a day those venues are open, far enough ahead that
-// an earlier run's booking is unlikely to still be sitting on it.
+// A booking can only be requested for an event in planning (SPM-63). A database
+// seeded before the demo venues opened every day still has v2/v4 closed on
+// Sunday, so pick a day they are open either way, far enough ahead that an
+// earlier run's booking is unlikely to still be sitting on it.
 function openPeriod(hours, { saturday = true } = {}) {
   let days = 800 + Math.floor(Math.random() * 20000)
   for (let step = 0; step < 7; step += 1) {
@@ -106,7 +107,8 @@ test.describe('SPM-09 Mark a Venue as Unavailable', () => {
     })
     expect(block.status).toBe(201)
     await login(page, account('VS-01'))
-    await page.goto(`/app/venues/v2/calendar`)
+    // SPM-108: the calendar opens on today, so the link names the block's date.
+    await page.goto(`/app/venues/v2/calendar?at=${encodeURIComponent(block.body.startsAt)}`)
     const entry = page.getByTestId(`calendar-unavailable-${block.body.unavailabilityId}`)
     await expect(entry).toBeVisible()
     await expect(entry).toContainText(/unavailable/i)

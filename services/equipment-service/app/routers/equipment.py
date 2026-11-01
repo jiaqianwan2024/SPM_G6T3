@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 
@@ -13,6 +15,8 @@ from app.schemas.equipment import (
     EquipmentPartialFulfillment,
     EquipmentReservationAdjust,
     EventHoldsRelease,
+    ReleasedReservationOut,
+    ReservationRestoreRequest,
     EquipmentActivityLogOut,
     EquipmentAvailabilityIn,
     EquipmentCreate,
@@ -26,10 +30,15 @@ from app.schemas.equipment import (
     EquipmentRequestUnavailable,
     EquipmentReservationOut,
     EquipmentUpdate,
+    RescheduledReservationOut,
     ReservationRelease,
+    ReservationReschedule,
+    ReservationReschedulePreview,
     ReservationReverificationRequest,
+    TechDashboardOut,
+    UpcomingEventOut,
 )
-from app.orchestration.clients import fetch_event_coordinator
+from app.orchestration.clients import check_event_access, fetch_event_coordinator, fetch_upcoming_events, fetch_venue_names
 from app.services.equipment_service import EquipmentService, require_assigned_coordinator
 from shared.auth.deps import forwarded_bearer
 from shared.auth.roles import resolve_caller
@@ -60,7 +69,11 @@ def get_equipment_service(db: Session = Depends(get_db)) -> EquipmentService:
     summary="List equipment",
     description="Catalogue of equipment types. `status` is derived from unit rows.",
 )
-def list_equipment(service: EquipmentService = Depends(get_equipment_service)):
+def list_equipment(
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EquipmentService = Depends(get_equipment_service),
+):
+    _refuse_attendees(authorization)
     return service.list_equipment()
 
 
@@ -78,6 +91,55 @@ def reverification_queue(
 ):
     _technical_support(authorization)
     return service.reverification_queue()
+
+
+@router.get(
+    "/upcoming",
+    response_model=list[UpcomingEventOut],
+    summary="Upcoming events with equipment requirements",
+    description="SPM-4. Technical support. Upcoming events that have equipment requirements, soonest first, "
+    "with anything needing attention (including re-verification) ahead of the rest on the same date. "
+    "Completed and cancelled events are left out. `state` is `awaiting_review`, `partly_reserved`, "
+    "`fully_reserved` or `unavailable`.",
+    responses=error_responses(403, 422, 503),
+)
+def upcoming_events_queue(
+    state: str | None = Query(default=None, pattern="^(awaiting_review|partly_reserved|fully_reserved|unavailable)$"),
+    dateFrom: date | None = Query(default=None, description="Earliest event date, inclusive."),
+    dateTo: date | None = Query(default=None, description="Latest event date, inclusive."),
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EquipmentService = Depends(get_equipment_service),
+):
+    _technical_support(authorization)
+    events = fetch_upcoming_events(authorization)
+    names = fetch_venue_names([event["eventId"] for event in events])
+    return service.upcoming_queue(events, lambda event_id: names.get(event_id, ""), state, dateFrom, dateTo)
+
+
+@router.get(
+    "/dashboard",
+    response_model=TechDashboardOut,
+    summary="Technical support's home screen",
+    description="SPM-58. Technical support only, the same as the screens each item opens. Requests awaiting "
+    "review, reservations flagged for re-verification, unresolved unavailable or partly fulfilled lines, and "
+    "upcoming events with equipment held for them, each soonest first. Only events that have not ended and "
+    "are still live are included.",
+    responses=error_responses(403, 503),
+)
+def technical_dashboard(
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EquipmentService = Depends(get_equipment_service),
+):
+    _technical_support(authorization)
+    return service.technical_dashboard(fetch_upcoming_events(authorization))
+
+
+def _refuse_attendees(authorization: str | None) -> dict:
+    """SPM-127: equipment and an event's arrangements are staff pages, 403 for an attendee."""
+    caller = resolve_caller(authorization, settings.user_service_url)
+    if caller.get("role") == "attendee":
+        raise forbidden("Attendees can open only confirmed event pages and their own registrations.")
+    return caller
 
 
 def _technical_support(authorization: str | None) -> dict:
@@ -171,7 +233,9 @@ def reservation_summary(
     authorization: str | None = Depends(forwarded_bearer),
     service: EquipmentService = Depends(get_equipment_service),
 ):
-    resolve_caller(authorization, settings.user_service_url)
+    caller = _refuse_attendees(authorization)
+    if caller.get("role") == "organiser":
+        check_event_access(eventId, authorization)  # SPM-47: their own organisation's event only
     return service.outcome_summary(eventId)
 
 
@@ -203,16 +267,94 @@ def get_reservation(
     return service.get_reservation(reservation_id)
 
 
-@router.post("/reservations/release-for-event", response_model=list[EquipmentReservationOut])
+def _event_releaser(event_id: str, authorization: str | None) -> dict:
+    """Coordinators and technical support release an event's stock; so does an organiser cancelling
+    their own organisation's event (SPM-88 AC1), which event-service decides (SPM-47)."""
+    caller = resolve_caller(
+        authorization, settings.user_service_url, allowed_roles={"coordinator", "techsupport", "organiser"}
+    )
+    if caller.get("role") == "organiser":
+        check_event_access(event_id, authorization)
+    return caller
+
+
+@router.post(
+    "/reservations/release-for-event",
+    response_model=list[ReleasedReservationOut],
+    summary="Release every reservation an event holds",
+    description="Coordinators, technical support, and the event's own organiser (SPM-88). Rejecting, cancelling, "
+    "or completing an event frees its stock. Each reply names the previous status, so the release can be undone, "
+    "and the technical support member who handled the line.",
+    responses=error_responses(403, 404, 503),
+)
 def release_holds_for_event(
     body: EventHoldsRelease,
     authorization: str | None = Depends(forwarded_bearer),
     service: EquipmentService = Depends(get_equipment_service),
 ):
-    caller = resolve_caller(
-        authorization, settings.user_service_url, allowed_roles={"coordinator", "techsupport"}
-    )
+    caller = _event_releaser(body.eventId, authorization)
     return service.release_holds_for_event(body.eventId, caller, body.reason)
+
+
+@router.post(
+    "/reservations/restore-for-event",
+    response_model=list[EquipmentReservationOut],
+    summary="Undo a cancellation's equipment release",
+    description="SPM-88 AC9. The same people as the release. Event-service calls it when a cancellation fails "
+    "after its equipment release, so the event and its reservations never disagree. Each named reservation of "
+    "the event that is still `released` holds its stock again with the status it had.",
+    responses=error_responses(403, 404, 503),
+)
+def restore_holds_for_event(
+    body: ReservationRestoreRequest,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EquipmentService = Depends(get_equipment_service),
+):
+    caller = _event_releaser(body.eventId, authorization)
+    return service.restore_holds_for_event(body.eventId, body.reservations, caller)
+
+
+@router.post(
+    "/reservations/reschedule/preview",
+    response_model=list[RescheduledReservationOut],
+    summary="Check an event's reservations at a new date and time",
+    description="SPM-87 AC2. The event's assigned coordinator only. For each reservation still holding stock, "
+    "whether its quantity is free at the new time, with other events' reservations counted and the event's own "
+    "left out. Nothing is moved.",
+    responses=error_responses(403, 404, 422),
+)
+def preview_reservation_reschedule(
+    body: ReservationReschedulePreview,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EquipmentService = Depends(get_equipment_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    require_assigned_coordinator(
+        fetch_event_coordinator(body.eventId, authorization), caller["userId"], "reschedule its equipment"
+    )
+    return service.preview_reschedule(body)
+
+
+@router.post(
+    "/reservations/reschedule",
+    response_model=list[RescheduledReservationOut],
+    summary="Move an event's reservations to its new date and time",
+    description="SPM-87 AC6. The event's assigned coordinator only; event-service calls it when a reschedule is "
+    "applied. Every reservation still holding stock moves to the new time, freeing the old one. Any whose "
+    "quantity cannot be met then is flagged for re-verification, not dropped, and technical support are "
+    "notified. The event's open equipment requests take the new time too.",
+    responses=error_responses(403, 404, 422),
+)
+def reschedule_reservations(
+    body: ReservationReschedule,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EquipmentService = Depends(get_equipment_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+    require_assigned_coordinator(
+        fetch_event_coordinator(body.eventId, authorization), caller["userId"], "reschedule its equipment"
+    )
+    return service.reschedule_reservations(body, caller, authorization)
 
 
 @router.post(
@@ -242,6 +384,7 @@ def flag_reservations_for_reverification(
     responses=error_responses(403, 503),
 )
 def list_requests(
+    eventId: str | None = Query(None, description="Only this event's requests."),
     authorization: str | None = Depends(forwarded_bearer),
     service: EquipmentService = Depends(get_equipment_service),
 ):
@@ -250,7 +393,7 @@ def list_requests(
         settings.user_service_url,
         allowed_roles={"techsupport", "coordinator"},
     )
-    return service.list_requests()
+    return service.list_requests(eventId)
 
 
 @router.get(
@@ -261,8 +404,10 @@ def list_requests(
 )
 def get_equipment(
     equipment_id: str = Path(..., description="Equipment id, e.g. `eq1`."),
+    authorization: str | None = Depends(forwarded_bearer),
     service: EquipmentService = Depends(get_equipment_service),
 ):
+    _refuse_attendees(authorization)
     return service.get_equipment(equipment_id)
 
 
@@ -280,7 +425,7 @@ def update_equipment(
     service: EquipmentService = Depends(get_equipment_service),
 ):
     caller = _technical_support(authorization)
-    return service.update_equipment(equipment_id, body, caller)
+    return service.update_equipment(equipment_id, body, caller, authorization)
 
 
 @router.get(
@@ -291,8 +436,10 @@ def update_equipment(
 )
 def get_activity_log(
     equipment_id: str = Path(..., description="Equipment id."),
+    authorization: str | None = Depends(forwarded_bearer),
     service: EquipmentService = Depends(get_equipment_service),
 ):
+    _refuse_attendees(authorization)
     return service.get_activity_log(equipment_id)
 
 
@@ -329,7 +476,7 @@ def create_request(
     require_assigned_coordinator(
         fetch_event_coordinator(body.eventId, authorization), caller["userId"], "request equipment for it"
     )
-    return service.create_request(body, caller["userId"])
+    return service.create_request(body, caller["userId"], authorization)
 
 
 @router.get(
@@ -385,7 +532,7 @@ def accept_shortfall(
     service: EquipmentService = Depends(get_equipment_service),
 ):
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
-    return service.accept_shortfall(request_id, caller)
+    return service.accept_shortfall(request_id, caller, authorization)
 
 
 @router.post("/requests/{request_id}/complete-review", response_model=EquipmentRequestOut)
@@ -428,7 +575,9 @@ def refine_request(
     require_assigned_coordinator(
         fetch_event_coordinator(event_id, authorization), caller["userId"], "change its equipment requests"
     )
-    return service.refine_request(request_id, body.quantity, body.technicalRequirements)
+    return service.refine_request(
+        request_id, body.quantity, body.technicalRequirements, caller["userId"], authorization
+    )
 
 
 @router.patch(
@@ -444,8 +593,8 @@ def patch_request_status(
     service: EquipmentService = Depends(get_equipment_service),
 ):
     if body.resubmit:
-        resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
-        return service.amend_request(request_id, body.quantity)
+        caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"coordinator"})
+        return service.amend_request(request_id, body.quantity, caller["userId"], authorization)
     _technical_support(authorization)
     raise forbidden(f"Request {request_id} cannot be set to {body.status} directly")
 
@@ -454,7 +603,8 @@ def patch_request_status(
     "/requests/{request_id}/review",
     response_model=EquipmentRequestOut,
     summary="Review an equipment request",
-    description="Technical support only. Sets status to `approved` or `rejected`. Fails with 409 if the request is no longer `pending`.",
+    description="Technical support only. Sets status to `approved` or `rejected`, and the event's assigned coordinator "
+    "is told in the app. Fails with 409 if the request is no longer `pending`.",
     responses=error_responses(403, 404, 409, 503),
 )
 def review_request(
@@ -464,7 +614,7 @@ def review_request(
     service: EquipmentService = Depends(get_equipment_service),
 ):
     caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"techsupport"})
-    return service.review_request(request_id, caller["userId"], body.approve, body.reviewNote)
+    return service.review_request(request_id, caller["userId"], body.approve, body.reviewNote, authorization)
 
 
 @router.post(
@@ -472,7 +622,8 @@ def review_request(
     response_model=EquipmentReservationOut,
     status_code=201,
     summary="Reserve approved equipment",
-    description="Technical support only. Request must already be `approved`. Fails with 409 otherwise.",
+    description="Technical support only. Request must already be `approved`. Fails with 409 otherwise. The event's "
+    "assigned coordinator is told in the app.",
     responses=error_responses(403, 404, 409, 503),
 )
 def reserve_request(
@@ -480,5 +631,5 @@ def reserve_request(
     authorization: str | None = Depends(forwarded_bearer),
     service: EquipmentService = Depends(get_equipment_service),
 ):
-    resolve_caller(authorization, settings.user_service_url, allowed_roles={"techsupport"})
-    return service.reserve_request(request_id)
+    caller = resolve_caller(authorization, settings.user_service_url, allowed_roles={"techsupport"})
+    return service.reserve_request(request_id, caller["userId"], authorization)

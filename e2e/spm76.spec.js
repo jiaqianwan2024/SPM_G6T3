@@ -72,7 +72,8 @@ test.describe('SPM-76 Record an event\'s equipment requirements', () => {
 
     await login(page, account('EC-01'))
     await page.goto('/app/events/e3')
-    await expect(page.getByTestId('equipment-request-outcome')).toContainText(
+    // The event page and its equipment section both carry this test id.
+    await expect(page.getByTestId('equipment-request-outcome').first()).toContainText(
       /unavailable|cannot|shortfall|eq3/i,
     )
   })

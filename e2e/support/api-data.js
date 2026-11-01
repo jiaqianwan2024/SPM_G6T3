@@ -2,7 +2,7 @@ const DAY = 24 * 60 * 60 * 1000
 
 function period(daysFromNow) {
   const start = new Date(Date.now() + daysFromNow * DAY)
-  start.setUTCHours(10, 0, 0, 0)
+  start.setUTCHours(2, 0, 0, 0) // 10:00 Singapore time
   const end = new Date(start.getTime() + 2 * 60 * 60 * 1000)
   return { start, end }
 }
@@ -21,7 +21,7 @@ export function equipmentRequestPayload(sequence = 45, eventId = 'e1') {
 
 export function venuePeriod(daysFromNow, hours = 2) {
   const start = new Date(Date.now() + daysFromNow * DAY)
-  start.setUTCHours(10, 0, 0, 0)
+  start.setUTCHours(2, 0, 0, 0) // 10:00 Singapore time
   const end = new Date(start.getTime() + hours * 60 * 60 * 1000)
   return {
     startsAt: start.toISOString(),
@@ -64,7 +64,7 @@ export function newVenuePayload(label = `AUTO-VENUE-${Date.now()}`) {
       { name: 'Boardroom', capacity: 12 },
       { name: 'Classroom', capacity: 20 },
     ],
-    operatingHours: [{ day: 'Mon', opens: '08:00', closes: '18:00' }],
+    operatingHours: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => ({ day, opens: '00:00', closes: '24:00' })),
     setupMinutes: 15,
     turnaroundMinutes: 15,
   }
@@ -96,13 +96,13 @@ export function completeRequestPayload(name = `AUTO-REQUEST-${Date.now()}`, extr
 
 export function newEventPayload(name = `AUTO-EVENT-${Date.now()}`) {
   const start = new Date(Date.now() + 40 * DAY)
-  start.setUTCHours(10, 0, 0, 0)
+  start.setUTCHours(2, 0, 0, 0) // 10:00 Singapore time
   const end = new Date(start.getTime() + 2 * 60 * 60 * 1000)
   return {
     eventName: name,
     purpose: 'Acceptance test event.',
     description: 'Created by the planning-review suite.',
-    category: 'meeting',
+    category: 'Meeting',
     proposedStartAt: start.toISOString(),
     proposedEndAt: end.toISOString(),
     expectedAttendance: 24,

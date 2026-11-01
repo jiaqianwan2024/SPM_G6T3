@@ -5,8 +5,10 @@ import httpx
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from app.core.sgt import to_sgt
 from app.main import app
 from app.models.event_change_request import EventChangeRequest
+from app.models.event_readiness import EventReadinessItem
 from app.schemas.followup import ReadinessCreate, ReadinessPatch
 from app.orchestration.clients import release_event_holds, release_event_venue_bookings
 from app.schemas.event import OrganiserDraftPatch
@@ -47,7 +49,12 @@ class TestFollowUp(EventCase):
         self.follow = EventFollowUp(self.db)
         self.users = patch(
             "app.services.event_followup.list_users",
-            return_value=[{"userId": "u3", "name": "Ben Lee", "email": "ben@example.com", "phone": "+65"}],
+            return_value=[
+                {"userId": "u3", "name": "Ben Lee", "email": "ben@example.com", "phone": "+65", "role": "venue"},
+                {"userId": "u9", "name": "Tia Ho", "email": "tia@example.com", "role": "techsupport"},
+                {"userId": "u1", "name": "Alice Tan", "email": "alice@example.com", "role": "organiser"},
+                {"userId": "u5", "name": "Amy Wong", "email": "amy@example.com", "role": "attendee"},
+            ],
         )
         self.users.start()
         self.count = patch("app.services.event_followup.registration_count", return_value=1)
@@ -93,17 +100,17 @@ class TestFollowUp(EventCase):
             "coord-1",
         )
         self.assertIn("edited", updated.note)
-        self.assertEqual(updated.handlerName, "u9")
-        overdue = self.follow.create_item(
+        self.assertEqual(updated.handlerName, "Tia Ho")
+        # A new due date cannot be before today (SPM-5 AC10), so the line is made due later and then aged.
+        later = self.follow.create_item(
             "e-open",
-            ReadinessCreate(
-                category="equipment",
-                handlerId="u3",
-                dueAt=datetime.utcnow() - timedelta(days=2),
-            ),
+            ReadinessCreate(category="equipment", handlerId="u3", dueAt=datetime.utcnow() + timedelta(days=10)),
             "Bearer token",
             "coord-1",
         )
+        self.db.get(EventReadinessItem, later.itemId).dueAt = datetime.utcnow() - timedelta(days=2)
+        self.db.commit()
+        overdue = self.follow.get_item("e-open", later.itemId)
         self.assertTrue(overdue.overdue)
         self.assertFalse(overdue.dueSoon)
         alerts = self.follow.list_readiness("e-open", "Bearer token", due_soon=True)
@@ -116,6 +123,86 @@ class TestFollowUp(EventCase):
             self.follow.delete_item("e-open", created.itemId, "coord-1")
         with self.assertRaises(HTTPException):
             self.follow.update_item("e-open", "missing", ReadinessPatch(note="x"), "Bearer token", "coord-1")
+
+    def test_a_due_date_cannot_be_set_before_today(self):
+        """SPM-5 AC10: today is the Singapore day; a saved overdue date stays valid until it is changed."""
+        _open_event(self.db)
+        today = to_sgt(datetime.utcnow()).date()
+        midnight = datetime(today.year, today.month, today.day) - timedelta(hours=8)
+
+        with self.assertRaises(HTTPException) as ctx:
+            self.follow.create_item(
+                "e-open",
+                ReadinessCreate(category="venue", handlerId="u3", dueAt=midnight - timedelta(minutes=1)),
+                "Bearer token",
+                "coord-1",
+            )
+        self.assertEqual((ctx.exception.status_code, ctx.exception.detail), (422, "The due date cannot be before today."))
+
+        item = self.follow.create_item(
+            "e-open", ReadinessCreate(category="venue", handlerId="u3", dueAt=midnight), "Bearer token", "coord-1"
+        )
+        with self.assertRaises(HTTPException) as ctx:
+            self.follow.update_item(
+                "e-open", item.itemId, ReadinessPatch(dueAt=midnight - timedelta(days=1)), "Bearer token", "coord-1"
+            )
+        self.assertEqual(ctx.exception.status_code, 422)
+
+        # Once overdue, the same date sent back, other edits, and clearing it all still save.
+        aged = midnight - timedelta(days=3)
+        self.db.get(EventReadinessItem, item.itemId).dueAt = aged
+        self.db.commit()
+        same = self.follow.update_item(
+            "e-open", item.itemId, ReadinessPatch(dueAt=aged, note="Chasing"), "Bearer token", "coord-1"
+        )
+        self.assertTrue(same.overdue)
+        # A date input holds minutes only, so the same minute sent back is not a change either.
+        self.db.get(EventReadinessItem, item.itemId).dueAt = aged.replace(second=8)
+        self.db.commit()
+        minute = self.follow.update_item(
+            "e-open", item.itemId, ReadinessPatch(dueAt=aged.replace(second=0), note="Same minute"), "Bearer token", "coord-1"
+        )
+        self.assertEqual(minute.note, "Same minute")
+        cleared = self.follow.update_item("e-open", item.itemId, ReadinessPatch(dueAt=None), "Bearer token", "coord-1")
+        self.assertIsNone(cleared.dueAt)
+
+    def test_only_staff_can_handle_a_line(self):
+        """SPM-5: a line is followed up by ConnectSphere staff, never an organiser, an attendee, or an unknown id."""
+        _open_event(self.db)
+        for handler in ("u1", "u5", "nobody"):
+            with self.subTest(handler=handler):
+                with self.assertRaises(HTTPException) as ctx:
+                    self.follow.create_item(
+                        "e-open", ReadinessCreate(category="venue", handlerId=handler), "Bearer token", "coord-1"
+                    )
+                self.assertEqual(
+                    (ctx.exception.status_code, ctx.exception.detail),
+                    (422, "Choose a ConnectSphere staff member to handle this line."),
+                )
+        line = self.follow.create_item("e-open", ReadinessCreate(category="venue", handlerId="u3"), "Bearer token", "coord-1")
+        with self.assertRaises(HTTPException) as ctx:
+            self.follow.update_item("e-open", line.itemId, ReadinessPatch(handlerId="u5"), "Bearer token", "coord-1")
+        self.assertEqual(ctx.exception.status_code, 422)
+        self.assertEqual(self.follow.get_item("e-open", line.itemId).handlerName, "Ben Lee")
+
+        # A line already handled by someone else keeps saving when only other fields change.
+        self.db.get(EventReadinessItem, line.itemId).handlerId = "u5"
+        self.db.commit()
+        kept = self.follow.update_item("e-open", line.itemId, ReadinessPatch(handlerId="u5", note="Kept"), "Bearer token", "coord-1")
+        self.assertEqual(kept.note, "Kept")
+
+    def test_the_newest_line_is_listed_first(self):
+        """Added lines come newest first, so a line just added is at the top; the app's own lines follow."""
+        _open_event(self.db)
+        older = self.follow.create_item("e-open", ReadinessCreate(category="venue", handlerId="u3"), "Bearer token", "coord-1")
+        newer = self.follow.create_item("e-open", ReadinessCreate(category="equipment", handlerId="u9"), "Bearer token", "coord-1")
+        self.db.get(EventReadinessItem, older.itemId).assignedAt = datetime.utcnow() - timedelta(minutes=7)
+        self.db.commit()
+
+        ids = [row.itemId for row in self.follow.list_readiness("e-open", "Bearer token")]
+
+        self.assertEqual(ids[:2], [newer.itemId, older.itemId])
+        self.assertEqual(ids[2:], ["derived-venue", "derived-equipment"])
 
     def test_only_the_assigned_coordinator_changes_readiness_items(self):
         _open_event(self.db)
@@ -247,8 +334,13 @@ class TestFollowUp(EventCase):
         self.count_mock.return_value = 5
         with patch("app.services.event_followup._soft_get", return_value={}):
             full = self.follow.get_open("e-open", "Bearer token")
+            self.assertEqual(self.follow.list_open("Bearer token"), [])
         self.assertTrue(full.full)
         self.assertEqual(full.remaining, 0)
+        # A withdrawal frees a place, and the event is listed again.
+        self.count_mock.return_value = 4
+        with patch("app.services.event_followup._soft_get", return_value={}):
+            self.assertEqual([row.eventId for row in self.follow.list_open("Bearer token")], ["e-open"])
         with self.assertRaises(HTTPException):
             self.follow.get_open("e-later", "Bearer token")
         self.assertEqual(self.follow.list_open("Bearer token", search="zzzz"), [])
@@ -269,6 +361,21 @@ class TestFollowUp(EventCase):
         with self.assertRaises(HTTPException):
             self.follow.attendee_card("missing", None)
 
+    def test_the_date_filters_use_the_singapore_date(self):
+        # 17:00 UTC on 1 Dec is 01:00 on 2 Dec in Singapore, so it is a 2 Dec event.
+        start = datetime(NOW.year + 1, 12, 1, 17, 0)
+        _open_event(self.db, eventId="e-late", proposedStartAt=start, proposedEndAt=start + timedelta(hours=2))
+        year = NOW.year + 1
+
+        with patch("app.services.event_followup._soft_get", return_value={}):
+            on_the_second = self.follow.list_open("Bearer token", from_date=f"{year}-12-02", to_date=f"{year}-12-02")
+            up_to_the_first = self.follow.list_open("Bearer token", to_date=f"{year}-12-01")
+            from_the_third = self.follow.list_open("Bearer token", from_date=f"{year}-12-03")
+
+        self.assertEqual([row.eventId for row in on_the_second], ["e-late"])
+        self.assertNotIn("e-late", [row.eventId for row in up_to_the_first])
+        self.assertEqual(from_the_third, [])
+
     def test_a_schedule_change_is_a_date_change_a_time_change_or_both(self):
         aware = datetime(2026, 12, 1, 9, 0, tzinfo=timezone.utc)
         self.assertEqual(_clock(aware), datetime(2026, 12, 1, 9, 0))
@@ -288,6 +395,11 @@ class TestFollowUp(EventCase):
         )
         self.assertEqual(_schedule_aspects(aware, "2026-12-02T11:30:00Z"), (True, True))
         self.assertEqual(_schedule_aspects("2026-12-01T09:00:00", "soon"), (True, True))
+        # The date is the Singapore date: 15:00 and 16:30 UTC on 1 Dec are 23:00 on 1 Dec
+        # and 00:30 on 2 Dec in Singapore; 16:00 UTC on 1 Dec and 15:00 UTC on 2 Dec are
+        # both on 2 Dec in Singapore.
+        self.assertEqual(_schedule_aspects("2026-12-01T15:00:00", "2026-12-01T16:30:00"), (True, True))
+        self.assertEqual(_schedule_aspects("2026-12-01T16:00:00", "2026-12-02T15:00:00"), (False, True))
 
         _open_event(self.db, eventId="e-marks", eventName="Marks")
         self.db.add(
@@ -393,12 +505,19 @@ class TestFollowUpRoutes(ServiceTestCase):
         self.caller.start()
         self.count = patch("app.services.event_followup.registration_count", return_value=0)
         self.count.start()
+        # Only staff can handle a line, so creating one reads the staff list.
+        self.users = patch(
+            "app.services.event_followup.list_users",
+            return_value=[{"userId": "u3", "name": "Vinod Kumar", "email": "venue@example.com", "role": "venue"}],
+        )
+        self.users.start()
         self.client = TestClient(app)
         self.client.__enter__()
         self.headers = {"Authorization": "Bearer token"}
 
     def tearDown(self):
         self.client.__exit__(None, None, None)
+        self.users.stop()
         self.count.stop()
         self.caller.stop()
         app.dependency_overrides.clear()

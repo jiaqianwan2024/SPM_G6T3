@@ -2,7 +2,7 @@
 
 Full-stack event management platform. Vue frontend, Python FastAPI microservices on the backend, and one MySQL instance with a schema owned by each service. Firebase Authentication is the identity layer: the frontend signs in directly against Firebase, and every service independently verifies the resulting ID token.
 
-**Developers:** start here — [docs/architecture.md](docs/architecture.md) (file tree, ports, how to run frontend / backend / MySQL). API docs: [docs/api.md](docs/api.md) (Swagger UI at `/docs` on each service). Data model: [docs/data-model.md](docs/data-model.md). Unit tests: [docs/testing/unit-tests.md](docs/testing/unit-tests.md). Acceptance tests: [docs/testing/README.md](docs/testing/README.md).
+**Developers:** start here — [docs/architecture.md](docs/architecture.md) (file tree, ports, how to run frontend / backend / MySQL). API docs: [docs/api.md](docs/api.md) (Swagger UI at `/docs` on each service). Data model: [docs/data-model.md](docs/data-model.md). Unit tests: [docs/testing/unit-tests.md](docs/testing/unit-tests.md). Acceptance tests: [docs/testing/README.md](docs/testing/README.md). Acceptance criteria still missing from Done stories: [docs/testing/acceptance-gaps.md](docs/testing/acceptance-gaps.md).
 
 **Important distinction:** `frontend/src/api/*.js` files are NOT microservices — they are thin axios wrappers that send HTTP requests. The actual microservices (business logic, database access) are Python FastAPI apps living under `services/`. The two are separate codebases that only communicate over HTTP.
 
@@ -65,12 +65,12 @@ Every service with a database follows:
 | `app/core/config.py` | Env vars |
 | `alembic/` | Migrations (source of truth for schema) |
 
-`event-service/app/orchestration/` calls other services over HTTP (no cross-DB joins). Cross-service IDs (`event_id`, `user_id`, `venue_id`) are logical foreign keys only.
+`app/dao/` holds each service's queries. `event-service`, `venue-service`, and `equipment-service` also have `app/orchestration/`, which calls other services over HTTP (no cross-DB joins). Cross-service IDs (`event_id`, `user_id`, `venue_id`) are logical foreign keys only.
 
 Each service defaults `DATABASE_URL` to its local Docker MySQL instance, for example:
 
 ```
-mysql+pymysql://connectsphere:connectsphere@localhost:3307/user
+mysql+pymysql://connectsphere:connectsphere@127.0.0.1:3307/user
 ```
 
 Schema is owned by Alembic. Do not use `create_all()` to evolve tables.
@@ -79,10 +79,15 @@ Schema is owned by Alembic. Do not use `create_all()` to evolve tables.
 
 ```
 shared/
-├── auth/          Firebase-ready token helpers (JWT for local demo)
+├── auth/          Firebase ID-token check, role lookup through user-service, service key for service-to-service calls
+├── config/        Common settings and CORS origins
+├── dao/           Base data-access object
+├── services/      Base service class
 ├── schemas/       Common Pydantic models
 ├── exceptions/    Shared HTTP errors
-└── logging/       Logging notes
+├── logging/       Logging notes
+├── testing/       Unit-test base case and cross-service contract files
+└── openapi.py     Swagger titles, Bearer auth, and error examples for every service
 ```
 
 ## Request flow — `getEvent(eventId)`
@@ -114,6 +119,14 @@ python scripts/migrate.py
 ```
 
 `scripts/migrate.py` waits until each MySQL port is up, runs `alembic upgrade head` in every service, then inserts demo users/venues/events. Re-run it after `git pull` when someone committed a new Alembic revision. Use `--no-seed` to skip demo data.
+
+Acceptance tests leave hundreds of `AUTO-…` events behind. To trim them, run:
+
+```
+python scripts/migrate.py --clean-test-data
+```
+
+It keeps the seeded demo events plus one example event for each status the demo events don't cover, and deletes every other event with its bookings, equipment requests, registrations and notifications. Users, organisations, venues and equipment stay, except that venues the tests left active (`AUTO-…`, "Capacity Guard", "Logged Venue" and the like) are retired, which hides them from every venue list but keeps their history. It shows what it will keep and asks before deleting, then writes a full backup to `backups/` (gitignored) first. Add `--yes` to skip the question. To undo, load the backup: `docker exec -i infra-mysql-1 mysql -uroot -pconnectsphere < backups/<file>.sql`.
 
 If a local database is hopelessly out of date, wipe volumes and start clean:
 
@@ -147,7 +160,23 @@ Acceptance tests (from the repository root):
 npm run test:acceptance
 ```
 
-How to run SPM-43 and SPM-45: [docs/testing/README.md](docs/testing/README.md).
+`test:acceptance` is what CI's `e2e` job runs; `npm run test:e2e` runs every spec, including stories left out of CI. How to run one story's spec: [docs/testing/README.md](docs/testing/README.md).
+
+### Test case setup SQL
+
+Every acceptance test case has a setup file, `docs/testing/setup/<Test Case ID>.sql`, named in its pre-conditions ("Run `TC-SPM43-AC01.sql` on testDB"). Each one is plain SQL that empties every table in the six databases, then inserts all users and organisations and only the seeded data that case uses: the event it tests with that event's venue, equipment and registration window, plus any registration, change request or clarification it names. Dates are counted from the moment it runs, so a seeded event is always the same number of days away. Run it before the test:
+
+```
+python scripts/test_setup.py TC-SPM43-AC01
+npx playwright test e2e/spm43.spec.js -g "TC-SPM43-AC01 "
+```
+
+`python scripts/test_setup.py base` resets to the full seed. Use it before running a whole spec (`npm run test:spm12`), because one case's file only has that case's data. Several IDs can be given at once; each one resets the database again.
+
+- **It wipes the database.** The test database is the Compose MySQL on port 3307, the same one the dev backends use, so anything you created there is lost. Back it up first if you need it: `docker exec infra-mysql-1 mysqldump -uroot -pconnectsphere --databases user event venue equipment registration notification > backups/mine.sql`.
+- **No MySQL client is needed.** `infra/docker-compose.yml` mounts `docs/testing/setup/` into the MySQL container as `/setup`, and the script runs the file there. After pulling this change, run `docker compose up -d` in `infra/` once so the container picks up the mount (your data volume is kept). Each file also runs on its own in any client connected to `127.0.0.1:3307`.
+- **Sign-ins live in Firebase, not in these files.** The files restore the seeded user rows; the accounts in `Test Data/credentials-valid.txt` must already exist in your Firebase project (running `python scripts/migrate.py` once creates them).
+- **Rebuild after a migration or a seed change.** `python scripts/build_test_setup.py` backs the database up to `backups/`, empties it, runs `scripts/seed.py`, and writes `base.sql`, `records.json` (the seed's rows filed by record) and one file per test case the specs name. Don't edit the case files by hand. To change what a case loads, edit its list in `docs/testing/setup/needs.json`, then run `--cases-only`, which rewrites just the per-case files without touching the database. A new test needs an entry there too. A case that needs rows beyond the seed gets them from `EXTRA` in that script.
 
 Unit tests (unittest and Coverage.py for each service's `app/` package):
 
@@ -165,10 +194,12 @@ npm run test:integration
 
 How to run one service: [docs/testing/integration-tests.md](docs/testing/integration-tests.md).
 
+`npm run test:ci` runs the unit and integration suites together, as CI's `test` job does. Stop the dev backends first: some unit tests cover the "service unreachable" paths and only reach them when nothing listens on ports 8001–8006.
+
 Backend (from repo root, with the same venv already activated):
 
 ```
 python scripts/dev-backend.py
 ```
 
-Screens still use hardcoded demo data until they import the `src/api` service files.
+Every screen reads the services through `frontend/src/api/`.

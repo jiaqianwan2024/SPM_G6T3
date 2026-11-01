@@ -6,6 +6,7 @@ from app.db.session import get_db
 from app.schemas.user import UserPublic
 from app.services.user_service import UserService
 from shared.auth.deps import require_authenticated_user
+from shared.exceptions.http import forbidden
 from shared.openapi import error_responses
 
 router = APIRouter(
@@ -41,7 +42,11 @@ def me(user=Depends(current_user)):
     "",
     response_model=list[UserPublic],
     summary="List users",
-    description="Full user directory. Any authenticated user can call this.",
+    description="Full user directory, for staff and organisers. An attendee gets 403 (SPM-127): they never "
+    "see other people's details.",
+    responses=error_responses(403),
 )
-def list_users(service: UserService = Depends(get_user_service), _user=Depends(current_user)):
+def list_users(service: UserService = Depends(get_user_service), user=Depends(current_user)):
+    if user.role == "attendee":
+        raise forbidden("Attendees can open only confirmed event pages and their own registrations.")
     return service.list_users()

@@ -1,13 +1,25 @@
+from datetime import datetime
+
 from app.models.event_readiness import EventReadinessItem
 from shared.dao.base import BaseDAO
 
 
 class EventReadinessDAO(BaseDAO):
     def list_for_event(self, event_id: str) -> list[EventReadinessItem]:
+        """Newest first, so a line just added is at the top of the readiness page."""
         return (
             self.db.query(EventReadinessItem)
             .filter(EventReadinessItem.eventId == event_id)
-            .order_by(EventReadinessItem.assignedAt, EventReadinessItem.itemId)
+            .order_by(EventReadinessItem.assignedAt.desc(), EventReadinessItem.itemId.desc())
+            .all()
+        )
+
+    def list_due_between(self, start: datetime, end: datetime) -> list[EventReadinessItem]:
+        """Line items whose due date falls in [start, end], soonest first (SPM-5 AC8)."""
+        return (
+            self.db.query(EventReadinessItem)
+            .filter(EventReadinessItem.dueAt.isnot(None), EventReadinessItem.dueAt >= start, EventReadinessItem.dueAt <= end)
+            .order_by(EventReadinessItem.dueAt, EventReadinessItem.itemId)
             .all()
         )
 

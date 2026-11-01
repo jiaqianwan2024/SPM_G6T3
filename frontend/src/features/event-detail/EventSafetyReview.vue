@@ -24,7 +24,7 @@
         everything at once. The Safety Officer sees the confirmed venue and equipment with these notes, and the
         event waits in Safety review until they decide.
       </p>
-      <label for="safety-crowd">Crowd movement</label>
+      <label for="safety-crowd">Crowd movement <span class="req">*</span></label>
       <textarea
         id="safety-crowd"
         v-model="crowdMovement"
@@ -58,7 +58,7 @@
     </form>
 
     <p v-if="latest?.status === 'pending' && !isOfficer" class="notice" data-testid="safety-pending">
-      Submitted {{ formatUtc(latest.submittedAt) }}.
+      Submitted {{ formatSgt(latest.submittedAt) }}.
       <template v-if="latest.safetyOfficerId">{{ nameOf(latest.safetyOfficerId) }} is reviewing it.</template>
       <template v-else>Waiting for a Safety Officer to claim it.</template>
     </p>
@@ -67,7 +67,7 @@
     <div v-if="latest && latest.status !== 'pending'" class="outcome" :class="latest.status" data-testid="safety-outcome">
       <p>
         <strong>{{ OUTCOME_TITLES[latest.status] }}</strong>
-        by {{ nameOf(latest.decidedBy) }} on {{ formatUtc(latest.decidedAt) }}.
+        by {{ nameOf(latest.decidedBy) }} on {{ formatSgt(latest.decidedAt) }}.
       </p>
       <p v-if="latest.decisionNote">
         {{ NOTE_LABELS[latest.status] }}: {{ latest.decisionNote }}
@@ -178,7 +178,7 @@
 
     <!-- AC3: the claiming Safety Officer decides; the server refuses everyone else with 403 (AC8). -->
     <div v-if="isMine && latest?.status === 'pending'" class="decision" data-testid="safety-decision">
-      <label for="safety-decision-text">Notes for the coordinator</label>
+      <label for="safety-decision-text">Notes for the coordinator <span class="req">*</span><span class="req-note"> (needed to reject or request changes)</span></label>
       <textarea
         id="safety-decision-text"
         v-model="decisionText"
@@ -210,7 +210,7 @@
       <summary>Earlier reviews ({{ reviews.length - 1 }})</summary>
       <ul>
         <li v-for="review in reviews.slice(1)" :key="review.reviewId">
-          {{ STATE_LABELS[review.status] }} · submitted {{ formatUtc(review.submittedAt) }}
+          {{ STATE_LABELS[review.status] }} · submitted {{ formatSgt(review.submittedAt) }}
           <template v-if="review.decisionNote"> · {{ review.decisionNote }}</template>
         </li>
       </ul>
@@ -236,7 +236,7 @@ import {
 import { getUsers } from '../../api/userService.js'
 import { SAFETY_SUBMITTABLE_STATUSES } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt, formatSgtRange } from '../../utils/datetime.js'
 
 const props = defineProps({ event: { type: Object, required: true } })
 // Submitting or deciding changes the event's status, so the page re-reads it.
@@ -300,7 +300,7 @@ function nameOf(userId) {
 
 function formatRange(start, end) {
   if (!start || !end) return 'Date not set'
-  return `${new Date(start).toLocaleString()} – ${new Date(end).toLocaleString()}`
+  return formatSgtRange(start, end)
 }
 
 function errorText(err, fallback) {
@@ -410,7 +410,7 @@ watch(() => props.event.status, load)
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
   margin-top: 18px;
 }
@@ -438,18 +438,18 @@ textarea {
   box-sizing: border-box;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 10px 12px;
   margin-bottom: 12px;
   font-size: 14px;
   line-height: 1.5;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
   resize: vertical;
 }
 textarea:focus { outline: none; border-color: rgba(167, 139, 250, .6); box-shadow: 0 0 0 3px rgba(124, 77, 255, .16); }
 
-.submit-form, .decision { border: 1px solid var(--hairline); border-radius: 12px; padding: 16px; margin: 0 0 14px; }
+.submit-form, .decision { border: 1px solid var(--hairline); border-radius: var(--radius); padding: 16px; margin: 0 0 14px; }
 .form-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .affected { border: none; padding: 0; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 6px 18px; }
 .affected legend { margin-bottom: 8px; padding: 0; }
@@ -458,7 +458,7 @@ textarea:focus { outline: none; border-color: rgba(167, 139, 250, .6); box-shado
 .notice, .outcome, .warning {
   font-size: 13px;
   line-height: 1.6;
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 0 0 14px;
 }
@@ -488,7 +488,7 @@ textarea:focus { outline: none; border-color: rgba(167, 139, 250, .6); box-shado
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 0 0 12px;
 }

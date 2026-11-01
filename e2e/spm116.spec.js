@@ -9,7 +9,7 @@ import { period as onDay, soonExpiry, waitForHoldToExpire } from './support/venu
 // The suite makes its own hall (30 minutes setup, 45 minutes turnaround, open every
 // day) and retires it afterwards, so seeded venues are never held. Each test sends
 // its own requests on its own fixed day: a 10:00 to 12:00 event occupies
-// the hall from 09:30 to 12:45. All times are UTC.
+// the hall from 09:30 to 12:45. All times are Singapore time (SGT); the server stores UTC.
 
 const MINUTE = 60 * 1000
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -106,15 +106,21 @@ test.describe('SPM-116 Place a tentative hold with an expiry', () => {
   test('TC-SPM116-AC01b venue staff place and release a hold from the venue catalogue', async ({ page }) => {
     const base = onDay(2)
     const { booking } = await pending(base)
-    const until = dayBefore(base).slice(0, 16) // datetime-local, read as UTC
+    // The same instant as dayBefore(base), typed as Singapore time (UTC + 8 hours).
+    const until = shift(dayBefore(base), 8 * 60).slice(0, 16)
 
     await login(page, account('VS-01'))
     await page.getByRole('navigation').getByText('Venue Catalogue', { exact: true }).click()
-    await page.getByText(hall.name, { exact: true }).click()
+    // Let the catalogue finish opening (it shows its first venue on its own) before
+    // acting, so its own late load cannot redraw the panel.
+    await expect(page.getByText('Loading venues…')).toHaveCount(0)
+    await expect(page.getByRole('heading', { level: 3 }).first()).toBeVisible()
+    await page.getByTestId(`venue-row-${hall.venueId}`).click()
+    await expect(page.getByRole('heading', { name: hall.name })).toBeVisible()
     await expect(page.getByTestId(`venue-hold-request-${booking.bookingId}`)).toBeVisible()
 
     const row = page.getByTestId(`venue-hold-request-${booking.bookingId}`)
-    await row.getByLabel('Hold until (UTC)').fill(until)
+    await row.getByLabel('Hold until (SGT)').fill(until)
     await row.getByRole('button', { name: 'Place hold' }).click()
     await expect(page.getByTestId(`venue-hold-state-${booking.bookingId}`)).toContainText('Held until')
 

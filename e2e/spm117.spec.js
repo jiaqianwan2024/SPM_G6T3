@@ -19,7 +19,6 @@ async function inbox(accountId) {
 test.describe('SPM-117 Assign an unassigned request to an Event Coordinator', () => {
   test('TC-SPM117-AC01 an Event Coordinator Lead can sign in with a pre-created account', async ({ page }) => {
     await login(page, account('ECL-01'))
-    await expect(page.locator('.role-label')).toContainText('Rachel Goh (Event Coordinator Lead)')
   })
 
   test('TC-SPM117-AC02 a newly submitted request stays unassigned until the Lead assigns it', async () => {

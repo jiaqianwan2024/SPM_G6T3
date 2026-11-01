@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login } from './support/auth.js'
+import { expectSignedIn, login, logout } from './support/auth.js'
 import {
   account,
   expectedTabs,
@@ -42,7 +42,7 @@ test.describe('SPM-43 User Login and Session Management', () => {
     await page.reload()
     await restoredProfile
     await expect(page).toHaveURL(/\/app$/)
-    await expect(page.locator('.role-label')).toContainText(credentials.displayName)
+    await expectSignedIn(page, credentials)
 
     await page.goto('/login')
     await expect(page).toHaveURL(/\/app$/)
@@ -67,7 +67,7 @@ test.describe('SPM-43 User Login and Session Management', () => {
 
         await page.goto('/app')
         await expect(page).toHaveURL(/\/login$/)
-        await expect(page.locator('.role-label')).toHaveCount(0)
+        await expect(page.getByTestId('profile-menu-button')).toHaveCount(0)
       })
     }
   })
@@ -142,7 +142,7 @@ test.describe('SPM-43 User Login and Session Management', () => {
 
   test('TC-SPM43-AC06 logout prevents browser-back access to protected views', async ({ page }) => {
     await login(page, account('EO-01'))
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await logout(page)
     await expect(page).toHaveURL(/\/login$/)
     await expect(page.locator('.shell')).toHaveCount(0)
 

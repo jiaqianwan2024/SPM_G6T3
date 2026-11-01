@@ -49,6 +49,10 @@ class Event(Base):
     # SPM-120: the Safety Officer who claimed the event's safety review. They
     # keep it for every later round, and only they can decide on it.
     safetyOfficerId: Mapped[str | None] = mapped_column("safety_officer_id", String(64), nullable=True)
+    # SPM-88 AC10: why the event was cancelled, by whom, and when. Kept readable after cancelling.
+    cancellationReason: Mapped[str | None] = mapped_column("cancellation_reason", Text, nullable=True)
+    cancelledBy: Mapped[str | None] = mapped_column("cancelled_by", String(64), nullable=True)
+    cancelledAt: Mapped[datetime | None] = mapped_column("cancelled_at", DateTime, nullable=True)
     createdAt: Mapped[datetime] = mapped_column("created_at", DateTime, default=datetime.utcnow)
     updatedAt: Mapped[datetime] = mapped_column(
         "updated_at", DateTime, default=datetime.utcnow, onupdate=datetime.utcnow

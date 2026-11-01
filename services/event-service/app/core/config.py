@@ -14,6 +14,8 @@ class Settings(ServiceSettings):
     # SPM-95: an event starting this many days out or less, with an arrangement still
     # outstanding, is reminded about. Single source: the check reads it from here.
     event_reminder_lead_days: int = 7
+    # SPM-95: the service runs the reminder check itself at startup and at 00:00 Singapore time each day.
+    event_reminder_schedule_enabled: bool = True
 
 
 settings = Settings()

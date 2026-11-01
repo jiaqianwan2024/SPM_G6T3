@@ -52,7 +52,7 @@
           <div class="item-body">
             <div class="item-title">{{ item.title }}</div>
             <div class="item-text">{{ item.body }}</div>
-            <div class="item-time">{{ formatUtc(item.createdAt) }}</div>
+            <div class="item-time">{{ formatSgt(item.createdAt) }}</div>
           </div>
           <button
             v-if="!item.isRead"
@@ -87,7 +87,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from '../../api/notificationService.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt } from '../../utils/datetime.js'
 import { refreshUnreadCount, unreadCount } from './unreadCount.js'
 
 // SPM-94 AC8: the list is fetched a page at a time.
@@ -215,7 +215,7 @@ onMounted(() => {
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 
@@ -227,7 +227,7 @@ onMounted(() => {
   padding: 14px 16px;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   cursor: pointer;
   transition: border-color .2s var(--ease-out), background .2s var(--ease-out);
 }

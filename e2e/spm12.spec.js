@@ -5,9 +5,14 @@ import { guestRegistration, notificationApi, registrationApi } from './support/r
 
 test.describe('SPM-12 Registration withdrawal', () => {
   test('TC-SPM12-AC01 the attendee can withdraw only from an event they are currently registered for', async () => {
-    const own = await registrationApi('POST', '/registrations/r-att-e2/withdraw', 'ATT-01')
-    expect([200, 409]).toContain(own.status)
-    const others = await registrationApi('POST', '/registrations/r1/withdraw', 'ATT-01')
+    // A registration of the test's own: Amy's seeded r-att-e2 is what SPM-59 shows as her changed event.
+    const created = await registrationApi('POST', '/registrations', 'ATT-02', guestRegistration('e1', 'SPM12-OWN'))
+    expect(created.status, JSON.stringify(created.body)).toBe(201)
+    const own = await registrationApi('POST', `/registrations/${created.body.attendeeRegistrationId}/withdraw`, 'ATT-02')
+    expect(own.status).toBe(200)
+    const again = await registrationApi('POST', `/registrations/${created.body.attendeeRegistrationId}/withdraw`, 'ATT-02')
+    expect(again.status).toBe(409)
+    const others = await registrationApi('POST', '/registrations/r1/withdraw', 'ATT-02')
     expect([403, 404]).toContain(others.status)
   })
 
@@ -18,14 +23,13 @@ test.describe('SPM-12 Registration withdrawal', () => {
       'ATT-02',
       guestRegistration('e1', 'SPM12-OK'),
     )
-    if (created.status === 201) {
-      const withdrawn = await registrationApi(
-        'POST',
-        `/registrations/${created.body.attendeeRegistrationId}/withdraw`,
-        'ATT-02',
-      )
-      expect(withdrawn.status).toBe(200)
-    }
+    expect(created.status, JSON.stringify(created.body)).toBe(201)
+    const withdrawn = await registrationApi(
+      'POST',
+      `/registrations/${created.body.attendeeRegistrationId}/withdraw`,
+      'ATT-02',
+    )
+    expect(withdrawn.status).toBe(200)
     const cancelled = await registrationApi('POST', '/registrations/r-att-e8/withdraw', 'ATT-01')
     expect([400, 403, 409]).toContain(cancelled.status)
   })
@@ -83,7 +87,7 @@ test.describe('SPM-12 Registration withdrawal', () => {
     expect(remainingAfter).toBe(remainingBefore + 1)
   })
 
-  test('TC-SPM12-AC06 the attendee is shown confirmation and notified of the withdrawal', async ({
+  test('TC-SPM12-AC06 the attendee is shown confirmation of the withdrawal, without a notification', async ({
     page,
   }) => {
     const created = await registrationApi(
@@ -93,16 +97,22 @@ test.describe('SPM-12 Registration withdrawal', () => {
       guestRegistration('e1', 'SPM12-NOTE'),
     )
     expect(created.status).toBe(201)
-    await registrationApi(
+    const e1Notices = async () =>
+      ((await notificationApi('GET', '/notifications?pageSize=100', 'ATT-02')).body || [])
+        .filter((row) => row.eventId === 'e1')
+        .map((row) => row.notificationId)
+    const before = await e1Notices()
+    const withdrawn = await registrationApi(
       'POST',
       `/registrations/${created.body.attendeeRegistrationId}/withdraw`,
       'ATT-02',
     )
+    expect(withdrawn.status).toBe(200)
     await login(page, account('ATT-02'))
     await page.goto(`/app/registrations/${created.body.attendeeRegistrationId}`)
     await expect(page.getByTestId('withdraw-confirmation')).toContainText(/withdrawn/i)
-    const inbox = await notificationApi('GET', '/notifications', 'ATT-02')
-    expect(JSON.stringify(inbox.body)).toMatch(/withdrawn|e1/i)
+    // SPM-93 AC5: the attendee is not notified of their own withdrawal.
+    expect(await e1Notices()).toEqual(before)
   })
 
   test('TC-SPM12-AC07 the attendee can register again later while the period is open and a place remains', async () => {
@@ -124,6 +134,9 @@ test.describe('SPM-12 Registration withdrawal', () => {
       email: first.body.attendeeEmail,
     })
     expect(again.status).toBe(201)
+    // Give e1's place back: it has one spare, which later tests and specs register for.
+    const tidied = await registrationApi('POST', `/registrations/${again.body.attendeeRegistrationId}/withdraw`, 'ATT-02')
+    expect(tidied.status).toBe(200)
   })
 
   test('TC-SPM12-AC08 withdrawal is unavailable after the event has started, completed, or been cancelled', async ({

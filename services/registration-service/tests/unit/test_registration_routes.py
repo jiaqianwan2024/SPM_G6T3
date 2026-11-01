@@ -73,6 +73,21 @@ class TestRegistrationRoutes(ServiceTestCase):
         app.dependency_overrides.clear()
         super().tearDown()
 
+    def test_counts_for_several_events_in_one_call(self):
+        make_window(self.db)
+        self.client.post(
+            "/registrations",
+            headers={"Authorization": "Bearer token"},
+            json={"eventId": "e1", "name": "Amy Wong", "email": "amy@example.com"},
+        )
+
+        counted = self.client.get("/registrations/counts", params={"eventIds": "e1, e2,e1"})
+        single = self.client.get("/registrations/count", params={"eventId": "e1"})
+
+        self.assertEqual(counted.status_code, 200)
+        self.assertEqual(counted.json(), {"counts": {"e1": single.json()["count"], "e2": 0}})
+        self.assertEqual(self.client.get("/registrations/counts", params={"eventIds": ""}).json(), {"counts": {}})
+
     def test_post_and_get_registrations(self):
         make_window(self.db)
 
@@ -165,7 +180,7 @@ class TestRegistrationRoutes(ServiceTestCase):
 
         self.assertEqual(denied.status_code, 404)
 
-    def _register(self, email="guest@example.com", name="Guest"):
+    def _register(self, email="attendee2@connectsphere.com", name="Guest"):
         make_window(self.db)
         self.resolve_caller.return_value = {
             "userId": "u-att",
@@ -192,8 +207,8 @@ class TestRegistrationRoutes(ServiceTestCase):
         body = places.json()
         self.assertEqual(body["attendees"], [])
         self.assertEqual(body["remainingPlaces"], body["placesRemaining"])
-        self.assertNotIn("guest@example.com", places.text)
-        self.assertEqual(created["attendeeEmail"], "guest@example.com")
+        self.assertNotIn("attendee2@connectsphere.com", places.text)
+        self.assertEqual(created["attendeeEmail"], "attendee2@connectsphere.com")
 
     def test_withdraw_keeps_the_row_releases_one_place_and_allows_registering_again(self):
         created = self._register()
@@ -234,7 +249,7 @@ class TestRegistrationRoutes(ServiceTestCase):
         again = self.client.post(
             "/registrations",
             headers={"Authorization": "Bearer token"},
-            json={"eventId": "e1", "name": "Guest", "email": "guest@example.com"},
+            json={"eventId": "e1", "name": "Guest", "email": "attendee2@connectsphere.com"},
         )
         missing = self.client.post(
             "/registrations/missing/withdraw",
@@ -248,7 +263,7 @@ class TestRegistrationRoutes(ServiceTestCase):
         self.assertEqual(viewed.status_code, 200)
         self.assertEqual(viewed.json()["status"], "withdrawn")
         self.assertEqual(after.json()["remainingPlaces"], before.json()["remainingPlaces"] + 1)
-        self.assertNotIn("guest@example.com", after.text)
+        self.assertNotIn("attendee2@connectsphere.com", after.text)
         self.assertEqual(again.status_code, 201)
         self.assertNotEqual(again.json()["attendeeRegistrationId"], created["attendeeRegistrationId"])
         self.assertEqual(missing.status_code, 404)
@@ -294,7 +309,30 @@ class TestRegistrationRoutes(ServiceTestCase):
         )
 
         self.assertEqual(denied.status_code, 404)
-        self.assertNotIn("guest@example.com", denied.text)
+        self.assertNotIn("attendee2@connectsphere.com", denied.text)
+
+    def test_mine_event_ids_lists_only_the_events_the_caller_registered_for(self):
+        # SPM-127: event-service asks this to decide which event pages an attendee may open.
+        self.resolve_caller.return_value = {"userId": "u-att", "role": "attendee", "email": "att@example.com"}
+        rows = [("r1", "e1", "u-att", "registered"), ("r2", "e8", "u-att", "withdrawn"),
+                ("r3", "e1", "u-att", "withdrawn"), ("r4", "e9", "u-other", "registered")]
+        for row_id, event_id, user_id, status in rows:
+            self.db.add(AttendeeRegistration(
+                attendeeRegistrationId=row_id, eventId=event_id, userId=user_id, attendeeName="A",
+                attendeeEmail=f"{user_id}@example.com", status=status, createdAt=datetime.utcnow(),
+            ))
+        self.db.commit()
+
+        ids = self.client.get("/registrations/mine/event-ids", headers={"Authorization": "Bearer token"})
+
+        self.assertEqual((ids.status_code, ids.json()), (200, ["e1", "e8"]))
+
+    def test_mine_event_ids_is_empty_without_an_identity(self):
+        self.resolve_caller.return_value = {"userId": "", "role": "attendee", "email": ""}
+
+        ids = self.client.get("/registrations/mine/event-ids", headers={"Authorization": "Bearer token"})
+
+        self.assertEqual((ids.status_code, ids.json()), (200, []))
 
     def test_mine_is_empty_when_the_caller_has_no_identity(self):
         self.resolve_caller.return_value = {"userId": "", "role": "attendee", "email": ""}

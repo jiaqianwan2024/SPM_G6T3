@@ -16,3 +16,5 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_db}"
 # Published notifications are best effort; point them at a closed port so a unit
 # test can never write into a notification-service running on the developer's machine.
 os.environ.setdefault("NOTIFICATION_SERVICE_URL", "http://127.0.0.1:9")
+# The daily reminder timer is switched off in unit tests; the tests for it switch it on themselves.
+os.environ.setdefault("EVENT_REMINDER_SCHEDULE_ENABLED", "false")

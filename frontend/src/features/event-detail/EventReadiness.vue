@@ -17,14 +17,14 @@
         <h2>Add a follow-up line</h2>
         <div class="fields">
           <label>
-            Category
+            <span>Category <span class="req">*</span></span>
             <input v-model="draft.category" required placeholder="venue, equipment, registration…" data-testid="readiness-create-category" />
           </label>
           <label>
-            Personnel
+            <span>Personnel <span class="req">*</span></span>
             <select v-model="draft.handlerId" required data-testid="readiness-create-handler">
               <option value="" disabled>Choose someone</option>
-              <option v-for="person in people" :key="person.userId" :value="person.userId">
+              <option v-for="person in handlers" :key="person.userId" :value="person.userId">
                 {{ person.userName }} · {{ person.email }}
               </option>
             </select>
@@ -36,8 +36,8 @@
             </select>
           </label>
           <label>
-            Due
-            <input v-model="draft.dueAt" type="datetime-local" data-testid="readiness-create-due" />
+            Due (SGT)
+            <input v-model="draft.dueAt" type="datetime-local" :min="sgtMinInput()" data-testid="readiness-create-due" />
           </label>
           <label class="wide">
             Note
@@ -107,7 +107,7 @@
             </div>
             <div>
               <span class="label">Assigned</span>
-              <span data-testid="readiness-assigned-at">{{ formatUtc(row.assignedAt) }}</span>
+              <span data-testid="readiness-assigned-at">{{ formatSgt(row.assignedAt) }}</span>
             </div>
             <div data-testid="readiness-attachments">
               <span class="label">Attachments</span>
@@ -141,16 +141,16 @@
 
         <form v-if="editingId === row.itemId" class="edit-form" data-testid="readiness-edit-form" @submit.prevent="saveEdit(row)">
           <label>
-            Category
+            <span>Category <span class="req">*</span></span>
             <input v-model="edit.category" required data-testid="readiness-edit-category" />
           </label>
           <label>
-            Personnel
+            <span>Personnel <span class="req">*</span></span>
             <select v-model="edit.handlerId" required data-testid="readiness-edit-handler">
               <option v-if="edit.handlerId && !knownHandler(edit.handlerId)" :value="edit.handlerId">
                 {{ handlerLabel(row) }}
               </option>
-              <option v-for="person in people" :key="person.userId" :value="person.userId">
+              <option v-for="person in handlers" :key="person.userId" :value="person.userId">
                 {{ person.userName }} · {{ person.email }}
               </option>
             </select>
@@ -166,8 +166,8 @@
             <input v-model="edit.note" data-testid="readiness-edit-note" />
           </label>
           <label>
-            Due
-            <input v-model="edit.dueAt" type="datetime-local" data-testid="readiness-edit-due" />
+            Due (SGT)
+            <input v-model="edit.dueAt" type="datetime-local" :min="sgtMinInput(toLocalInput(row.dueAt))" data-testid="readiness-edit-due" />
           </label>
           <label>
             Attachment name
@@ -221,7 +221,7 @@ import { getEventReservations } from '../../api/equipmentService.js'
 import { getUsers } from '../../api/userService.js'
 import { getVenueBookings } from '../../api/venueService.js'
 import { session } from '../../store/session.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt, fromSgtInput, sgtMinInput, toSgtInput } from '../../utils/datetime.js'
 
 const STATUSES = ['outstanding', 'in_progress', 'confirmed']
 
@@ -229,6 +229,11 @@ const route = useRoute()
 const router = useRouter()
 const rows = ref([])
 const people = ref([])
+// SPM-5 AC1: the personnel handling an item are ConnectSphere staff, not an organiser or an
+// attendee (event-service refuses anyone else too). Everyone stays in `people`, so an older item's
+// handler still shows by name.
+const HANDLER_ROLES = ['coordinator', 'coordinatorlead', 'venue', 'techsupport', 'safety']
+const handlers = computed(() => people.value.filter((person) => HANDLER_ROLES.includes(person.role)))
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
@@ -274,8 +279,9 @@ function contactOf(row) {
   return row.handlerEmail || row.handlerPhone || personFor(row)?.email || ''
 }
 
+// Whether the picker already lists this handler; if not, the current one is shown on its own.
 function knownHandler(handlerId) {
-  return people.value.some((person) => person.userId === handlerId)
+  return handlers.value.some((person) => person.userId === handlerId)
 }
 
 function statusChoices(current) {
@@ -289,19 +295,14 @@ function message(err, fallback) {
   return fallback
 }
 
+// Due dates are typed and shown in Singapore time, and sent as UTC. A new due date
+// starts at today; an existing one that has passed stays allowed when its line is edited.
 function toIso(value) {
-  if (!value) return null
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+  return fromSgtInput(value) || null
 }
 
 function toLocalInput(value) {
-  if (!value) return ''
-  const hasZone = /(Z|[+-]\d{2}:?\d{2})$/.test(value)
-  const date = new Date(hasZone ? value : `${value}Z`)
-  if (Number.isNaN(date.getTime())) return ''
-  const pad = (part) => String(part).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  return toSgtInput(value)
 }
 
 function attachmentsFrom(line, existing = []) {
@@ -385,10 +386,11 @@ function editBody(row) {
     category: edit.category,
     handlerId: edit.handlerId,
     note: edit.note,
-    dueAt: toIso(edit.dueAt),
     attachments: attachmentsFrom(edit, row.attachments || []),
   }
   if (edit.status !== row.status) body.status = edit.status
+  // Only a changed due date is sent, so an overdue line's other fields can still be saved (SPM-5 AC10).
+  if (edit.dueAt !== toLocalInput(row.dueAt)) body.dueAt = toIso(edit.dueAt)
   return body
 }
 
@@ -504,7 +506,7 @@ onMounted(() => {
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 .panel, .sheet, .event-card {
@@ -512,7 +514,7 @@ onMounted(() => {
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
 }
 .panel { padding: 28px 24px 22px; margin-bottom: 18px; }
 .panel h2, .edit-form h2 { margin: 0 0 14px; font-size: 16px; font-weight: 500; color: var(--text); }
@@ -527,7 +529,7 @@ input, select {
   color: var(--text);
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 8px 10px;
 }
 .panel .btn { margin-top: 14px; }
@@ -591,6 +593,7 @@ input, select {
   justify-content: center;
   border-radius: 8px;
 }
+.row-actions .icon-btn { color: var(--icon); }
 .row-actions .icon-btn svg { width: 16px; height: 16px; }
 .row-actions .icon-btn.danger:hover { color: #ff8a76; }
 .edit-form {
@@ -613,7 +616,7 @@ input, select {
   width: min(420px, calc(100% - 32px));
   background: linear-gradient(160deg, #1a0c3b, #0d0524);
   border: 1px solid rgba(167, 139, 250, .28);
-  border-radius: 18px;
+  border-radius: var(--radius);
   padding: 28px;
   box-shadow: 0 30px 90px rgba(4, 1, 12, .7);
 }

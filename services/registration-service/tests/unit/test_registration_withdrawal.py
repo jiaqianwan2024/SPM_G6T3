@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 from unittest.mock import patch
 from uuid import uuid4
 
-import httpx
 from fastapi import HTTPException
 
 from app.dao.attendee_registration_dao import AttendeeRegistrationDAO
@@ -10,7 +9,7 @@ from app.dao.registration_window_dao import RegistrationWindowDAO
 from app.models.attendee_registration import AttendeeRegistration
 from app.services.registration_service import RegistrationService
 from shared.testing.cases import ServiceTestCase
-from tests.unit.support import confirmed_event, make_window
+from tests.unit.support import RecordingClient, confirmed_event, make_window
 
 INSTANT = datetime(2026, 10, 6, 9, 0, 0)
 
@@ -19,34 +18,6 @@ class FrozenClock(datetime):
     @classmethod
     def utcnow(cls):
         return INSTANT
-
-
-class RecordingClient:
-    calls = []
-
-    def __init__(self, timeout):
-        self.timeout = timeout
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
-
-    def post(self, url, json=None, headers=None):
-        RecordingClient.calls.append({"url": url, "json": json, "headers": headers})
-        return None
-
-
-class FailingClient:
-    def __init__(self, timeout):
-        self.timeout = timeout
-
-    def __enter__(self):
-        raise httpx.ConnectError("notification service is down")
-
-    def __exit__(self, *args):
-        return False
 
 
 class NotifyMustNotRun:
@@ -418,38 +389,15 @@ class TestRegistrationWithdrawal(ServiceTestCase):
         self.assertEqual(ctx.exception.status_code, 404)
         self.assertNotIn("amy@example.com", ctx.exception.detail)
 
-    def test_notification_names_the_event_and_a_failure_does_not_undo_the_withdrawal(self):
-        named = future_start(eventName="AI in Events Summit")
-        unnamed = future_start()
-        unnamed.pop("eventName", None)
-
+    def test_the_attendee_is_not_notified_of_their_own_withdrawal(self):
+        # SPM-93 AC5: the screen confirms it; no in-app notice or email is sent.
         RecordingClient.calls = []
-        with patch("app.services.registration_service._event", return_value=named):
+        with patch("app.services.registration_service._event", return_value=future_start()):
             with patch("app.services.registration_service.httpx.Client", RecordingClient):
-                named_row = self.service.withdraw("e1", "amy@example.com", authorization="Bearer token")
-        record, email = RecordingClient.calls
-        self.assertIn("/notifications/records", record["url"])
-        self.assertIn("withdrawn", record["json"]["body"])
-        self.assertIn("AI in Events Summit", record["json"]["body"])
-        self.assertIn("e1", record["json"]["body"])
-        self.assertEqual(record["headers"], {"Authorization": "Bearer token"})
-        self.assertTrue(email["url"].endswith("/notifications"))
-        self.assertEqual(email["json"]["to"], "amy@example.com")
-        self.assertEqual(named_row.status, "withdrawn")
+                row = self.service.withdraw("e1", "amy@example.com", authorization="Bearer token")
 
-        self.service.register("e1", "Amy Wong", "amy@example.com", user_id="u-amy")
-        RecordingClient.calls = []
-        with patch("app.services.registration_service._event", return_value=unnamed):
-            with patch("app.services.registration_service.httpx.Client", RecordingClient):
-                self.service.withdraw("e1", "amy@example.com")
-        self.assertEqual(RecordingClient.calls[0]["headers"], {})
-        self.assertIn("(e1)", RecordingClient.calls[0]["json"]["body"])
-
-        self.service.register("e1", "Amy Wong", "amy@example.com", user_id="u-amy")
-        with patch("app.services.registration_service.httpx.Client", FailingClient):
-            failed = self.service.withdraw("e1", "amy@example.com")
-        self.assertEqual(failed.status, "withdrawn")
-        self.assertIsNotNone(self.db.get(type(failed), failed.attendeeRegistrationId))
+        self.assertEqual(row.status, "withdrawn")
+        self.assertEqual(RecordingClient.calls, [])
 
     def test_the_organiser_roster_shows_the_withdrawal_and_the_released_place(self):
         access = {

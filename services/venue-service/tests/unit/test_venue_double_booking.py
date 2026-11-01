@@ -23,12 +23,13 @@ ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 def at(hour, minute=0, day=MONDAY):
-    return day + timedelta(hours=hour, minutes=minute)
+    """`hour`:`minute` Singapore time, stored as naive UTC (eight hours earlier)."""
+    return day + timedelta(hours=hour - 8, minutes=minute)
 
 
 class DoubleBookingCase(VenueCase):
     """Marina Hall A, open every day, with 30 minutes setup and 60 minutes
-    turnaround. The first booking is Monday 10:00 to 12:00 UTC, so it occupies
+    turnaround. The first booking is Monday 10:00 to 12:00 SGT, so it occupies
     the hall from 09:30 to 13:00."""
 
     def setUp(self):
@@ -128,7 +129,7 @@ class TestConfirmedBookings(DoubleBookingCase):
         self.assertEqual(
             detail,
             "Marina Hall A is already confirmed for event e-first at an overlapping time (07 Jan 2030, 09:30 AM "
-            "to 01:00 PM UTC, including setup and turnaround), so this request cannot be approved.",
+            "to 01:00 PM SGT, including setup and turnaround), so this request cannot be approved.",
         )
 
     def test_a_second_overlapping_approval_is_refused(self):
@@ -189,7 +190,7 @@ class TestUnavailability(DoubleBookingCase):
 
         self.assertEqual(
             detail,
-            "Marina Hall A is unavailable from 07 Jan 2030, 09:00 AM to 09:45 AM UTC (Maintenance), "
+            "Marina Hall A is unavailable from 07 Jan 2030, 09:00 AM to 09:45 AM SGT (Maintenance), "
             "so this request cannot be approved.",
         )
 
@@ -198,7 +199,7 @@ class TestUnavailability(DoubleBookingCase):
 
         self.assertEqual(
             self.refused(self.request(at(10), at(12))),
-            "Marina Hall A is unavailable from 07 Jan 2030, 12:30 PM to 02:00 PM UTC, so this request cannot be approved.",
+            "Marina Hall A is unavailable from 07 Jan 2030, 12:30 PM to 02:00 PM SGT, so this request cannot be approved.",
         )
 
     def test_unavailability_that_only_touches_the_window_does_not_block(self):

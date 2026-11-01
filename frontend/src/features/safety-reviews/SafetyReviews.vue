@@ -20,7 +20,7 @@
         <span>{{ formatRange(review.package.proposedStartAt, review.package.proposedEndAt) }}</span>
         <span>{{ review.package.expectedAttendance }} attendees</span>
         <span>{{ review.package.venues.map((venue) => venue.venueName).join(', ') }}</span>
-        <span>Submitted {{ formatUtc(review.submittedAt) }}</span>
+        <span>Submitted {{ formatSgt(review.submittedAt) }}</span>
       </span>
       <span v-if="hasFlag(review)" class="flag">An arrangement is marked for re-checking</span>
     </button>
@@ -31,7 +31,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getSafetyReviewQueue } from '../../api/eventService.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt, formatSgtRange } from '../../utils/datetime.js'
 
 const router = useRouter()
 const reviews = ref([])
@@ -40,7 +40,7 @@ const error = ref('')
 
 function formatRange(start, end) {
   if (!start || !end) return 'Date not set'
-  return `${new Date(start).toLocaleString()} – ${new Date(end).toLocaleString()}`
+  return formatSgtRange(start, end)
 }
 
 function hasFlag(review) {
@@ -74,7 +74,7 @@ onMounted(load)
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 .event-card {
@@ -89,14 +89,14 @@ onMounted(load)
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 18px 20px;
   cursor: pointer;
   transition: border-color .4s var(--ease-out), background .4s var(--ease-out);
 }
 .event-card:hover { border-color: rgba(167, 139, 250, .3); background: var(--glass-strong); }
 .event-card:focus-visible { outline: none; border-color: rgba(167, 139, 250, .6); box-shadow: 0 0 0 3px rgba(124, 77, 255, .16); }
-.event-name { font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: var(--text); font-size: 15px; }
+.event-name { font-family: var(--font); font-weight: 500; color: var(--text); font-size: 15px; }
 .event-meta { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .flag {
   align-self: flex-start;

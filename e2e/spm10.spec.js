@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login } from './support/auth.js'
+import { login, logout } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { venueRequest } from './support/venue.js'
 import { THEATRE_EVENT, approvedEvent, requestVenue } from './support/venue-request.js'
@@ -18,7 +18,7 @@ import {
 // The suite makes its own hall (Theatre 300, open every day, 30 minutes setup and 45
 // turnaround, so a 10:00 to 12:00 event occupies it 09:30 to 12:45) and a second room
 // to suggest instead, and retires both afterwards. Each test makes its own events on
-// its own fixed day. All times are UTC.
+// its own fixed day. All times are Singapore time (SGT); the server stores UTC.
 
 let hall
 let room
@@ -87,12 +87,12 @@ test.describe('SPM-10 Reject a Venue Booking Request', () => {
     ]) {
       await expect(row(label), label).toHaveText(`${label}${value}`)
     }
-    await expect(row('Event times')).toHaveText(/^Event times\d{1,2} \w{3} \d{4}, 10:00 to 12:00 UTC$/)
+    await expect(row('Event times')).toHaveText(/^Event times\d{1,2} \w{3} \d{4}, 10:00 to 12:00 SGT$/)
     await expect(row('Venue occupied')).toHaveText(
-      /^Venue occupied\d{1,2} \w{3} \d{4}, 09:30 to 12:45 UTC, including setup and turnaround$/,
+      /^Venue occupied\d{1,2} \w{3} \d{4}, 09:30 to 12:45 SGT, including setup and turnaround$/,
     )
     await expect(row('Client organisation')).not.toHaveText('Client organisationNot given')
-    await expect(row('Submitted')).toHaveText(/^Submitted\d{1,2} \w{3} \d{4}, \d{2}:\d{2} UTC$/)
+    await expect(row('Submitted')).toHaveText(/^Submitted\d{1,2} \w{3} \d{4}, \d{2}:\d{2} SGT$/)
     await expect(card.getByRole('button', { name: 'Hide full details' })).toHaveAttribute('aria-expanded', 'true')
   })
 
@@ -111,9 +111,9 @@ test.describe('SPM-10 Reject a Venue Booking Request', () => {
     await card.getByRole('button', { name: 'Reject' }).click()
     const confirm = card.getByRole('button', { name: 'Confirm rejection' })
     await expect(confirm).toBeDisabled()
-    await card.getByLabel('Reason for rejecting (required)').fill('   ')
+    await card.getByLabel('Reason for rejecting').fill('   ')
     await expect(confirm).toBeDisabled()
-    await card.getByLabel('Reason for rejecting (required)').fill('Too small for this event.')
+    await card.getByLabel('Reason for rejecting').fill('Too small for this event.')
     await expect(confirm).toBeEnabled()
   })
 
@@ -142,7 +142,7 @@ test.describe('SPM-10 Reject a Venue Booking Request', () => {
     await openBookingRequests(page, hall)
     const card = page.getByTestId(`booking-request-${suggestedFor.booking.bookingId}`)
     await card.getByRole('button', { name: 'Reject' }).click()
-    await card.getByLabel('Reason for rejecting (required)').fill('The stage is being rebuilt.')
+    await card.getByLabel('Reason for rejecting').fill('The stage is being rebuilt.')
     await card.getByLabel('Suggest another venue (optional)').selectOption(room.venueId)
     await card.getByRole('button', { name: 'Confirm rejection' }).click()
     await expect(page.getByTestId('booking-approved-notice')).toContainText('Rejected.')
@@ -150,7 +150,7 @@ test.describe('SPM-10 Reject a Venue Booking Request', () => {
 
     // The coordinator sees why, and where to try instead, on their Choose venues page.
     const coordinator = page
-    await coordinator.getByRole('button', { name: 'Log out' }).click()
+    await logout(coordinator)
     await login(coordinator, account('EC-01'))
     await coordinator.goto(`/app/events/${suggestedFor.event.eventId}/venues`)
     await expect(coordinator.getByTestId(`venue-rejection-${suggestedFor.booking.bookingId}`)).toContainText(
@@ -167,7 +167,7 @@ test.describe('SPM-10 Reject a Venue Booking Request', () => {
     await openBookingRequests(page, hall)
     const card = page.getByTestId(`booking-request-${booking.bookingId}`)
     await card.getByRole('button', { name: 'Reject' }).click()
-    await card.getByLabel('Reason for rejecting (required)').fill('Double-booked with a private event.')
+    await card.getByLabel('Reason for rejecting').fill('Double-booked with a private event.')
     await card.getByRole('button', { name: 'Confirm rejection' }).click()
 
     await expect(page.getByTestId(`booking-request-${booking.bookingId}`)).toHaveCount(0)
@@ -211,6 +211,7 @@ test.describe('SPM-10 Reject a Venue Booking Request', () => {
   })
 
   test('TC-SPM10-AC06 who rejected the request, the reason, and when are recorded', async ({ page }) => {
+    test.slow() // makes an approved event and a request through the API, then checks the Booking Requests page
     const { booking } = await pending(period(7))
     const before = Date.now()
     const rejected = await reject(booking, { reason: 'The stage is being rebuilt.' })

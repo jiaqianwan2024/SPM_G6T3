@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -59,6 +60,43 @@ class EquipmentActivityLogOut(BaseModel):
 
 class ReservationRelease(BaseModel):
     reason: str = ""
+
+
+class ReservationReschedulePreview(BaseModel):
+    """SPM-87 AC2: try an event's new date and time against its held reservations. Nothing is saved."""
+
+    eventId: str = Field(min_length=1)
+    startsAt: datetime
+    endsAt: datetime
+
+
+class ReservationReschedule(ReservationReschedulePreview):
+    """SPM-87 AC6: move an event's reservations to its new date and time."""
+
+    reason: str = Field(default="", description="Why the event moved, kept on any flagged reservation.")
+
+
+class RescheduledReservationOut(BaseModel):
+    """One held reservation judged at the new time, and on apply what happened to it."""
+
+    reservationId: str
+    equipmentId: str
+    equipmentName: str
+    quantity: int
+    availableQuantity: int = Field(
+        description="Units of this equipment free at the new time for this reservation, after other events' "
+        "reservations and this event's earlier reservations of the same equipment."
+    )
+    canMeet: bool
+    shortfall: int = 0
+    outcome: Literal["moved", "flagged"] | None = Field(
+        default=None,
+        description="Apply only. `moved`: held at the new time. `flagged`: moved too, but the quantity cannot be "
+        "met then, so it is flagged for technical support (AC6); nothing is dropped.",
+    )
+    needsReverification: bool = False
+    startsAt: datetime
+    endsAt: datetime
 
 
 class ReservationReverificationRequest(BaseModel):
@@ -240,6 +278,63 @@ class EquipmentReservationOut(BaseModel):
     )
 
 
+class UpcomingEventOut(BaseModel):
+    """SPM-4: one upcoming event that has equipment requirements, as technical support's queue shows it."""
+
+    eventId: str
+    eventName: str
+    status: str
+    proposedStartAt: datetime | None = None
+    proposedEndAt: datetime | None = None
+    venueName: str = ""
+    coordinatorId: str | None = None
+    equipmentSummary: str = ""
+    equipmentState: str = Field(
+        description="`awaiting_review`, `partly_reserved`, `fully_reserved` or `unavailable`."
+    )
+    needsAttention: bool = False
+    needsReverification: bool = False
+
+
+class TechWorkItemOut(BaseModel):
+    """SPM-58: one equipment line on technical support's home screen, with its event."""
+
+    id: str = Field(description="The request id, or the reservation id for a re-verification.")
+    requestId: str
+    eventId: str
+    eventName: str
+    eventStartsAt: datetime | None = None
+    eventEndsAt: datetime | None = None
+    equipmentId: str
+    equipmentName: str
+    quantity: int
+    status: str
+    shortfall: int = Field(default=0, description="Units still missing: all of an unavailable line.")
+    note: str = Field(default="", description="What changed on the event, or why the line fell short.")
+
+
+class SuppliedEventOut(BaseModel):
+    """SPM-58 AC4: an upcoming event technical support is supplying."""
+
+    eventId: str
+    eventName: str
+    eventStartsAt: datetime | None = None
+    eventEndsAt: datetime | None = None
+    equipmentSummary: str = Field(description="What is held for it, e.g. `2 × Wireless mic set`.")
+
+
+class TechDashboardOut(BaseModel):
+    """SPM-58: technical support's home screen. Only work for events that have not ended and are
+    still live (not cancelled, completed, rejected or a draft) is listed; each list is soonest first."""
+
+    pending: list[TechWorkItemOut] = Field(description="AC1: requests awaiting review.")
+    reverification: list[TechWorkItemOut] = Field(description="AC2: reservations flagged after a significant change.")
+    shortfalls: list[TechWorkItemOut] = Field(
+        description="AC3: lines recorded as unavailable or partly fulfilled that the coordinator has not resolved."
+    )
+    upcoming: list[SuppliedEventOut] = Field(description="AC4: events with equipment held for them.")
+
+
 class EquipmentOutcomeOut(BaseModel):
     reservationId: str = ""
     requestId: str = ""
@@ -255,3 +350,24 @@ class EquipmentOutcomeOut(BaseModel):
 class EventHoldsRelease(BaseModel):
     eventId: str
     reason: str = "The event was closed"
+
+
+class ReleasedReservationOut(EquipmentReservationOut):
+    """SPM-88: a reservation an event's release freed, with what it was, so the release can be undone."""
+
+    previousStatus: str = Field(description="`active` or `reserved`: the reservation's status before the release.")
+    handledBy: str | None = Field(
+        default=None, description="AC8: the technical support member who reviewed the line it held."
+    )
+
+
+class RestoredReservation(BaseModel):
+    reservationId: str = Field(min_length=1)
+    status: Literal["active", "reserved"]
+
+
+class ReservationRestoreRequest(BaseModel):
+    """SPM-88 AC9: the cancellation failed further on, so its equipment release is undone."""
+
+    eventId: str = Field(min_length=1)
+    reservations: list[RestoredReservation]

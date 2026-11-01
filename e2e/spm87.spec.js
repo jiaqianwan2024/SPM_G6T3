@@ -3,13 +3,20 @@ import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { eventApi } from './support/event.js'
 import { venueRequest } from './support/venue.js'
+import { planningEvent } from './support/confirmation.js'
 
+// A fresh slot on each call, so no test moves an event to the time an earlier test
+// (or an earlier run) already left it at; the backend refuses a move to the current
+// time. 10:00 to 13:00 Singapore time sits inside the seeded venues' opening hours.
 const later = () => {
-  const start = new Date(Date.now() + 50 * 86400000)
-  start.setUTCHours(10, 0, 0, 0)
+  const start = new Date(Date.now() + (50 + Math.floor(Math.random() * 300)) * 86400000)
+  start.setUTCHours(2, 0, 0, 0)
   const end = new Date(start.getTime() + 3 * 3600000)
   return { proposedStartAt: start.toISOString(), proposedEndAt: end.toISOString() }
 }
+
+// The API returns naive UTC ("2027-01-05T02:00:00"); compare instants, not strings.
+const instant = (value) => new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`).toISOString()
 
 test.describe('SPM-87 Reschedule an event', () => {
   test('TC-SPM87-AC01 the assigned coordinator can reschedule Approved, Planning, or Confirmed events with a reason', async () => {
@@ -19,7 +26,7 @@ test.describe('SPM-87 Reschedule an event', () => {
       reason: 'Client asked to move',
     })
     expect(moved.status).toBe(200)
-    expect(moved.body.proposedStartAt).toBe(period.proposedStartAt)
+    expect(instant(moved.body.proposedStartAt)).toBe(period.proposedStartAt)
     expect(moved.body.reason || moved.body.rescheduleReason).toMatch(/Client/)
   })
 
@@ -37,10 +44,11 @@ test.describe('SPM-87 Reschedule an event', () => {
   })
 
   test('TC-SPM87-AC03 when the venue is free and suitable, the coordinator can carry the booking across', async () => {
-    const preview = await eventApi('POST', '/e3/reschedule/preview', 'EC-01', later())
+    const period = later()
+    const preview = await eventApi('POST', '/e3/reschedule/preview', 'EC-01', period)
     if (preview.body?.venueFree && preview.body?.venueSuitable) {
       const moved = await eventApi('POST', '/e3/reschedule', 'EC-01', {
-        ...later(),
+        ...period,
         reason: 'Carry booking',
         carryVenueBooking: true,
       })
@@ -100,18 +108,24 @@ test.describe('SPM-87 Reschedule an event', () => {
   })
 
   test('TC-SPM87-AC08 a registration close after the new start is brought forward and the coordinator is told', async () => {
-    const start = new Date(Date.now() + 4 * 86400000)
-    const moved = await eventApi('POST', '/e1/reschedule', 'EC-01', {
+    // An event of its own whose registration closes in 30 days, moved to start in 4.
+    const day = 86400000
+    const event = await planningEvent('SPM87-close', {
+      registrationEnabled: true,
+      capacity: 20,
+      registrationOpensAt: new Date(Date.now() - day).toISOString(),
+      registrationClosesAt: new Date(Date.now() + 30 * day).toISOString(),
+    })
+    const start = new Date(Date.now() + 4 * day)
+    const moved = await eventApi('POST', `/${event.eventId}/reschedule`, 'EC-01', {
       proposedStartAt: start.toISOString(),
       proposedEndAt: new Date(start.getTime() + 2 * 3600000).toISOString(),
       reason: 'Sooner',
     })
-    expect([200, 409]).toContain(moved.status)
-    if (moved.status === 200) {
-      expect(moved.body.registrationClosesAt).toBeTruthy()
-      expect(new Date(moved.body.registrationClosesAt).getTime()).toBeLessThanOrEqual(start.getTime())
-      expect(moved.body.registrationCloseAdjusted || moved.body.registrationBroughtForward).toBeTruthy()
-    }
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200)
+    expect(new Date(`${moved.body.registrationClosesAt}Z`).getTime()).toBeLessThanOrEqual(start.getTime())
+    expect(moved.body.registrationCloseAdjusted).toBe(true)
+    expect(JSON.stringify(moved.body.messages)).toMatch(/registration/i)
   })
 
   test('TC-SPM87-AC09 the reschedule, old and new period, reason, actor, and time are in the activity log', async () => {

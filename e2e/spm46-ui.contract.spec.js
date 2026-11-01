@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login } from './support/auth.js'
+import { login, logout } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { THEATRE_EVENT, approvedEvent } from './support/venue-request.js'
 import { assignCoordinator } from './support/event.js'
@@ -37,8 +37,15 @@ test.describe('SPM-46 Assigned Coordinator Event Permissions (UI)', () => {
     await expect(page.getByTestId('venue-request-read-only')).toHaveCount(0)
   })
 
-  test('TC-SPM46-AC01 assigned coordinator can confirm arrangements', async () => {
-    test.skip(true, 'Confirming an event is SPM-72, which is not built yet; remove this skip when it ships.')
+  test('TC-SPM46-AC01 only the assigned coordinator is offered the confirmation panel', async ({ page, browser }) => {
+    const event = await approvedEvent(THEATRE_EVENT)
+    await openEvent(page, 'EC-01', event)
+    await expect(page.getByTestId('event-confirmation')).toBeVisible()
+
+    const other = await browser.newPage()
+    await openEvent(other, 'EC-02', event)
+    await expect(other.getByTestId('event-confirmation')).toHaveCount(0)
+    await other.close()
   })
 
   for (const id of ['EC-02', 'VS-01', 'TS-01']) {
@@ -86,7 +93,7 @@ test.describe('SPM-46 Assigned Coordinator Event Permissions (UI)', () => {
     await expect(controls.requestEquipment).toHaveCount(0)
 
     await page.goto('/app')
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await logout(page)
     await openEvent(page, 'EC-02', event)
     await expect(controls.edit).toBeVisible()
     await expect(controls.chooseVenue).toBeVisible()

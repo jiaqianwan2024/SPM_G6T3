@@ -21,8 +21,9 @@ EVENT = EventFacts(
     coordinatorId="u-coord",
     organisationId="org-1",
     expectedAttendance=10,
-    proposedStartAt=datetime(2030, 1, 7, 10),
-    proposedEndAt=datetime(2030, 1, 7, 12),
+    # 10:00 to 12:00 Singapore time, stored as UTC.
+    proposedStartAt=datetime(2030, 1, 7, 2),
+    proposedEndAt=datetime(2030, 1, 7, 4),
 )
 
 

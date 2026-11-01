@@ -4,6 +4,16 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_serializer, model_validator
 
 
+def check_registration_window(opens: datetime | None, closes: datetime | None, start: datetime | None) -> None:
+    """SPM-81 AC4/AC5: registration closes after it opens and no later than the event starts.
+    A side that is not known yet is not checked, so a partial draft can still be saved."""
+    opens, closes, start = _naive_utc(opens), _naive_utc(closes), _naive_utc(start)
+    if opens and closes and closes <= opens:
+        raise ValueError("registrationClosesAt must be after registrationOpensAt")
+    if closes and start and closes > start:
+        raise ValueError("registrationClosesAt must be no later than the event start")
+
+
 class EventCreate(BaseModel):
     """Fields an organiser supplies when creating an event request.
 
@@ -13,9 +23,10 @@ class EventCreate(BaseModel):
     """
 
     eventName: str = Field(min_length=1, max_length=255)
-    purpose: str = ""
+    # SPM-14 AC1 / SPM-82 AC1: category and purpose are required to submit, like the name and dates.
+    purpose: str = Field(description="Required to submit.")
     description: str = ""
-    category: str | None = None
+    category: str = Field(description="Required to submit.")
     proposedStartAt: datetime
     proposedEndAt: datetime
     expectedAttendance: int = Field(ge=1, description="At least one. A draft may still save zero.")
@@ -28,13 +39,21 @@ class EventCreate(BaseModel):
     registrationClosesAt: datetime | None = None
     capacity: int = Field(default=0, ge=0, description="Intended registration cap.")
 
+    @field_validator("purpose", "category", mode="before")
+    @classmethod
+    def present(cls, value):
+        return _required_text(value or "")
+
+    @field_validator("category")
+    @classmethod
+    def standard_category(cls, value: str) -> str:
+        return canonical_category(value)
+
     @model_validator(mode="after")
     def check_windows(self):
         if self.proposedEndAt <= self.proposedStartAt:
             raise ValueError("proposedEndAt must be after proposedStartAt")
-        opens, closes = self.registrationOpensAt, self.registrationClosesAt
-        if opens and closes and closes <= opens:
-            raise ValueError("registrationClosesAt must be after registrationOpensAt")
+        check_registration_window(self.registrationOpensAt, self.registrationClosesAt, self.proposedStartAt)
         return self
 
     model_config = ConfigDict(
@@ -83,6 +102,11 @@ class EventOut(BaseModel):
     registrationOpensAt: datetime | None = None
     registrationClosesAt: datetime | None = None
     capacity: int
+    registrationDetailsOutstanding: bool = Field(
+        default=False,
+        description="SPM-81 AC3: registration is needed but the period or capacity is still blank. "
+        "Clears once the coordinator has set them.",
+    )
     submittedAt: datetime | None = None
     organisationId: str | None = None
     organiserId: str | None = Field(
@@ -100,13 +124,17 @@ class EventOut(BaseModel):
     )
     dateNear: bool = Field(
         default=False,
-        description="True when proposedStartAt is within settings.event_proposed_date_near_days.",
+        description="True when proposedStartAt is from now up to settings.event_proposed_date_near_days ahead.",
     )
+    datePassed: bool = Field(default=False, description="True once proposedStartAt has gone by.")
     registeredCount: int = Field(
         default=0, description="Live count from registration-service; 0 if that service is down."
     )
     confirmedBy: str | None = Field(default=None, description="SPM-72: the coordinator who confirmed the event.")
     confirmedAt: datetime | None = Field(default=None, description="SPM-72: when the event was confirmed.")
+    cancellationReason: str | None = Field(default=None, description="SPM-88: why the event was cancelled.")
+    cancelledBy: str | None = Field(default=None, description="SPM-88: who cancelled it.")
+    cancelledAt: datetime | None = Field(default=None, description="SPM-88: when it was cancelled.")
     safetyReviewStatus: str | None = Field(
         default=None,
         description="SPM-121: the latest safety review's status (`pending`, `approved`, `rejected`, "
@@ -167,6 +195,19 @@ class EventRejection(BaseModel):
     )
 
 
+class EventCancellation(BaseModel):
+    """SPM-88 AC2: a cancellation needs a reason. Attendees and staff are told it."""
+
+    reason: str = Field(max_length=2000, description="Why the event is cancelled. Required.")
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_given(cls, value: str) -> str:
+        return _required_text(value)
+
+    model_config = ConfigDict(json_schema_extra={"example": {"reason": "The keynote speaker withdrew."}})
+
+
 class EventRejectionOut(EventOut):
     """SPM-70 AC4: the rejected event, with the reason, explanation, who decided, and when."""
 
@@ -219,6 +260,24 @@ class EventDecisionOut(BaseModel):
             }
         }
     )
+
+
+# The only event categories, the same list the organiser form offers. Any casing of one of them is
+# stored as the form spells it, so "meeting" and "Meeting" are one category; anything else is refused.
+EVENT_CATEGORIES = ("Conference", "Workshop", "Networking", "Meeting")
+
+
+def canonical_category(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        # Not chosen yet: a draft may leave it blank, and submitting checks it separately.
+        return text
+    for name in EVENT_CATEGORIES:
+        if name.lower() == text.lower():
+            return name
+    raise ValueError(f"category must be one of {', '.join(EVENT_CATEGORIES)}")
 
 
 def _required_text(value: str) -> str:
@@ -327,13 +386,22 @@ class ClarificationOut(BaseModel):
     )
 
 
+class ActivityFieldChange(BaseModel):
+    field: str
+    oldValue: str | None = None
+    newValue: str | None = None
+
+
 class EventActivityOut(BaseModel):
     """One activity-log entry: a status change, one field edited (SPM-71 AC5),
-    or a coordinator assignment (SPM-66 AC4)."""
+    a coordinator assignment (SPM-66 AC4), a reschedule (SPM-87 AC9: the old
+    and new period in `oldValue` and `newValue`, the reason in `note`), or a
+    change request decided (SPM-85 AC9: `decision`, each field in `changes`,
+    the coordinator's reason in `note`)."""
 
     historyId: str
     eventId: str
-    kind: Literal["status", "edit", "assignment"] = "status"
+    kind: Literal["status", "edit", "assignment", "reschedule", "change_request"] = "status"
     fromStatus: str | None = None
     toStatus: str | None = None
     field: str | None = Field(
@@ -347,6 +415,10 @@ class EventActivityOut(BaseModel):
     )
     changedBy: str
     note: str = ""
+    decision: Literal["accepted", "declined"] | None = Field(default=None, description="On `change_request` entries.")
+    changes: list[ActivityFieldChange] = Field(
+        default=[], description="On `change_request` entries: each field asked for, with its previous and proposed value."
+    )
     createdAt: datetime
 
 
@@ -397,6 +469,11 @@ class EventUpdate(BaseModel):
         default=False,
         description="Send true after the coordinator has seen which arrangements the change affects.",
     )
+
+    @field_validator("category")
+    @classmethod
+    def standard_category(cls, value: str | None) -> str | None:
+        return canonical_category(value)
 
     @field_validator("proposedStartAt", "proposedEndAt")
     @classmethod
@@ -487,6 +564,120 @@ class EventUpdateOut(EventOut):
     )
 
 
+class ReschedulePreviewIn(BaseModel):
+    """SPM-87 AC2: the new date, start time, and end time to try. Sent in UTC."""
+
+    proposedStartAt: datetime
+    proposedEndAt: datetime
+
+    @field_validator("proposedStartAt", "proposedEndAt")
+    @classmethod
+    def as_naive_utc(cls, value: datetime) -> datetime:
+        return _naive_utc(value)
+
+
+class RescheduleIn(ReschedulePreviewIn):
+    """SPM-87 AC1: move the event, with a reason."""
+
+    reason: str = Field(min_length=1, max_length=2000, description="Why the event is moving. Required.")
+    carryVenueBooking: bool = Field(
+        default=True,
+        description="AC3: carry each booked venue that is free and suitable at the new time across. False releases "
+        "every booked venue, so the coordinator searches again.",
+    )
+    confirmVenueUnavailable: bool = Field(
+        default=False,
+        description="AC4: a booked venue is not free or not suitable at the new time. Without this the reschedule "
+        "is refused with a 409 naming it; with it, that booking is released and the others stay.",
+    )
+
+    @field_validator("reason")
+    @classmethod
+    def not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Give a reason for the reschedule")
+        return value.strip()
+
+
+class RescheduleVenueOut(BaseModel):
+    """One of the event's venue bookings at the new time (SPM-87 AC2 to AC4)."""
+
+    bookingId: str
+    venueId: str
+    venueName: str
+    status: str = Field(description="`pending` or `approved`; on apply, the status after (`cancelled` when released).")
+    free: bool
+    suitable: bool
+    verdict: str
+    reasons: list[str] = []
+    outcome: Literal["carried", "released", "moved"] | None = Field(
+        default=None, description="Apply only: carried across, released, or (a pending request) moved."
+    )
+
+
+class RescheduleEquipmentOut(BaseModel):
+    """One held equipment reservation at the new time (SPM-87 AC2, AC6)."""
+
+    reservationId: str
+    equipmentId: str
+    equipmentName: str
+    quantity: int
+    availableQuantity: int
+    canMeet: bool
+    shortfall: int = 0
+    outcome: Literal["moved", "flagged"] | None = Field(
+        default=None, description="Apply only: held at the new time, or moved and flagged because it cannot be met."
+    )
+
+
+class ReschedulePreviewOut(BaseModel):
+    """SPM-87 AC2: what the reschedule would do, before anything is applied (AC5)."""
+
+    eventId: str
+    currentStartAt: datetime | None
+    currentEndAt: datetime | None
+    proposedStartAt: datetime
+    proposedEndAt: datetime
+    venues: list[RescheduleVenueOut]
+    venueFree: bool | None = Field(
+        description="Every booked (approved) venue is free at the new occupied window; null when nothing is booked."
+    )
+    venueSuitable: bool | None = Field(
+        description="Every booked venue passes the other suitability points at the new time; null when nothing is booked."
+    )
+    unavailableVenues: list[str] = Field(
+        default=[], description="AC4: booked venues that are not free or not suitable, released if the reschedule goes ahead."
+    )
+    equipment: list[RescheduleEquipmentOut]
+    equipmentAvailable: bool = Field(description="Every held reservation can be met at the new time.")
+    registrationClosesAt: datetime | None = Field(
+        default=None, description="AC8: where registration would close; the new start when it closed later."
+    )
+    registrationCloseAdjusted: bool = False
+    messages: list[str] = Field(default=[], description="Plain sentences for the coordinator, one per point.")
+
+
+class RescheduleOut(EventOut):
+    """SPM-87: the rescheduled event and what happened to each arrangement."""
+
+    previousStartAt: datetime | None
+    previousEndAt: datetime | None
+    rescheduleReason: str
+    venues: list[RescheduleVenueOut] = []
+    venueCarried: bool = Field(default=False, description="AC3: at least one booking was carried across.")
+    releasedVenues: list[str] = Field(default=[], description="AC4: venues released; search for another.")
+    equipment: list[RescheduleEquipmentOut] = []
+    equipmentChecked: bool = Field(
+        default=True,
+        description="False when equipment-service could not be reached; the reservations were then not moved and "
+        "technical support must re-check them.",
+    )
+    registrationCloseAdjusted: bool = Field(default=False, description="AC8: registration now closes at the new start.")
+    previousRegistrationClosesAt: datetime | None = None
+    notifiedAttendees: int = 0
+    messages: list[str] = Field(default=[], description="Plain sentences telling the coordinator what changed.")
+
+
 class ReverificationSettleOut(BaseModel):
     """SPM-86 AC10: only a `reconsidering` event can return to `confirmed`, and only when nothing is still flagged."""
 
@@ -514,12 +705,15 @@ CHANGEABLE_FIELDS = (
     "layoutPreference",
     "accessibilityNeeds",
     "equipmentRequirements",
+    # SPM-85 AC5: each equipment type with its quantity, so a raise can be checked against stock.
+    "equipmentLines",
 )
 
 
 class ChangeRequestCreate(BaseModel):
     """SPM-106 AC2: the fields to change with their proposed values, and why.
-    Proposed values follow the same rules as a coordinator's edit (SPM-71)."""
+    Proposed values follow the same rules as a coordinator's edit (SPM-71),
+    plus equipment lines, which only a change request can alter."""
 
     reason: str = Field(min_length=1, max_length=2000)
     proposedChanges: dict[str, Any] = Field(min_length=1, description="Field name -> proposed value.")
@@ -536,7 +730,7 @@ class ChangeRequestCreate(BaseModel):
         if unknown:
             raise ValueError(f"These fields cannot be changed by request: {', '.join(unknown)}")
         try:
-            update = EventUpdate(**value)
+            update = ChangeRequestUpdate(**value)
         except ValidationError as exc:
             raise ValueError("; ".join(f"{'.'.join(map(str, e['loc'])) or 'value'}: {e['msg']}" for e in exc.errors()))
         # Stored as JSON, so datetimes become ISO strings in naive UTC.
@@ -557,6 +751,11 @@ class ChangeRequestAccept(BaseModel):
 
 class ChangeRequestDecline(BaseModel):
     reason: str = Field(min_length=1, max_length=2000, description="Why the change was declined; shown to the organiser.")
+    askNarrower: bool = Field(
+        default=False,
+        description="SPM-85 AC8: the coordinator would accept part of the request. Nothing is applied; the "
+        "organiser is asked to raise a narrower one.",
+    )
 
     @field_validator("reason")
     @classmethod
@@ -567,7 +766,10 @@ class ChangeRequestDecline(BaseModel):
 class ChangeRequestOut(BaseModel):
     changeRequestId: str
     eventId: str
-    status: str = Field(description="`pending`, `withdrawn`, `accepted`, or `declined`; older rows may read `applied`.")
+    status: str = Field(
+        description="`pending`, `withdrawn`, `accepted`, `declined`, or `closed` when the event was cancelled "
+        "(SPM-88); older rows may read `applied`."
+    )
     reason: str
     proposedChanges: dict[str, Any]
     currentValues: dict[str, Any] | None = Field(default=None, description="Each field's value when the request was raised.")
@@ -579,6 +781,9 @@ class ChangeRequestOut(BaseModel):
     reviewedBy: str | None = Field(default=None, description="Who closed it: the deciding coordinator, or the organiser who withdrew.")
     reviewedAt: datetime | None = None
     decisionReason: str | None = None
+    narrowerRequested: bool = Field(
+        default=False, description="SPM-85 AC8: declined with a request for a narrower change."
+    )
     flaggedArrangements: list[AffectedArrangement] = Field(
         default=[], description="On accept: venue bookings and equipment reservations now marked for re-verification."
     )
@@ -599,6 +804,99 @@ class ChangeRequestOut(BaseModel):
                 "affectsRegistration": False,
             }
         }
+    )
+
+
+class ImpactBookingOut(BaseModel):
+    """SPM-85 AC2: a confirmed venue booking the change would affect."""
+
+    bookingId: str
+    venueId: str
+    venueName: str
+    startsAt: datetime
+    endsAt: datetime
+
+
+class ImpactSuitabilityOut(BaseModel):
+    """SPM-85 AC3: a booked venue's suitability check re-run against the proposed values."""
+
+    bookingId: str
+    venueName: str
+    verdict: Literal["suitable", "suitable with warnings", "not suitable"]
+    reasons: list[str] = Field(default=[], description="Failures first, then warnings.")
+
+
+class ImpactCapacityOut(BaseModel):
+    """SPM-85 AC4: a booked venue's capacity in the layout the event would have, against the attendance it would expect."""
+
+    bookingId: str
+    venueName: str
+    layout: str | None = Field(
+        description="The layout the capacity is for; null when the venue does not offer it, so its largest capacity applies."
+    )
+    capacity: int
+    expectedAttendance: int
+    overCapacity: bool
+
+
+class ImpactReservationOut(BaseModel):
+    """SPM-85 AC2: an equipment reservation the change would affect."""
+
+    reservationId: str
+    equipmentId: str
+    equipmentName: str
+    quantity: int
+
+
+class ImpactEquipmentOut(BaseModel):
+    """SPM-85 AC5: an equipment type whose quantity the request raises, and whether the extra can be had."""
+
+    equipmentId: str
+    equipmentName: str
+    currentQuantity: int
+    proposedQuantity: int
+    extraQuantity: int = Field(description="proposedQuantity - currentQuantity.")
+    heldQuantity: int = Field(
+        description="Units this event already reserves during its period (the proposed one if the request moves it)."
+    )
+    freeQuantity: int = Field(description="Units no reservation holds during that period.")
+    available: bool = Field(description="freeQuantity + heldQuantity covers proposedQuantity.")
+    shortfall: int = Field(description="Units still missing; 0 when available.")
+
+
+class ImpactRegistrationOut(BaseModel):
+    """SPM-85 AC2: a current registration the change would affect."""
+
+    userId: str | None = None
+    attendeeName: str
+    attendeeEmail: str
+
+
+class ChangeRequestImpactOut(BaseModel):
+    """SPM-85 AC2 to AC5: what accepting a pending change request would unsettle. Nothing is changed."""
+
+    changeRequestId: str
+    eventId: str
+    venueBookings: list[ImpactBookingOut] = Field(
+        default=[], description="Confirmed bookings, when the request changes the date, time, attendance, layout, or access."
+    )
+    venueSuitability: list[ImpactSuitabilityOut] | None = Field(
+        default=None, description="AC3: one per booked venue when the date, time, or layout changes; null otherwise."
+    )
+    capacity: list[ImpactCapacityOut] | None = Field(
+        default=None, description="AC4: one per booked venue when the attendance or layout changes; null otherwise."
+    )
+    equipmentReservations: list[ImpactReservationOut] = Field(
+        default=[], description="Reservations of the types the request changes, or all of them when it moves the event."
+    )
+    equipmentAvailability: list[ImpactEquipmentOut] | None = Field(
+        default=None, description="AC5: one per equipment type whose quantity rises; null when no quantity rises."
+    )
+    registrations: list[ImpactRegistrationOut] = Field(
+        default=[], description="Current registrations, when the request changes the date, time, or attendance."
+    )
+    unchecked: list[Literal["venue", "equipment", "registrations"]] = Field(
+        default=[], description="Parts that could not be read right now. Their lists are empty, not clear."
     )
 
 
@@ -835,6 +1133,14 @@ class EquipmentLineIn(BaseModel):
         return value
 
 
+class ChangeRequestUpdate(EventUpdate):
+    """SPM-85 AC5: a change request's proposed values. On top of what the
+    coordinator can edit, an organiser can ask for different equipment
+    quantities; an empty list asks for no equipment."""
+
+    equipmentLines: list[EquipmentLineIn] = Field(default_factory=list)
+
+
 class OrganiserDraftPatch(BaseModel):
     """Fields an organiser can change on their own draft (SPM-80). Only fields sent are saved."""
 
@@ -853,8 +1159,17 @@ class OrganiserDraftPatch(BaseModel):
     accessibilityNeeds: str | list[str] | None = None
     accessibilityNote: str | None = None
     equipmentLines: list[EquipmentLineIn] | None = None
+    registrationEnabled: bool | None = None
+    registrationOpensAt: datetime | None = None
+    registrationClosesAt: datetime | None = None
+    capacity: int | None = Field(default=None, ge=0)
 
-    @field_validator("proposedStartAt", "proposedEndAt")
+    @field_validator("category")
+    @classmethod
+    def standard_category(cls, value: str | None) -> str | None:
+        return canonical_category(value)
+
+    @field_validator("proposedStartAt", "proposedEndAt", "registrationOpensAt", "registrationClosesAt")
     @classmethod
     def as_naive_utc(cls, value: datetime | None) -> datetime | None:
         return _naive_utc(value)
@@ -867,9 +1182,10 @@ class OrganiserDraftPatch(BaseModel):
 
 
 class RequirementOptionsOut(BaseModel):
-    layouts: list[str]
-    facilities: list[str]
-    accessibility: list[str]
+    layouts: list[str] = Field(description="What the active venues offer, then \"No preference\".")
+    facilities: list[str] = Field(description="What the active venues offer.")
+    accessibility: list[str] = Field(description="What the active venues offer.")
+    categories: list[str] = Field(description="The only categories an event can have.")
 
 
 class EventIntake(BaseModel):
@@ -887,10 +1203,24 @@ class EventIntake(BaseModel):
     accessibilityNeeds: str | list[str] = ""
     equipmentRequirements: str = ""
     layoutPreference: str | None = None
-    registrationEnabled: bool = False
+    registrationEnabled: bool | None = Field(
+        default=None,
+        description="SPM-81 AC1: whether attendee registration is needed. Required once dates are given.",
+    )
     registrationOpensAt: datetime | None = None
     registrationClosesAt: datetime | None = None
     capacity: int = Field(default=0, ge=0)
+
+    @field_validator("category")
+    @classmethod
+    def standard_category(cls, value: str | None) -> str | None:
+        return canonical_category(value)
+
+    @model_validator(mode="after")
+    def check_registration_stated(self):
+        if self.proposedStartAt and self.proposedEndAt and self.registrationEnabled is None:
+            raise ValueError("registrationEnabled is required: say whether attendee registration is needed")
+        return self
 
     def to_create(self) -> EventCreate:
         needs = self.accessibilityNeeds
@@ -903,7 +1233,8 @@ class EventIntake(BaseModel):
             category=self.category,
             proposedStartAt=self.proposedStartAt,
             proposedEndAt=self.proposedEndAt,
-            expectedAttendance=self.expectedAttendance if self.expectedAttendance is not None else 1,
+            # SPM-14 AC1: attendance must be stated to submit, so a missing one is listed, not assumed.
+            expectedAttendance=self.expectedAttendance,
             venueRequirements=self.venueRequirements,
             accessibilityNeeds=needs or "",
             equipmentRequirements=self.equipmentRequirements,
@@ -926,6 +1257,10 @@ class EventIntake(BaseModel):
             venueRequirements=self.venueRequirements,
             equipmentRequirements=self.equipmentRequirements,
             layoutPreference=self.layoutPreference,
+            registrationEnabled=self.registrationEnabled,
+            registrationOpensAt=self.registrationOpensAt,
+            registrationClosesAt=self.registrationClosesAt,
+            capacity=self.capacity,
         )
 
 
@@ -951,11 +1286,21 @@ class EventDraftUpsert(BaseModel):
     accessibilityNeeds: str | list[str] = ""
     accessibilityNote: str = ""
     equipmentLines: list[EquipmentLineIn] = Field(default_factory=list)
+    registrationEnabled: bool | None = None
+    registrationOpensAt: datetime | None = None
+    registrationClosesAt: datetime | None = None
+    capacity: int | None = Field(default=None, ge=0)
+
+    @field_validator("category")
+    @classmethod
+    def standard_category(cls, value: str | None) -> str | None:
+        return canonical_category(value)
 
     @model_validator(mode="after")
     def check_windows(self):
         if self.proposedStartAt and self.proposedEndAt and self.proposedEndAt <= self.proposedStartAt:
             raise ValueError("proposedEndAt must be after proposedStartAt")
+        check_registration_window(self.registrationOpensAt, self.registrationClosesAt, self.proposedStartAt)
         return self
 
 

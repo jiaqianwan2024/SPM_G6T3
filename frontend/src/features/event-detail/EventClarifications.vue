@@ -1,7 +1,7 @@
 <template>
   <!-- SPM-68: clarification threads. Only organisers and staff mount this, and
        the server refuses everyone else (AC6). -->
-  <section v-if="showPanel" class="panel clarifications" data-testid="clarification-thread">
+  <section v-if="showPanel" id="clarifications" class="panel clarifications" data-testid="clarification-thread">
     <div class="panel-head">
       <h2>Clarifications</h2>
       <button
@@ -22,7 +22,7 @@
         <option value="">The request in general</option>
         <option v-for="[key, label] in FIELD_OPTIONS" :key="key" :value="key">{{ label }}</option>
       </select>
-      <label for="clarification-message">What is unclear?</label>
+      <label for="clarification-message">What is unclear? <span class="req">*</span></label>
       <textarea
         id="clarification-message"
         v-model="message"
@@ -85,13 +85,13 @@
           <div class="byline">
             <span class="author">{{ entry.authorName || roleLabel(entry.authorRole) }}</span>
             <span class="role">{{ roleLabel(entry.authorRole) }}</span>
-            <time :datetime="entry.createdAt">{{ formatUtc(entry.createdAt) }}</time>
+            <time :datetime="entry.createdAt">{{ formatSgt(entry.createdAt) }}</time>
           </div>
           <p class="message">{{ entry.message }}</p>
         </li>
       </ol>
 
-      <p v-if="item.status === 'resolved'" class="resolved-note">Resolved {{ formatUtc(item.resolvedAt) }}</p>
+      <p v-if="item.status === 'resolved'" class="resolved-note">Resolved {{ formatSgt(item.resolvedAt) }}</p>
       <form v-else-if="canReply" class="reply-form" @submit.prevent="submitReply(item)">
         <label :for="`reply-${item.clarificationId}`" class="visually-hidden">Reply</label>
         <textarea
@@ -129,7 +129,7 @@ import {
 import { FIELD_LABELS, fieldLabel } from '../../config/eventFields.js'
 import { IN_REVIEW_EVENT_STATUSES } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt } from '../../utils/datetime.js'
 
 const props = defineProps({ event: { type: Object, required: true } })
 // Raising or resolving can change the event's status, so the page re-reads it.
@@ -255,7 +255,7 @@ onMounted(load)
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
   margin-top: 18px;
 }
@@ -285,13 +285,13 @@ textarea {
   box-sizing: border-box;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 0 12px;
   height: 42px;
   margin-bottom: 12px;
   font-size: 14px;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
 }
 textarea { height: auto; padding: 10px 12px; resize: vertical; line-height: 1.5; }
 select:focus, textarea:focus {
@@ -303,7 +303,7 @@ select option { background: #1A1030; color: #F3EEFF; }
 
 .raise-form {
   border: 1px solid var(--hairline);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 16px;
   margin-bottom: 16px;
 }
@@ -332,7 +332,7 @@ select option { background: #1A1030; color: #F3EEFF; }
 .entry {
   background: rgba(255, 255, 255, .03);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 10px 14px;
 }
 .entry.organiser { margin-left: 24px; }
@@ -347,7 +347,7 @@ select option { background: #1A1030; color: #F3EEFF; }
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 0 0 12px;
 }

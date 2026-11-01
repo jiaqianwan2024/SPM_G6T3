@@ -8,6 +8,7 @@ export const session = reactive({
   role: null,
   name: null,
   userId: null,
+  email: null,
 })
 
 export function loginSession(user) {
@@ -15,6 +16,7 @@ export function loginSession(user) {
   session.role = user.role
   session.name = user.name
   session.userId = user.userId || null
+  session.email = user.email || null
 }
 
 export function logoutSession() {
@@ -22,4 +24,5 @@ export function logoutSession() {
   session.role = null
   session.name = null
   session.userId = null
+  session.email = null
 }

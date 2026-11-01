@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from shared.auth.deps import require_authenticated_user
+from shared.exceptions.http import forbidden
 from shared.testing.cases import ServiceTestCase
 from tests.unit.support import COORDINATOR, ORGANISER, TECH, insert_event
 
@@ -33,13 +34,28 @@ class TestEventRoutes(ServiceTestCase):
         app.dependency_overrides.clear()
         super().tearDown()
 
+    def test_the_queue_lists_completed_events_only_when_include_completed_is_true(self):
+        headers = {"Authorization": "Bearer token"}
+        mine = COORDINATOR["userId"]
+        insert_event(self.db, eventId="e-open", status="submitted", coordinatorId=mine)
+        insert_event(self.db, eventId="e-done", status="completed", coordinatorId=mine)
+
+        default = self.client.get("/events/queue", headers=headers)
+        included = self.client.get("/events/queue?includeCompleted=true", headers=headers)
+
+        self.assertEqual([row["eventId"] for row in default.json()], ["e-open"])
+        self.assertEqual(sorted(row["eventId"] for row in included.json()), ["e-done", "e-open"])
+
     def test_http_create_list_get_decide_and_assign(self):
         headers = {"Authorization": "Bearer token"}
         body = {
             "eventName": "Summit",
+            "category": "Conference",
+            "purpose": "Share",
             "proposedStartAt": "2026-10-06T09:00:00",
             "proposedEndAt": "2026-10-06T17:00:00",
             "expectedAttendance": 10,
+            "registrationEnabled": False,
         }
         created = self.client.post("/events", headers=headers, json=body)
         self.assertEqual(created.status_code, 201)
@@ -108,6 +124,30 @@ class TestEventRoutes(ServiceTestCase):
         self.assertEqual(completed.status_code, 200)
         self.assertEqual(completed.json()["status"], "completed")
 
+    def test_assigned_events_route_lists_only_the_callers_own_events(self):
+        headers = {"Authorization": "Bearer token"}
+        insert_event(self.db, eventId="e-mine", status="planning", coordinatorId=COORDINATOR["userId"])
+        insert_event(self.db, eventId="e-theirs", status="planning", coordinatorId="coord-2")
+        insert_event(self.db, eventId="e-unassigned", status="submitted")
+
+        response = self.client.get("/events/assigned", headers=headers)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([row["eventId"] for row in response.json()], ["e-mine"])
+
+    def test_assigned_events_route_refuses_every_other_role(self):
+        headers = {"Authorization": "Bearer token"}
+        for caller in (ORGANISER, TECH, {"userId": "lead-1", "role": "coordinatorlead"}):
+            # The real resolve_caller's role gate, applied to this caller.
+            def resolve(authorization, url, allowed_roles=None, caller=caller):
+                if allowed_roles is not None and caller["role"] not in allowed_roles:
+                    raise forbidden("You do not have permission to perform this action")
+                return caller
+
+            with patch("app.routers.event.resolve_caller", side_effect=resolve):
+                response = self.client.get("/events/assigned", headers=headers)
+            self.assertEqual(response.status_code, 403, caller["role"])
+
     def test_registration_access_route_returns_capacity_for_the_organiser(self):
         self.caller.stop()
         self.caller = patch("app.routers.event.resolve_caller", return_value=ORGANISER)
@@ -118,6 +158,8 @@ class TestEventRoutes(ServiceTestCase):
             headers=headers,
             json={
                 "eventName": "Summit",
+                "category": "Conference",
+                "purpose": "Share",
                 "proposedStartAt": "2026-10-06T09:00:00",
                 "proposedEndAt": "2026-10-06T17:00:00",
                 "expectedAttendance": 10,
@@ -153,9 +195,12 @@ class TestEventRoutes(ServiceTestCase):
             headers=headers,
             json={
                 "eventName": "Renamed draft",
+                "category": "Conference",
+                "purpose": "Share",
                 "proposedStartAt": "2026-10-06T09:00:00",
                 "proposedEndAt": "2026-10-06T17:00:00",
                 "expectedAttendance": 4,
+                "registrationEnabled": False,
                 "accessibilityNeeds": ["Wheelchair accessible"],
                 "requiredFacilities": ["Projector"],
                 "preferredLocation": "",
@@ -169,3 +214,19 @@ class TestEventRoutes(ServiceTestCase):
         discarded = self.client.delete(f"/events/{another.json()['eventId']}", headers=headers)
         self.assertEqual(discarded.status_code, 200)
         self.assertEqual(discarded.json()["status"], "discarded")
+
+    def test_create_rejects_a_registration_window_that_closes_after_the_event_starts(self):
+        response = self.client.post(
+            "/events",
+            headers={"Authorization": "Bearer token"},
+            json={
+                "eventName": "Late close",
+                "proposedStartAt": "2026-10-06T09:00:00",
+                "proposedEndAt": "2026-10-06T17:00:00",
+                "expectedAttendance": 10,
+                "registrationEnabled": True,
+                "registrationOpensAt": "2026-10-01T09:00:00",
+                "registrationClosesAt": "2026-10-06T10:00:00",
+            },
+        )
+        self.assertEqual(response.status_code, 422)

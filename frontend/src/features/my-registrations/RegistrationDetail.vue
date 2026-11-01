@@ -61,8 +61,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getEvent } from '../../api/eventService.js'
+import { getAttendeeCard } from '../../api/eventService.js'
 import { getRegistration, withdrawRegistration } from '../../api/registrationService.js'
+import { parseServerTime } from '../../utils/datetime.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -84,7 +85,7 @@ const canWithdraw = computed(() => {
   const status = String(current.status || '').toLowerCase()
   if (status === 'completed' || status === 'cancelled') return false
   if (!current.proposedStartAt) return false
-  return new Date(current.proposedStartAt).getTime() > Date.now()
+  return parseServerTime(current.proposedStartAt).getTime() > Date.now()
 })
 
 function detail(err, fallback) {
@@ -104,7 +105,7 @@ async function load() {
     return
   }
   try {
-    const response = await getEvent(registration.value.eventId)
+    const response = await getAttendeeCard(registration.value.eventId)
     event.value = response.data
   } catch {
     event.value = null
@@ -147,7 +148,7 @@ onMounted(load)
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin-top: 16px;
 }
@@ -191,7 +192,7 @@ onMounted(load)
 .panel {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
 }
 .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; margin: 0; }
@@ -215,7 +216,7 @@ onMounted(load)
 .modal {
   background: linear-gradient(160deg, #1A0C3B, #0D0524);
   border: 1px solid rgba(167, 139, 250, .28);
-  border-radius: 18px;
+  border-radius: var(--radius);
   padding: 30px;
   width: 380px;
 }

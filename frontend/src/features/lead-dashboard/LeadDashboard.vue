@@ -15,7 +15,7 @@
       </div>
       <div class="count" data-testid="lead-count-near">
         <span class="count-value">{{ loaded ? nearDate.length : '–' }}</span>
-        <span class="count-label">Unassigned with a near date</span>
+        <span class="count-label">Unassigned with a near or passed date</span>
       </div>
       <div class="count" data-testid="lead-count-active">
         <span class="count-value">{{ loaded ? activeTotal : '–' }}</span>
@@ -50,6 +50,7 @@
             {{ formatDate(event.proposedStartAt) }} · {{ event.expectedAttendance }} attendees ·
             <span class="wait">waiting {{ waitingFor(event.submittedAt) }}</span>
             <span v-if="event.dateNear" class="flag">Date is near</span>
+            <span v-else-if="event.datePassed" class="flag passed">Date has passed</span>
           </span>
         </div>
         <button
@@ -108,6 +109,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getCoordinatorAssignments, getSubmissionQueue } from '../../api/eventService.js'
 import AssignCoordinatorDialog from '../event-detail/AssignCoordinatorDialog.vue'
+import { formatSgt } from '../../utils/datetime.js'
 
 // Opening the Review Queue or Assignments tab is the dashboard's way out.
 const emit = defineEmits(['open-tab'])
@@ -128,7 +130,7 @@ let ticker = null
 // The queue arrives longest-waiting first, so the unassigned ones keep that order.
 const unassigned = computed(() => queue.value.filter((event) => !event.coordinatorId))
 const waitingFirst = computed(() => unassigned.value.slice(0, WAITING_SHOWN))
-const nearDate = computed(() => unassigned.value.filter((event) => event.dateNear))
+const nearDate = computed(() => unassigned.value.filter((event) => event.dateNear || event.datePassed))
 const oldestWait = computed(() => (unassigned.value.length ? waitingFor(unassigned.value[0].submittedAt) : 'None'))
 const activeTotal = computed(() => groups.value.reduce((sum, group) => sum + group.events.length, 0))
 const byWorkload = computed(() =>
@@ -157,7 +159,7 @@ function waitingFor(submittedAt) {
 }
 
 function formatDate(value) {
-  return value ? new Date(value).toLocaleString() : 'No date set'
+  return value ? formatSgt(value) : 'No date set'
 }
 
 async function load() {
@@ -197,13 +199,13 @@ onUnmounted(() => clearInterval(ticker))
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-.count-value { font-family: 'Space Grotesk', sans-serif; font-size: 26px; color: var(--text); }
+.count-value { font-family: var(--font); font-size: 26px; color: var(--text); }
 .count-label { font-size: 12px; color: var(--muted); letter-spacing: .04em; }
 
 .block h3 { margin: 0; font-size: 15px; font-weight: 500; color: var(--text); }
@@ -218,7 +220,7 @@ onUnmounted(() => clearInterval(ticker))
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 12px 18px;
   margin-bottom: 8px;
   display: flex;
@@ -227,7 +229,7 @@ onUnmounted(() => clearInterval(ticker))
   gap: 14px;
 }
 .item-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.item-name { font-family: 'Space Grotesk', sans-serif; font-weight: 500; color: var(--text); font-size: 15px; }
+.item-name { font-family: var(--font); font-weight: 500; color: var(--text); font-size: 15px; }
 .item-meta { font-size: 12px; color: var(--muted); line-height: 1.5; }
 .wait { color: var(--body); }
 .flag {
@@ -242,6 +244,7 @@ onUnmounted(() => clearInterval(ticker))
   border-radius: 999px;
   padding: 2px 8px;
 }
+.flag.passed { color: #FF8A76; border-color: rgba(255, 138, 118, .35); }
 .btn.small { padding: 7px 14px; font-size: 13px; flex-shrink: 0; }
 
 .workload {
@@ -253,7 +256,7 @@ onUnmounted(() => clearInterval(ticker))
   gap: 4px;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
 }
 .workload-row {
   width: 100%;
@@ -263,7 +266,7 @@ onUnmounted(() => clearInterval(ticker))
   gap: 12px;
   background: none;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 8px 6px;
   font: inherit;
   color: var(--body);
@@ -277,13 +280,13 @@ onUnmounted(() => clearInterval(ticker))
 .bar { display: block; height: 100%; background: var(--iris-soft); border-radius: 0 4px 4px 0; min-width: 2px; }
 .value { font-size: 13px; color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
 
-.notice { font-size: 13px; color: var(--halo); background: rgba(124, 77, 255, .1); border: 1px solid rgba(167, 139, 250, .25); border-radius: 9px; padding: 11px 14px; margin: 0; }
+.notice { font-size: 13px; color: var(--halo); background: rgba(124, 77, 255, .1); border: 1px solid rgba(167, 139, 250, .25); border-radius: var(--radius); padding: 11px 14px; margin: 0; }
 .form-error {
   color: #FF8A76;
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 0;
 }

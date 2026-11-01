@@ -4,7 +4,7 @@
     <h4>Tentative holds</h4>
     <p class="hint">
       Hold a pending request while its coordinator finishes the arrangements. Nobody else can have the venue for
-      that time until the hold expires or is released. Times are in UTC.
+      that time until the hold expires or is released. Times are in Singapore time (SGT).
     </p>
     <p v-if="loadError" class="hold-error" data-testid="venue-holds-error">{{ loadError }}</p>
     <p v-else-if="!requests.length" class="hint" data-testid="venue-holds-none">
@@ -40,10 +40,11 @@
             Hold expired {{ moment(request.hold.expiresAt) }}
           </span>
           <label>
-            Hold until (UTC)
+            <span>Hold until (SGT) <span class="req">*</span></span>
             <input
               v-model="expiry[request.bookingId]"
               type="datetime-local"
+              :min="today"
               :data-testid="`venue-hold-until-${request.bookingId}`"
             />
           </label>
@@ -68,6 +69,7 @@
 <script setup>
 import { onMounted, reactive, ref, watch } from 'vue'
 import { getVenueBookings, placeVenueHold, releaseVenueHold } from '../../api/venueService.js'
+import { fromSgtInput, sgtMinInput } from '../../utils/datetime.js'
 
 const props = defineProps({ venueId: { type: String, required: true } })
 
@@ -77,9 +79,9 @@ const busyId = ref('')
 const expiry = reactive({})
 const errors = reactive({})
 
-// Booking times are UTC and come without a zone marker.
-const dayFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' })
-const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+// Booking times come in UTC without a zone marker; they are shown in Singapore time.
+const dayFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric' })
+const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
 function utc(value) {
   return new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`)
@@ -87,12 +89,12 @@ function utc(value) {
 
 function moment(value) {
   const when = utc(value)
-  return `${dayFormat.format(when)}, ${timeFormat.format(when)} UTC`
+  return `${dayFormat.format(when)}, ${timeFormat.format(when)} SGT`
 }
 
 function span(start, end) {
   const [from, to] = [utc(start), utc(end)]
-  return `${dayFormat.format(from)}, ${timeFormat.format(from)} to ${timeFormat.format(to)} UTC`
+  return `${dayFormat.format(from)}, ${timeFormat.format(from)} to ${timeFormat.format(to)} SGT`
 }
 
 function eventName(request) {
@@ -119,12 +121,19 @@ function replace(updated) {
   requests.value = requests.value.map((row) => (row.bookingId === updated.bookingId ? updated : row))
 }
 
+// A hold has to expire in the future (the server refuses one that does not).
+const today = sgtMinInput()
+
 async function place(request) {
-  busyId.value = request.bookingId
   errors[request.bookingId] = ''
+  if (expiry[request.bookingId] < today) {
+    errors[request.bookingId] = 'Pick a hold expiry from today onwards.'
+    return
+  }
+  busyId.value = request.bookingId
   try {
-    // datetime-local has no timezone; the team reads every time as UTC.
-    const { data } = await placeVenueHold(request.bookingId, `${expiry[request.bookingId]}:00Z`)
+    // datetime-local has no timezone; it is read as Singapore time and sent as UTC.
+    const { data } = await placeVenueHold(request.bookingId, fromSgtInput(expiry[request.bookingId]))
     replace(data)
     expiry[request.bookingId] = ''
   } catch (err) {
@@ -157,7 +166,7 @@ onMounted(load)
 .hint { margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: var(--muted); }
 ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
 li {
-  padding: 12px 14px; border-radius: 10px; font-size: 13px; line-height: 1.6; color: var(--body);
+  padding: 12px 14px; border-radius: var(--radius); font-size: 13px; line-height: 1.6; color: var(--body);
   background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline);
 }
 .who strong { color: var(--text); font-weight: 500; }
@@ -165,7 +174,7 @@ li {
 .state label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 .state input {
   font: inherit; font-size: 13px; color: var(--text); color-scheme: dark;
-  background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: 9px; padding: 6px 8px;
+  background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: var(--radius); padding: 6px 8px;
 }
 .held { color: #FFC66D; }
 .expired { color: var(--muted); }

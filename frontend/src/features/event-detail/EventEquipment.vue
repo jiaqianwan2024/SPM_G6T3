@@ -20,7 +20,7 @@
             @submit.prevent="saveEdit(request)"
           >
             <label>
-              Quantity
+              <span>Quantity <span class="req">*</span></span>
               <input v-model.number="editQuantity" type="number" min="1" required />
             </label>
             <label>
@@ -38,6 +38,46 @@
           <div v-else-if="canRecord && request.status === 'pending'" class="edit-actions">
             <button type="button" class="btn btn-ghost small" @click="startEdit(request)">Edit</button>
           </div>
+          <!-- SPM-77 AC5: accept what technical support can supply, or amend the line and send it back. -->
+          <template v-if="SHORT.includes(request.status)">
+            <p class="notes" data-testid="equipment-line-shortfall">
+              <template v-if="request.status === 'partial'">{{ request.reservedQuantity }} reserved, {{ request.shortfall }} short.</template>
+              <template v-else>None can be supplied.</template>
+              <template v-if="request.reviewNote"> {{ request.reviewNote }}</template>
+              <template v-if="request.alternativeEquipmentId"> Suggested instead: {{ equipmentName(request.alternativeEquipmentId) }}.</template>
+            </p>
+            <p v-if="lineError[request.requestId]" class="form-error">{{ lineError[request.requestId] }}</p>
+            <form
+              v-if="canRecord && amendingId === request.requestId"
+              class="edit-form"
+              @submit.prevent="resubmit(request)"
+            >
+              <label>
+                <span>Quantity to ask for <span class="req">*</span></span>
+                <input v-model.number="amendQuantity" type="number" min="1" required data-testid="equipment-amend-quantity" />
+              </label>
+              <div class="edit-actions">
+                <button type="button" class="btn btn-ghost small" @click="amendingId = ''">Cancel</button>
+                <button type="submit" class="btn btn-solid small" :disabled="busyId === request.requestId" data-testid="equipment-amend-send">
+                  Send back for review
+                </button>
+              </div>
+            </form>
+            <div v-else-if="canRecord" class="edit-actions">
+              <button
+                type="button"
+                class="btn btn-solid small"
+                data-testid="equipment-accept-shortfall"
+                :disabled="busyId === request.requestId"
+                @click="acceptShortfall(request)"
+              >
+                Accept shortfall
+              </button>
+              <button type="button" class="btn btn-ghost small" data-testid="equipment-amend" @click="startAmend(request)">
+                Amend and send back
+              </button>
+            </div>
+          </template>
         </li>
       </ul>
       <p v-else class="hint">No equipment has been requested for this event yet.</p>
@@ -49,7 +89,7 @@
       </div>
       <form v-if="canRecord" class="request-form" @submit.prevent="submit">
         <label>
-          Equipment type
+          <span>Equipment type <span class="req">*</span></span>
           <select v-model="equipmentId" required>
             <option value="" disabled>Select a type</option>
             <option v-for="item in catalogue" :key="item.equipmentId" :value="item.equipmentId">
@@ -58,7 +98,7 @@
           </select>
         </label>
         <label>
-          Quantity
+          <span>Quantity <span class="req">*</span></span>
           <input v-model.number="quantity" type="number" min="1" required />
         </label>
         <label class="wide">
@@ -79,7 +119,14 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { createEquipmentRequest, getEquipmentList, getEquipmentRequests, refineEquipmentRequest } from '../../api/equipmentService.js'
+import {
+  acceptEquipmentShortfall,
+  createEquipmentRequest,
+  getEquipmentList,
+  getEquipmentRequests,
+  refineEquipmentRequest,
+  resubmitEquipmentRequest,
+} from '../../api/equipmentService.js'
 import { session } from '../../store/session.js'
 
 const props = defineProps({
@@ -100,6 +147,12 @@ const editQuantity = ref(1)
 const editNotes = ref('')
 const editError = ref('')
 const savingEdit = ref(false)
+// SPM-77 AC5: lines technical support could not fully meet.
+const SHORT = ['partial', 'unavailable']
+const amendingId = ref('')
+const amendQuantity = ref(1)
+const busyId = ref('')
+const lineError = ref({})
 
 // SPM-46 AC1/AC2: only the assigned coordinator requests or changes equipment;
 // everyone else sees the requests read-only. The server enforces the same.
@@ -125,6 +178,9 @@ function statusLabel(status) {
   if (status === 'reserved') return 'Reserved'
   if (status === 'unavailable') return 'Unavailable'
   if (status === 'rejected') return 'Rejected'
+  if (status === 'partial') return 'Partly reserved'
+  if (status === 'resolved') return 'Shortfall accepted'
+  if (status === 'complete') return 'Review complete'
   return status
 }
 
@@ -167,6 +223,38 @@ async function saveEdit(request) {
   }
 }
 
+function startAmend(request) {
+  amendingId.value = request.requestId
+  amendQuantity.value = request.quantity
+  lineError.value = { ...lineError.value, [request.requestId]: '' }
+}
+
+async function answerShortfall(request, action) {
+  busyId.value = request.requestId
+  lineError.value = { ...lineError.value, [request.requestId]: '' }
+  try {
+    await action()
+    amendingId.value = ''
+    await load()
+  } catch (err) {
+    const detail = err.response?.data?.detail
+    lineError.value = {
+      ...lineError.value,
+      [request.requestId]: typeof detail === 'string' ? detail : 'This answer could not be saved.',
+    }
+  } finally {
+    busyId.value = ''
+  }
+}
+
+function acceptShortfall(request) {
+  return answerShortfall(request, () => acceptEquipmentShortfall(request.requestId))
+}
+
+function resubmit(request) {
+  return answerShortfall(request, () => resubmitEquipmentRequest(request.requestId, Number(amendQuantity.value) || 1))
+}
+
 async function submit() {
   saveError.value = ''
   saving.value = true
@@ -200,7 +288,7 @@ onMounted(load)
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
 }
 h3 { margin: 0 0 14px; font-size: 16px; font-weight: 500; }
@@ -208,7 +296,7 @@ h3 { margin: 0 0 14px; font-size: 16px; font-weight: 500; }
 .lines li {
   background: rgba(255, 255, 255, .03);
   border: 1px solid var(--hairline);
-  border-radius: 12px;
+  border-radius: var(--radius);
   padding: 12px 14px;
 }
 .line-main { display: flex; align-items: center; gap: 10px; }
@@ -217,7 +305,7 @@ h3 { margin: 0 0 14px; font-size: 16px; font-weight: 500; }
   height: 28px;
   display: grid;
   place-items: center;
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: rgba(124, 77, 255, .18);
   color: var(--halo);
   font-size: 13px;
@@ -241,7 +329,7 @@ h3 { margin: 0 0 14px; font-size: 16px; font-weight: 500; }
 .outcome {
   margin: 0 0 14px;
   padding: 12px;
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .3);
 }
@@ -253,7 +341,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color:
 input, textarea, select {
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;

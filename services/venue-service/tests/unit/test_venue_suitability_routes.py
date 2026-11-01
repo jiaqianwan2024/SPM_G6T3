@@ -16,8 +16,9 @@ from tests.unit.test_venue_route_guards import HEADERS, signed_in_as
 EVENT = EventFacts(
     expectedAttendance=500,
     layoutPreference="Theatre",
-    proposedStartAt=datetime(2030, 1, 7, 10),
-    proposedEndAt=datetime(2030, 1, 7, 12),
+    # 10:00 to 12:00 Singapore time, stored as UTC.
+    proposedStartAt=datetime(2030, 1, 7, 2),
+    proposedEndAt=datetime(2030, 1, 7, 4),
 )
 
 
@@ -91,7 +92,7 @@ class TestSuitabilityRoute(VenueCase):
         self.fetch.assert_called_with("e1", HEADERS["Authorization"])
 
     def test_request_values_override_the_event_record(self):
-        response = self.post("coordinator", expectedAttendance=10, layout="Classroom", startsAt="2030-01-07T09:00:00Z")
+        response = self.post("coordinator", expectedAttendance=10, layout="Classroom", startsAt="2030-01-07T01:00:00Z")
 
         self.assertEqual(response.json()["verdict"], "suitable")
 

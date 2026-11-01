@@ -42,6 +42,15 @@ class EquipmentReservationDAO(BaseDAO):
             .all()
         )
 
+    def list_supplying(self) -> list[EquipmentReservation]:
+        """SPM-58: reservations still holding stock for their event, in full or in part."""
+        return (
+            self.db.query(EquipmentReservation)
+            .filter(EquipmentReservation.status.in_(["active", "reserved", "partial"]))
+            .order_by(EquipmentReservation.startsAt, EquipmentReservation.reservationId)
+            .all()
+        )
+
     def list_active_for_event(self, event_id: str) -> list[EquipmentReservation]:
         return (
             self.db.query(EquipmentReservation)

@@ -14,10 +14,24 @@ export async function login(page, credentials) {
 
   expect(response.status()).toBe(200)
   await expect(page).toHaveURL(/\/app$/)
-  await expect(page.locator('.role-label')).toContainText(
-    `Signed in as ${credentials.displayName} (${credentials.roleLabel})`,
-  )
+  await expectSignedIn(page, credentials)
   return response
+}
+
+// The signed-in name and role are shown on the profile card behind the navbar's profile icon.
+export async function expectSignedIn(page, credentials) {
+  await page.getByTestId('profile-menu-button').click()
+  const card = page.getByTestId('profile-card')
+  await expect(card).toContainText(credentials.displayName)
+  await expect(card).toContainText(credentials.roleLabel)
+  await page.keyboard.press('Escape')
+  await expect(card).toBeHidden()
+}
+
+// Log Out sits in the profile menu, so open the menu first.
+export async function logout(page) {
+  await page.getByTestId('profile-menu-button').click()
+  await page.getByRole('button', { name: 'Log Out' }).click()
 }
 
 export async function firebaseIdToken(_request, credentials) {

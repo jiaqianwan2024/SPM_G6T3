@@ -25,21 +25,23 @@
 
         <div class="grid">
           <div>
-            <label for="registration-opens">Registration opens</label>
+            <label for="registration-opens">Registration opens (SGT)</label>
             <input
               id="registration-opens"
               v-model="form.registrationOpensAt"
               type="datetime-local"
+              :min="opensMin"
               :disabled="!canEdit"
               data-testid="registration-opens"
             />
           </div>
           <div>
-            <label for="registration-closes">Registration closes</label>
+            <label for="registration-closes">Registration closes (SGT)</label>
             <input
               id="registration-closes"
               v-model="form.registrationClosesAt"
               type="datetime-local"
+              :min="laterInput(closesMin, form.registrationOpensAt)"
               :max="eventStartInput"
               :disabled="!canEdit"
               data-testid="registration-closes"
@@ -105,6 +107,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { getEvent, updateRegistrationSettings } from '../../api/eventService.js'
 import { REGISTRATION_SETUP_STATUSES } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
+import { formatSgt, fromSgtInput, laterInput, sgtMinInput, toSgtInput } from '../../utils/datetime.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -114,13 +117,16 @@ const loading = ref(true)
 const loadError = ref('')
 const form = reactive({ registrationEnabled: false, registrationOpensAt: '', registrationClosesAt: '', capacity: 0 })
 let original = {}
+// New dates start at today; a saved one that has passed (registration already open) stays allowed.
+const opensMin = ref(sgtMinInput())
+const closesMin = ref(sgtMinInput())
 const warnings = ref([])
 const saving = ref(false)
 const error = ref('')
 const savedNote = ref('')
 
-// datetime-local inputs need "YYYY-MM-DDTHH:mm"; the API returns full ISO strings.
-const toInputDatetime = (iso) => (iso ? iso.slice(0, 16) : '')
+// datetime-local inputs need "YYYY-MM-DDTHH:mm" in Singapore time; the API returns UTC ISO strings.
+const toInputDatetime = (iso) => toSgtInput(iso)
 const eventStartInput = computed(() => toInputDatetime(event.value?.proposedStartAt))
 
 // SPM-90 AC1: the assigned coordinator, from planning until confirmed. The server checks the same.
@@ -144,7 +150,7 @@ const confirmations = computed(() => ({
 }))
 
 function formatWhen(value) {
-  return value ? new Date(value).toLocaleString() : 'not set'
+  return value ? formatSgt(value) : 'not set'
 }
 
 function fill(data) {
@@ -156,6 +162,8 @@ function fill(data) {
     capacity: data.capacity ?? 0,
   })
   original = { ...form }
+  opensMin.value = sgtMinInput(form.registrationOpensAt)
+  closesMin.value = sgtMinInput(form.registrationClosesAt)
 }
 
 // Changed fields only, so an untouched date is never logged as edited. The
@@ -164,7 +172,9 @@ function fill(data) {
 function payload() {
   const body = { capacity: form.capacity }
   for (const field of ['registrationEnabled', 'registrationOpensAt', 'registrationClosesAt']) {
-    if (form[field] !== original[field]) body[field] = form[field] === '' ? null : form[field]
+    if (form[field] === original[field]) continue
+    if (form[field] === '') body[field] = null
+    else body[field] = field === 'registrationEnabled' ? form[field] : fromSgtInput(form[field])
   }
   return body
 }
@@ -174,6 +184,9 @@ function validate() {
   const { registrationOpensAt: opens, registrationClosesAt: closes } = form
   // Like the server, only a period being changed is checked.
   if (opens === original.registrationOpensAt && closes === original.registrationClosesAt) return ''
+  if ((opens && opens < opensMin.value) || (closes && closes < closesMin.value)) {
+    return 'Pick registration dates from today onwards.'
+  }
   if (opens && closes && closes <= opens) return 'Registration must close after it opens.'
   if (closes && eventStartInput.value && closes > eventStartInput.value) {
     return 'Registration must close no later than the event starts.'
@@ -243,7 +256,7 @@ onMounted(load)
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
 }
 
@@ -274,12 +287,12 @@ input[type='number'] {
   box-sizing: border-box;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 0 12px;
   height: 42px;
   font-size: 14px;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
 }
 input:focus { outline: none; border-color: rgba(167, 139, 250, .6); box-shadow: 0 0 0 3px rgba(124, 77, 255, .16); }
 input:disabled { opacity: .6; }
@@ -292,7 +305,7 @@ input:disabled { opacity: .6; }
   color: #FFD9A8;
   background: rgba(255, 170, 80, .08);
   border: 1px solid rgba(255, 196, 120, .3);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 12px 14px;
 }
 .warning-box p { margin: 0 0 6px; }
@@ -303,7 +316,7 @@ input:disabled { opacity: .6; }
   color: var(--halo);
   background: rgba(124, 77, 255, .1);
   border: 1px solid rgba(167, 139, 250, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 16px 0 0;
 }
@@ -313,7 +326,7 @@ input:disabled { opacity: .6; }
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 16px 0 0;
 }

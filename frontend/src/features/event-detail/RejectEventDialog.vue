@@ -9,13 +9,13 @@
         why. They can submit a new request afterwards.
       </p>
 
-      <label for="reject-reason">Reason</label>
+      <label for="reject-reason">Reason <span class="req">*</span></label>
       <select id="reject-reason" v-model="reason" data-testid="reject-reason">
         <option value="" disabled>Choose a reason</option>
         <option v-for="item in REJECTION_REASONS" :key="item" :value="item">{{ item }}</option>
       </select>
 
-      <label for="reject-explanation">Explanation for the organiser</label>
+      <label for="reject-explanation">Explanation for the organiser <span class="req">*</span></label>
       <textarea
         id="reject-explanation"
         v-model="explanation"
@@ -83,7 +83,7 @@ async function submit() {
   background: linear-gradient(160deg, #1A0C3B, #0D0524);
   border: 1px solid rgba(167, 139, 250, .28);
   box-shadow: 0 30px 90px rgba(4, 1, 12, .7), 0 0 60px rgba(124, 77, 255, .18);
-  border-radius: 18px;
+  border-radius: var(--radius);
   padding: 30px;
   width: 440px;
   max-width: 100%;
@@ -104,11 +104,11 @@ textarea {
   box-sizing: border-box;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 12px;
   font-size: 14px;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
   line-height: 1.6;
 }
 select { margin-bottom: 16px; }
@@ -125,7 +125,7 @@ textarea:focus {
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 14px 0 0;
 }

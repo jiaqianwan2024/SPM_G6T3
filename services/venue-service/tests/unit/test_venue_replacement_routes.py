@@ -19,8 +19,9 @@ EVENT = EventFacts(
     organisationName="Apex Partners",
     expectedAttendance=10,
     layoutPreference="Theatre",
-    proposedStartAt=datetime(2030, 1, 7, 10),
-    proposedEndAt=datetime(2030, 1, 7, 12),
+    # 10:00 to 12:00 Singapore time, stored as UTC.
+    proposedStartAt=datetime(2030, 1, 7, 2),
+    proposedEndAt=datetime(2030, 1, 7, 4),
 )
 
 
@@ -38,6 +39,7 @@ class TestReplacementRoutes(VenueCase):
         self.patches = {
             "event": patch("app.routers.venue.fetch_event_facts", return_value=EVENT),
             "notify": patch("app.routers.venue.notify_venue_staff", return_value=2),
+            "role": patch("app.routers.venue.notify_role", return_value=2),
             "coordinator": patch("app.routers.venue.notify_coordinator", return_value=True),
         }
         self.mocks = {name: p.start() for name, p in self.patches.items()}
@@ -61,8 +63,8 @@ class TestReplacementRoutes(VenueCase):
                 json={
                     "venueId": self.venue_id,
                     "eventId": "e1",
-                    "startsAt": "2030-01-07T10:00:00Z",
-                    "endsAt": "2030-01-07T12:00:00Z",
+                    "startsAt": "2030-01-07T02:00:00Z",
+                    "endsAt": "2030-01-07T04:00:00Z",
                 },
             )
         self.assertEqual(created.status_code, 201, created.text)
@@ -73,8 +75,8 @@ class TestReplacementRoutes(VenueCase):
             "POST",
             f"/venues/{self.venue_id}/unavailability",
             {
-                "startsAt": "2030-01-07T10:00:00Z",
-                "endsAt": "2030-01-07T12:00:00Z",
+                "startsAt": "2030-01-07T02:00:00Z",
+                "endsAt": "2030-01-07T04:00:00Z",
                 "reason": "maintenance",
                 "acknowledgeConflicts": True,
             },
@@ -88,7 +90,7 @@ class TestReplacementRoutes(VenueCase):
             "venue",
             "POST",
             f"/venues/{self.venue_id}/unavailability",
-            {"startsAt": "2030-01-07T10:00:00Z", "endsAt": "2030-01-07T12:00:00Z", "reason": "maintenance"},
+            {"startsAt": "2030-01-07T02:00:00Z", "endsAt": "2030-01-07T04:00:00Z", "reason": "maintenance"},
         )
 
         self.assertEqual(saved.status_code, 201, saved.text)
@@ -97,7 +99,7 @@ class TestReplacementRoutes(VenueCase):
             "coordinator",
             "POST",
             f"/venues/{self.venue_id}/unavailability",
-            {"startsAt": "2030-01-07T10:00:00Z", "endsAt": "2030-01-07T12:00:00Z", "reason": "maintenance"},
+            {"startsAt": "2030-01-07T02:00:00Z", "endsAt": "2030-01-07T04:00:00Z", "reason": "maintenance"},
         )
         self.assertEqual(refused.status_code, 403)
 
@@ -117,7 +119,13 @@ class TestReplacementRoutes(VenueCase):
         self.assertEqual(created.json()["status"], "pending")
         self.assertEqual(created.json()["venueId"], self.other_id)
         self.mocks["event"].assert_called_once()
-        self.assertEqual(self.mocks["notify"].call_count, 2)
+        # SPM-93 AC4b: the new request also lands in Venue Staff's in-app inbox, not just email.
+        self.assertEqual(self.mocks["notify"].call_count, 1)  # the original booking's "cancelled" notice
+        self.mocks["role"].assert_called_once()
+        role, event_id, title, body, _authorization, notice_type = self.mocks["role"].call_args.args
+        self.assertEqual((role, event_id, notice_type), ("venue", "e1", "venue.replacement"))
+        self.assertIn("New venue request", title)
+        self.assertIn("Exhibition Hall B", body)
         original = self.call("coordinator", "GET", f"/venues/bookings/{booking_id}")
         self.assertEqual(original.status_code, 200)
         self.assertEqual(original.json()["status"], "cancelled")
@@ -144,7 +152,7 @@ class TestReplacementRoutes(VenueCase):
             "venue",
             "PATCH",
             f"/venues/{self.venue_id}/unavailability/{block_id}",
-            {"startsAt": "2030-01-07T09:00:00Z", "endsAt": "2030-01-07T11:00:00Z"},
+            {"startsAt": "2030-01-07T01:00:00Z", "endsAt": "2030-01-07T03:00:00Z"},
         )
         self.assertEqual(moved.status_code, 409, moved.text)
         self.assertIn("e1", moved.text)
@@ -154,8 +162,8 @@ class TestReplacementRoutes(VenueCase):
             "PATCH",
             f"/venues/{self.venue_id}/unavailability/{block_id}",
             {
-                "startsAt": "2030-01-07T09:00:00Z",
-                "endsAt": "2030-01-07T11:00:00Z",
+                "startsAt": "2030-01-07T01:00:00Z",
+                "endsAt": "2030-01-07T03:00:00Z",
                 "acknowledgeConflicts": True,
             },
         )
@@ -183,8 +191,8 @@ class TestReplacementRoutes(VenueCase):
                 json={
                     "venueId": self.venue_id,
                     "eventId": "e1",
-                    "startsAt": "2030-01-08T10:00:00Z",
-                    "endsAt": "2030-01-08T12:00:00Z",
+                    "startsAt": "2030-01-08T02:00:00Z",
+                    "endsAt": "2030-01-08T04:00:00Z",
                 },
             )
         self.assertEqual(created.status_code, 201, created.text)
@@ -197,8 +205,8 @@ class TestReplacementRoutes(VenueCase):
                 "POST",
                 f"/venues/{self.venue_id}/unavailability",
                 {
-                    "startsAt": "2030-01-08T10:00:00Z",
-                    "endsAt": "2030-01-08T12:00:00Z",
+                    "startsAt": "2030-01-08T02:00:00Z",
+                    "endsAt": "2030-01-08T04:00:00Z",
                     "reason": "safety issue",
                     "acknowledgeConflicts": True,
                 },
@@ -215,8 +223,8 @@ class TestReplacementRoutes(VenueCase):
                 json={
                     "venueId": self.other_id,
                     "eventId": "e1",
-                    "startsAt": "2030-01-08T10:00:00Z",
-                    "endsAt": "2030-01-08T12:00:00Z",
+                    "startsAt": "2030-01-08T02:00:00Z",
+                    "endsAt": "2030-01-08T04:00:00Z",
                 },
             )
         self.assertEqual(other.status_code, 201, other.text)
@@ -228,8 +236,8 @@ class TestReplacementRoutes(VenueCase):
                 "POST",
                 f"/venues/{self.other_id}/unavailability",
                 {
-                    "startsAt": "2030-01-08T10:00:00Z",
-                    "endsAt": "2030-01-08T12:00:00Z",
+                    "startsAt": "2030-01-08T02:00:00Z",
+                    "endsAt": "2030-01-08T04:00:00Z",
                     "reason": "internal activity",
                     "acknowledgeConflicts": True,
                 },

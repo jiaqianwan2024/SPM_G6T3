@@ -1,11 +1,12 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 from fastapi import HTTPException
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+from app.core.sgt import to_sgt
 from app.dao.venue_activity_log_dao import VenueActivityLogDAO
 from app.dao.venue_booking_dao import VenueBookingDAO
 from app.dao.venue_dao import VenueDAO
@@ -16,10 +17,16 @@ from app.models.venue_unavailability import VenueUnavailability
 from app.schemas.venue import (
     BookingClashOut,
     BookingRecheckOut,
+    BookingReschedule,
+    BookingReschedulePreview,
+    CalendarEntryOut,
     ClashingBooking,
     EventFacts,
     HoldOut,
+    ReleasedBookingOut,
     ReplacementRequest,
+    RestoredBooking,
+    RescheduledBookingOut,
     SuitabilityOut,
     SuitabilityRequest,
     UnavailabilityCreate,
@@ -28,12 +35,20 @@ from app.schemas.venue import (
     VenueActivityLogOut,
     VenueBookingCreate,
     VenueBookingOut,
+    VenueCalendarOut,
     VenueCreate,
+    VenueDashboardOut,
     VenueOut,
     VenueSearchResult,
     VenueUpdate,
 )
-from app.orchestration.clients import notify_attendees, notify_coordinator, notify_role, settle_reverification
+from app.orchestration.clients import (
+    find_event_facts,
+    notify_attendees,
+    notify_coordinator,
+    notify_role,
+    settle_reverification,
+)
 from app.services import occupancy, suitability, venue_search
 from shared.exceptions.http import conflict, forbidden
 from shared.services.base import BaseService
@@ -43,6 +58,11 @@ from shared.services.base import BaseService
 PLANNING_STATUSES = ("approved", "planning", "reconsidering")
 # MySQL's error number for SIGNAL, which the SPM-64 trigger raises on an overlapping approval.
 SIGNALLED_ERROR = 1644
+# SPM-87: the suitability points that mean the venue is taken at a time, rather than unsuited to the event.
+TAKEN_CHECKS = frozenset({"clash", "hold", "unavailable"})
+# SPM-108: a calendar asked for no range reads every booking and block the venue has.
+CALENDAR_START = datetime(1970, 1, 1)
+CALENDAR_END = datetime(9000, 1, 1)
 APPROVED_ELSEWHERE = (
     "Another request for this venue at an overlapping time, including setup and turnaround, "
     "was approved first, so this request cannot be approved."
@@ -103,6 +123,19 @@ def _hold_out(row: VenueBooking) -> HoldOut | None:
     if state is None:
         return None
     return HoldOut(expiresAt=row.holdExpiresAt, placedBy=row.holdPlacedBy, placedAt=row.holdPlacedAt, state=state)
+
+
+def _calendar_kind(row: VenueBooking, now: datetime) -> str:
+    """SPM-108 AC1: an approved booking is confirmed; a pending request shows its hold, if any.
+    A released hold reserved nothing and has nothing left to show, so that request is just pending."""
+    if row.status == "approved":
+        return "confirmed"
+    state = occupancy.hold_state(row, now)
+    if state == "active":
+        return "hold"
+    if state == "expired":
+        return "expired-hold"
+    return "pending"
 
 
 def _end_hold(row: VenueBooking, reason: str) -> None:
@@ -280,6 +313,9 @@ def _diff_set(old_items: list[str], new_items: list[str]) -> dict:
     return diff
 
 
+# SPM-57 AC3: how many days ahead the Venue Staff dashboard shows confirmed bookings.
+DASHBOARD_UPCOMING_DAYS = 7
+
 class VenueService(BaseService):
     """Business logic for the venue catalogue and its bookings. Reads and
     writes go through the injected DAOs; this class owns the transaction
@@ -317,6 +353,23 @@ class VenueService(BaseService):
 
     def get_venue(self, venue_id: str) -> VenueOut:
         return _to_out(self._require_venue(venue_id))
+
+    def catalogue_options(self) -> dict[str, list[str]]:
+        """SPM-80: every layout, facility and accessibility feature the active
+        venues offer, each once (the first spelling met wins), in catalogue
+        order. Event-service publishes these as the organiser's choices."""
+        seen = {"layouts": {}, "facilities": {}, "accessibility": {}}
+        for venue in self.list_venues():
+            offered = {
+                "layouts": [layout.name for layout in venue.layouts],
+                "facilities": venue.facilities,
+                "accessibility": venue.accessibility,
+            }
+            for kind, names in offered.items():
+                for name in names:
+                    if name.strip():
+                        seen[kind].setdefault(name.strip().casefold(), name.strip())
+        return {kind: list(names.values()) for kind, names in seen.items()}
 
     def create_venue(self, data: VenueCreate, caller: dict) -> VenueOut:
         row = VenueInfo(
@@ -389,7 +442,7 @@ class VenueService(BaseService):
             # offers the "Retire anyway" action, so this should describe the
             # situation, not instruct the caller how to resend a request.
             listing = "; ".join(
-                f"event {b.eventId}, starting {b.startsAt.strftime('%d %b %Y, %I:%M %p')} UTC" for b in affected
+                f"event {b.eventId}, starting {suitability._moment(b.startsAt)}" for b in affected
             )
             plural = "booking" if len(affected) == 1 else "bookings"
             raise conflict(
@@ -516,8 +569,11 @@ class VenueService(BaseService):
         """SPM-61: the shortlist of active venues that fit the requirements and,
         when a period is given, are free for it. Without a period only the
         venue's own facts are checked. SPM-62 AC9: a search made for an event
-        (`exclude_event_id` and `event`) also gives each venue the verdict of
-        the same suitability check a booking request runs."""
+        (`exclude_event_id` and `event`) also gives each venue the verdict a
+        booking request for that event would get. The filters, which the
+        coordinator may have adjusted (SPM-61 AC1), only decide which venues
+        are listed; the verdict judges the event's own requirements and dates,
+        so a venue shown as suitable can always be requested."""
         if (starts_at is None) != (ends_at is None):
             raise HTTPException(
                 status_code=422,
@@ -529,7 +585,7 @@ class VenueService(BaseService):
                 status_code=422,
                 detail="The end time must be after the start time.",
             )
-        layout = layout.strip() if layout and layout.strip() else None
+        layout = suitability.wanted_layout(layout)
         filters = venue_search.SearchFilters(
             starts_at=starts_at,
             ends_at=ends_at,
@@ -554,20 +610,9 @@ class VenueService(BaseService):
                 contested = bool(held.pending)
             verdict = None
             if event is not None and exclude_event_id:
-                # Whatever the search leaves out comes from the event, exactly as
-                # when the coordinator checks this venue on its own.
+                # The same check as picking this venue, or requesting it, for the event.
                 verdict = self.check_suitability(
-                    SuitabilityRequest(
-                        eventId=exclude_event_id,
-                        venueId=venue.venueId,
-                        expectedAttendance=min_capacity,
-                        layout=layout,
-                        requiredFacilities=facilities or [],
-                        requiredAccessibility=accessibility or [],
-                        startsAt=starts_at,
-                        endsAt=ends_at,
-                    ),
-                    event,
+                    SuitabilityRequest(eventId=exclude_event_id, venueId=venue.venueId), event
                 ).verdict
             results.append(
                 VenueSearchResult(
@@ -670,6 +715,33 @@ class VenueService(BaseService):
     ) -> list[VenueBookingOut]:
         return [self._present(row) for row in self.booking_dao.list(status, event_id, venue_id)]
 
+    def venue_dashboard(self, now: datetime | None = None) -> VenueDashboardOut:
+        """SPM-57: what is waiting on Venue Staff and what is happening in the venues. Pending
+        requests come oldest first, as the Booking Requests queue lists them; flagged and
+        upcoming bookings soonest first. Only events that have not ended are shown."""
+        now = now or datetime.utcnow()
+        horizon = now + timedelta(days=DASHBOARD_UPCOMING_DAYS)
+        return VenueDashboardOut(
+            pending=self.list_bookings(status="pending"),
+            reverification=[self._present(row) for row in self.booking_dao.list_approved_between(now, flagged_only=True)],
+            upcoming=[self._present(row) for row in self.booking_dao.list_approved_between(now, horizon)],
+            upcomingDays=DASHBOARD_UPCOMING_DAYS,
+        )
+
+    def expired_holds(self, since: datetime, until: datetime) -> list[dict]:
+        """SPM-93 AC4: holds that ran out in (since, until], with what the coordinator's notice names."""
+        rows = self.booking_dao.list_holds_expired_between(suitability._utc(since), suitability._utc(until))
+        return [
+            {
+                "bookingId": row.bookingId,
+                "eventId": row.eventId,
+                "venueId": row.venueId,
+                "venueName": row.venue.name if row.venue else row.venueId,
+                "expiresAt": row.holdExpiresAt,
+            }
+            for row in rows
+        ]
+
     def public_summary(self, event_id: str) -> dict:
         """Approved booking's venue name and location, for attendees (SPM-91)."""
         bookings = self.booking_dao.list("approved", event_id, None)
@@ -699,6 +771,67 @@ class VenueService(BaseService):
     def list_unavailability(self, venue_id: str) -> list[UnavailabilityOut]:
         self._require_venue(venue_id)
         return [_block_out(row) for row in self.unavailability_dao.list_for_venue(venue_id)]
+
+    def calendar(
+        self, venue_id: str, starts_at: datetime | None, ends_at: datetime | None, authorization: str | None
+    ) -> VenueCalendarOut:
+        """SPM-108: confirmed bookings, pending requests, active and expired holds, and
+        unavailability whose window overlaps the range. Rejected, withdrawn and cancelled
+        requests hold nothing, so they are left out. No range means all of them."""
+        venue = self._require_venue(venue_id)
+        starts_at, ends_at = self._period(starts_at or CALENDAR_START, ends_at or CALENDAR_END)
+        # A booking occupies its venue from setup before its event to turnaround after it (SPM-112).
+        bookings = self.booking_dao.find_event_times_overlapping(
+            venue_id,
+            starts_at - timedelta(minutes=venue.turnaroundMinutes),
+            ends_at + timedelta(minutes=venue.setupMinutes),
+        )
+        now = datetime.utcnow()
+        facts = {}
+        for row in bookings:
+            if not (row.eventSnapshot or {}).get("eventName") and row.eventId not in facts:
+                facts[row.eventId] = find_event_facts(row.eventId, authorization)
+        entries = [self._calendar_booking(row, now, facts.get(row.eventId)) for row in bookings]
+        entries += [
+            CalendarEntryOut(
+                kind="unavailable",
+                id=row.unavailabilityId,
+                startsAt=row.startsAt,
+                endsAt=row.endsAt,
+                unavailability=_block_out(row),
+            )
+            for row in self.unavailability_dao.find_overlapping(venue_id, starts_at, ends_at)
+        ]
+        return VenueCalendarOut(
+            venueId=venue.venueId,
+            venueName=venue.name,
+            operatingHours=_as_list(venue.operatingHours),
+            setupMinutes=venue.setupMinutes,
+            turnaroundMinutes=venue.turnaroundMinutes,
+            entries=sorted(entries, key=lambda entry: (entry.startsAt, entry.id)),
+        )
+
+    def _calendar_booking(self, row: VenueBooking, now: datetime, event: EventFacts | None) -> CalendarEntryOut:
+        """A booking shows its occupied window and the event's advertised times. The name and client
+        come from the request; older requests carry none, so they are read from the event."""
+        booking = self._present(row)
+        snapshot = row.eventSnapshot or {}
+        name = snapshot.get("eventName") or (event.eventName if event else "")
+        client = snapshot.get("clientOrganisation") or (
+            (event.organisationName or event.organisationId or "") if event else ""
+        )
+        return CalendarEntryOut(
+            kind=_calendar_kind(row, now),
+            id=row.bookingId,
+            startsAt=booking.setupStartsAt,
+            endsAt=booking.teardownEndsAt,
+            eventId=row.eventId,
+            eventName=name or row.eventId,
+            clientOrganisation=client,
+            eventStartsAt=row.startsAt,
+            eventEndsAt=row.endsAt,
+            booking=booking,
+        )
 
     def record_unavailability(self, venue_id: str, data: UnavailabilityCreate, caller: dict) -> UnavailabilityOut:
         """Save a block. Overlapping bookings and holds stay as they are, and no event is read or changed."""
@@ -998,6 +1131,128 @@ class VenueService(BaseService):
             settle_reverification(row.eventId, authorization)
         return _booking_to_out(row)
 
+    @staticmethod
+    def _require_rescheduler(caller: dict, event: EventFacts) -> None:
+        if not event.coordinatorId or caller.get("userId") != event.coordinatorId:
+            raise forbidden("Only the coordinator assigned to this event can reschedule its venue bookings.")
+
+    @staticmethod
+    def _new_period(data: BookingReschedulePreview) -> tuple[datetime, datetime]:
+        start, end = suitability._utc(data.startsAt), suitability._utc(data.endsAt)
+        if end <= start:
+            raise HTTPException(status_code=422, detail="The end time must be after the start time.")
+        return start, end
+
+    def _judged_at(self, row: VenueBooking, event: EventFacts, start: datetime, end: datetime) -> RescheduledBookingOut:
+        """SPM-87 AC2: the same suitability check as a new request, at the new occupied window,
+        with the event's own bookings left out. A clash, hold, or unavailability means not free."""
+        checked = self.check_suitability(
+            SuitabilityRequest(eventId=row.eventId, venueId=row.venueId, startsAt=start, endsAt=end), event
+        )
+        failures = [reason for reason in checked.reasons if reason.severity == "failure"]
+        return RescheduledBookingOut(
+            bookingId=row.bookingId,
+            venueId=row.venueId,
+            venueName=self._venue_name(row.venueId),
+            status=row.status,
+            free=not any(reason.check in TAKEN_CHECKS for reason in failures),
+            suitable=not any(reason.check not in TAKEN_CHECKS for reason in failures),
+            verdict=checked.verdict,
+            reasons=[reason.message for reason in checked.reasons],
+            startsAt=row.startsAt,
+            endsAt=row.endsAt,
+        )
+
+    def preview_reschedule(
+        self, data: BookingReschedulePreview, caller: dict, event: EventFacts
+    ) -> list[RescheduledBookingOut]:
+        """SPM-87 AC2: each pending request and approved booking judged at the new time. Nothing moves (AC5)."""
+        self._require_rescheduler(caller, event)
+        start, end = self._new_period(data)
+        return [self._judged_at(row, event, start, end) for row in self.booking_dao.list_open_for_event(data.eventId)]
+
+    def reschedule_bookings(
+        self, data: BookingReschedule, caller: dict, event: EventFacts, authorization: str | None = None
+    ) -> list[RescheduledBookingOut]:
+        """SPM-87: the event has moved. An approved booking that is free and suitable at the new
+        occupied window moves with it and is flagged for Venue Staff to re-confirm (AC3); any other
+        approved booking is released so the coordinator can search again, while the free ones stay
+        (AC4). A pending request now asks for the new time; it holds nothing, and Venue Staff decide
+        on it as before. Each moved row gives up its old window only here, on apply (AC5)."""
+        self._require_rescheduler(caller, event)
+        start, end = self._new_period(data)
+        reason = data.reason.strip()
+        if reason and reason[-1] not in ".!?":
+            reason += "."
+        results, carried = [], []
+        for row in self.booking_dao.list_open_for_event(data.eventId):
+            out = self._judged_at(row, event, start, end)
+            venue = self._require_venue(row.venueId)
+            if row.status == "pending":
+                self._move_booking(row, venue, start, end)
+                # SPM-116: a hold may not outlast the event's start, so an earlier start releases it.
+                if row.holdExpiresAt and row.holdExpiresAt > start:
+                    _end_hold(row, "released")
+                out.outcome = "moved"
+            elif self._can_carry(data, out, venue, row.eventId, start, end):
+                self._move_booking(row, venue, start, end)
+                row.needsReverification = True
+                row.reverificationNote = " ".join(
+                    part for part in ("Event rescheduled.", reason, "Re-confirm the booking at the new time.") if part
+                )
+                out.outcome = "carried"
+                carried.append(out.venueName)
+            else:
+                why = " ".join(out.reasons) if not (out.free and out.suitable) else "It was not carried across."
+                row.status = "cancelled"
+                row.needsReverification = False
+                row.reverificationNote = f"Released when the event was rescheduled. {why}"
+                out.outcome = "released"
+            out.status, out.startsAt, out.endsAt = row.status, row.startsAt, row.endsAt
+            results.append(out)
+        try:
+            self.db.commit()
+        except DBAPIError as exc:
+            self.db.rollback()
+            if getattr(exc.orig, "args", (None,))[0] == SIGNALLED_ERROR:
+                raise conflict(
+                    "A venue was booked by another event at the new time while this was being rescheduled. "
+                    "Nothing was moved. Check the new time again."
+                ) from exc
+            raise
+        if authorization and carried:
+            notify_role(
+                "venue",
+                data.eventId,
+                "Re-confirm a rescheduled booking",
+                f"{event.eventName or data.eventId} has moved to {suitability._span(start, end)}. The booking at "
+                f"{', '.join(carried)} was carried across to the new time. Re-confirm it.",
+                authorization,
+                "venue.reverification",
+            )
+        return results
+
+    def _can_carry(
+        self, data: BookingReschedule, out: RescheduledBookingOut, venue: VenueInfo, event_id: str, start, end
+    ) -> bool:
+        """AC3: carried only when asked and the venue is free and suitable. The nearby bookings are
+        read again with a lock, as approval does, so a booking approved meanwhile is not overlapped;
+        the database trigger is the backstop."""
+        if not (data.carry and out.free and out.suitable):
+            return False
+        if self.commitments(venue, start, end, exclude_event_id=event_id, lock=True).conflicts:
+            out.free = False
+            out.reasons = [APPROVED_ELSEWHERE, *out.reasons]
+            return False
+        return True
+
+    @staticmethod
+    def _move_booking(row: VenueBooking, venue: VenueInfo, start: datetime, end: datetime) -> None:
+        row.startsAt, row.endsAt = start, end
+        row.setupStartsAt, row.teardownEndsAt = occupancy.occupied_window(
+            start, end, venue.setupMinutes, venue.turnaroundMinutes
+        )
+
     def withdraw_booking(self, booking_id: str, caller: dict, event_coordinator_id: str | None) -> VenueBookingOut:
         """SPM-63 AC8. A withdrawn request no longer counts anywhere: the
         suitability rule and conflict checks only look at pending and approved.
@@ -1040,17 +1295,43 @@ class VenueService(BaseService):
             return
         raise forbidden("Only the coordinator assigned to this event, or its organiser, can release its venue bookings.")
 
-    def release_event_bookings(self, event_id: str) -> list[VenueBookingOut]:
+    def release_event_bookings(self, event_id: str) -> list[ReleasedBookingOut]:
         """SPM-114: cancelling the event frees every pending request and approved booking.
 
-        Rejected, withdrawn, and already cancelled rows are left as they are.
+        Rejected, withdrawn, and already cancelled rows are left as they are. Each reply
+        names the booking's previous status, so the release can be undone (SPM-88 AC9).
         """
         rows = self.booking_dao.list_open_for_event(event_id)
+        previous = {row.bookingId: row.status for row in rows}
         for row in rows:
             _end_hold(row, "cancelled")
             row.status = "cancelled"
         self.db.commit()
-        return [_booking_to_out(row) for row in rows]
+        return [
+            ReleasedBookingOut(**_booking_to_out(row).model_dump(), previousStatus=previous[row.bookingId])
+            for row in rows
+        ]
+
+    def restore_event_bookings(self, event_id: str, bookings: list[RestoredBooking]) -> list[VenueBookingOut]:
+        """SPM-88 AC9: the cancellation failed after its venue release, so each booking it released gets
+        its status back, with any tentative hold the release ended. A booking of another event, or one
+        no longer cancelled, is left alone, so repeating the undo changes nothing."""
+        restored = []
+        for item in bookings:
+            row = self.booking_dao.get_by_id(item.bookingId)
+            if row is None or row.eventId != event_id or row.status != "cancelled":
+                continue
+            row.status = item.status
+            if row.holdEndReason == "cancelled":
+                row.holdEndedAt, row.holdEndReason = None, None
+            restored.append(row)
+        try:
+            self.db.commit()
+        except DBAPIError as exc:
+            # SPM-64's trigger: another booking took the venue in the meantime.
+            self.db.rollback()
+            raise conflict("A released booking could not be given back: its venue was booked in the meantime.") from exc
+        return [_booking_to_out(row) for row in restored]
 
     def arrangements_complete(self, event_id: str) -> bool:
         """True only when the event has requested venues and every one of them is approved.
@@ -1070,7 +1351,8 @@ class VenueService(BaseService):
         facts = booking.eventSnapshot or {}
         event = facts.get("eventName") or f"event {booking.eventId}"
         venue = self._venue_name(booking.venueId)
-        when = f"{booking.startsAt:%d %b %Y, %I:%M %p} to {booking.endsAt:%d %b %Y, %I:%M %p} UTC"
+        starts, ends = to_sgt(booking.startsAt), to_sgt(booking.endsAt)
+        when = f"{starts:%d %b %Y, %I:%M %p} to {ends:%d %b %Y, %I:%M %p} SGT"
         if action == "requested":
             return (
                 f"New venue request: {event} at {venue}",
@@ -1138,6 +1420,21 @@ class VenueService(BaseService):
             f"{suitability._moment(booking.hold.expiresAt)}. If the request is not approved by then, the hold "
             "expires and the venue becomes available to other requests.",
         )
+
+    def decision_notice(self, booking: VenueBookingOut, event: EventFacts) -> tuple[str, str, str]:
+        """SPM-8 and SPM-10: the coordinator learns Venue Staff approved or rejected the request,
+        with the reason and any suggested venue. (title, body, notice type)."""
+        name = event.eventName or booking.eventId
+        venue = booking.venueName or booking.venueId
+        if booking.status == "approved":
+            body = f'{venue} is confirmed for "{name}".'
+            if booking.decisionReason:
+                body += f" Note: {booking.decisionReason}"
+            return "Venue booking approved", body, "venue.booking_approved"
+        body = f'Venue Staff rejected the request for {venue} for "{name}". Reason: {booking.decisionReason}'
+        if booking.suggestedVenueName:
+            body += f" They suggest {booking.suggestedVenueName} instead."
+        return "Venue booking rejected", f"{body} Choose another venue for the event.", "venue.booking_rejected"
 
     def approve_booking(
         self, booking_id: str, reviewer_id: str, reason: str | None, reviewer_name: str | None = None

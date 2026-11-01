@@ -15,4 +15,6 @@ htmlcov/
 *firebase-adminsdk*.json
 playwright-report/
 test-results/
+test-reports/
+backups/
 project/

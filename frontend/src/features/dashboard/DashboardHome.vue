@@ -22,7 +22,7 @@ defineProps({
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 22px;
   transition: transform .5s var(--ease-out), border-color .5s var(--ease-out),
               background .5s var(--ease-out);
@@ -50,7 +50,7 @@ defineProps({
 
 .card-title {
   position: relative;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   font-weight: 500;
   color: var(--text);
   font-size: 15px;

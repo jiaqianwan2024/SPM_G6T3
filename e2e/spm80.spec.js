@@ -13,10 +13,12 @@ test.describe('SPM-80 Capture venue, layout, accessibility and equipment require
     const draft = await createNameOnlyDraft('EO-01', 'AUTO-SPM80-layout')
     await login(page, account('EO-01'))
     await page.goto(`/app/events/${draft.eventId}`)
-    await page.getByTestId('layout-preference').selectOption(/Theatre|no preference/i)
+    await page.getByTestId('layout-preference').selectOption('Theatre')
     await page.getByTestId('event-save-draft').click()
-    const stored = await eventApi('GET', `/${draft.eventId}`, 'EO-01')
-    expect(stored.body.layoutPreference || stored.body.layout).toBeTruthy()
+    // Read once the save has gone through, not as the button is clicked.
+    await expect
+      .poll(async () => (await eventApi('GET', `/${draft.eventId}`, 'EO-01')).body.layoutPreference)
+      .toBe('Theatre')
   })
 
   test('TC-SPM80-AC02 the organiser can state a preferred location or region and facilities from the catalogue', async () => {
@@ -96,7 +98,7 @@ test.describe('SPM-80 Capture venue, layout, accessibility and equipment require
       accessibilityNeeds: ['Wheelchair accessible'],
       equipmentLines: [{ equipmentId: 'eq1', quantity: 2, technicalNotes: 'Keep HDMI' }],
       purpose: 'Visible to coordinator',
-      category: 'meeting',
+      category: 'Meeting',
       expectedAttendance: 10,
       proposedStartAt: new Date(Date.now() + 40 * 86400000).toISOString(),
       proposedEndAt: new Date(Date.now() + 40 * 86400000 + 7200000).toISOString(),

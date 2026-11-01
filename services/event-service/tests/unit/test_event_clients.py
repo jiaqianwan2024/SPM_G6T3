@@ -51,6 +51,28 @@ class TestEventClients(unittest.TestCase):
 
         self.assertEqual(count, 0)
 
+    def test_registration_counts_asks_once_and_fills_in_missing_events(self):
+        response = Mock(status_code=200)
+        response.json.return_value = {"counts": {"e1": 2}}
+        with patch.object(clients._registration_client, "get", return_value=response) as get:
+            counts = clients.registration_counts(["e1", "e2"], "Bearer token")
+
+        self.assertEqual(counts, {"e1": 2, "e2": 0})
+        self.assertEqual(get.call_count, 1)
+        self.assertIn("/registrations/counts", get.call_args.args[0])
+        self.assertEqual(get.call_args.kwargs["params"], {"eventIds": "e1,e2"})
+
+    def test_registration_counts_is_none_when_the_batch_cannot_be_read(self):
+        with patch.object(clients._registration_client, "get", side_effect=httpx.ConnectError("down")):
+            self.assertIsNone(clients.registration_counts(["e1"], None))
+        with patch.object(clients._registration_client, "get", return_value=Mock(status_code=503)):
+            self.assertIsNone(clients.registration_counts(["e1"], None))
+
+    def test_registration_counts_makes_no_call_for_no_events(self):
+        with patch.object(clients._registration_client, "get") as get:
+            self.assertEqual(clients.registration_counts([], None), {})
+        get.assert_not_called()
+
     def test_organisation_names_returns_the_id_to_name_mapping(self):
         response = Mock(status_code=200)
         response.json.return_value = [

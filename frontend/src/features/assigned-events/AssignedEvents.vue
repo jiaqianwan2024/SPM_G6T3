@@ -67,6 +67,7 @@
             <span v-if="event.preferredLocation">{{ event.preferredLocation }}</span>
             <span v-if="event.category">{{ event.category }}</span>
             <span v-if="event.dateNear" class="near-flag">Date is near</span>
+            <span v-else-if="event.datePassed" class="passed-flag">Date has passed</span>
           </div>
         </button>
       </div>
@@ -77,8 +78,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getEvents } from '../../api/eventService.js'
-import { session } from '../../store/session.js'
+import { getAssignedEvents } from '../../api/eventService.js'
+import { formatSgtRange, sgtDay } from '../../utils/datetime.js'
 
 const STATUS_ORDER = [
   'submitted',
@@ -151,19 +152,15 @@ function statusLabel(status) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
+// The Singapore date, which is what the date filters hold.
 function startDay(value) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
+  return sgtDay(value)
 }
 
 function formatRange(start, end) {
   if (!start && !end) return 'No date set yet'
   if (!start || !end) return 'Date incomplete'
-  return `${new Date(start).toLocaleString()} – ${new Date(end).toLocaleString()}`
+  return formatSgtRange(start, end)
 }
 
 function toggleStatus(status) {
@@ -185,11 +182,9 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const { data } = await getEvents()
-    events.value = data
-      .filter((event) => event.coordinatorId && event.coordinatorId === session.userId)
-      .filter((event) => event.status !== 'draft' && event.status !== 'discarded')
-      .sort((a, b) => new Date(a.proposedStartAt || 0) - new Date(b.proposedStartAt || 0))
+    // Only the caller's own events, drafts left out, filtered by the server.
+    const { data } = await getAssignedEvents()
+    events.value = data.sort((a, b) => new Date(a.proposedStartAt || 0) - new Date(b.proposedStartAt || 0))
   } catch (err) {
     error.value = err.response?.data?.detail || 'Could not load assigned events. Please try again.'
   } finally {
@@ -209,7 +204,7 @@ onMounted(load)
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 
@@ -233,7 +228,7 @@ onMounted(load)
 .toolbar input {
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -294,7 +289,7 @@ onMounted(load)
   text-align: left;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 18px 20px;
   cursor: pointer;
   color: inherit;
@@ -315,6 +310,7 @@ onMounted(load)
   padding: 3px 9px;
 }
 .near-flag { color: #ffd9a8 !important; border-color: rgba(255, 198, 109, .35) !important; }
+.passed-flag { color: #FF8A76 !important; border-color: rgba(255, 138, 118, .35) !important; }
 .status-pill {
   flex-shrink: 0;
   font-size: 11px;

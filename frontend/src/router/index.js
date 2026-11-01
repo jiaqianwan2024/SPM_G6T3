@@ -1,23 +1,31 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import LandingView from '../views/LandingView.vue'
 import LoginView from '../views/LoginView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import EventDetail from '../features/event-detail/EventDetail.vue'
+import ChangeRequestReview from '../features/event-detail/ChangeRequestReview.vue'
 import EventRegistrations from '../features/event-detail/EventRegistrations.vue'
 import EventRegistrationSettings from '../features/event-detail/EventRegistrationSettings.vue'
 import RegistrationDetail from '../features/my-registrations/RegistrationDetail.vue'
 import EventVenueSelect from '../features/venue-request/EventVenueSelect.vue'
 import BrowseEvent from '../features/browse-events/BrowseEvent.vue'
 import EventReadiness from '../features/event-detail/EventReadiness.vue'
+import EventEquipmentCheck from '../features/equipment-catalogue/EventEquipmentCheck.vue'
 import EquipmentDetail from '../features/equipment-catalogue/EquipmentDetail.vue'
 import NotificationsPage from '../features/notifications/NotificationsPage.vue'
 import NotificationFollow from '../features/notifications/NotificationFollow.vue'
 import { session } from '../store/session.js'
 
+// Component catalogue for developers; not registered in production builds.
+const devRoutes = import.meta.env.DEV
+  ? [{ path: '/dev/ui', name: 'dev-ui', component: () => import('../views/UiShowcase.vue') }]
+  : []
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', name: 'landing', component: LandingView },
+    ...devRoutes,
+    // The login page is the entry point; the guard below sends a signed-in user on to /app.
+    { path: '/', redirect: { name: 'login' } },
     { path: '/login', name: 'login', component: LoginView },
     { path: '/app', name: 'dashboard', component: DashboardView, meta: { requiresAuth: true } },
     {
@@ -36,6 +44,12 @@ const router = createRouter({
       path: '/app/events/:id',
       name: 'event-detail',
       component: EventDetail,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/app/events/:id/change-requests/:changeRequestId',
+      name: 'change-request-review',
+      component: ChangeRequestReview,
       meta: { requiresAuth: true }
     },
     {
@@ -73,6 +87,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/app/events/:id/equipment',
+      name: 'event-equipment',
+      component: EventEquipmentCheck,
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/app/equipment/:id',
       name: 'equipment-detail',
       component: EquipmentDetail,
@@ -98,7 +118,12 @@ const router = createRouter({
         query: {
           tab: 'Venue Calendar',
           venue: String(to.params.id),
-          ...(typeof to.query.at === 'string' ? { at: to.query.at } : {})
+          // `at` opens on a moment; `from` and `to` on a range (SPM-108).
+          ...Object.fromEntries(
+            ['at', 'from', 'to']
+              .filter((key) => typeof to.query[key] === 'string')
+              .map((key) => [key, to.query[key]])
+          )
         }
       })
     }

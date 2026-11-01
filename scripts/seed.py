@@ -24,6 +24,17 @@ URLS = {
 }
 
 
+def schedule_anchor() -> datetime:
+    """The latest 10:00 Singapore time (02:00 UTC), which every seeded date counts from.
+
+    Counting from the moment the seed runs put events at odd times, such as 20:33 to 04:33;
+    from a fixed hour each event starts on the hour and stays inside venue opening hours.
+    """
+    now = datetime.utcnow()
+    anchor = now.replace(hour=2, minute=0, second=0, microsecond=0)
+    return anchor if anchor <= now else anchor - timedelta(days=1)
+
+
 def _empty(conn, table: str) -> bool:
     return conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar() == 0
 
@@ -42,7 +53,7 @@ def _ensure_firebase_user(email: str, password: str, display_name: str) -> str:
 
 def seed_user() -> None:
     engine = create_engine(URLS["user"])
-    now = datetime.utcnow()
+    now = schedule_anchor()
     with engine.begin() as conn:
         for org_id, name in (
             ("org-1", "Apex Partners"),
@@ -170,6 +181,8 @@ def _refresh_demo_windows(conn, now: datetime, day: timedelta) -> None:
         ("e2", now + 21 * day, timedelta(hours=4), now - 2 * day, now + 10 * day),
         ("e4", now + 45 * day, timedelta(hours=2), now + 2 * day, now + 20 * day),
     ]
+    # The organiser's list shows this as the event's location.
+    conn.execute(text("UPDATE events SET preferred_location = 'Marina Hall A' WHERE event_id = 'e1'"))
     for event_id, start, length, opens, closes in schedules:
         conn.execute(
             text(
@@ -189,16 +202,18 @@ def _refresh_demo_windows(conn, now: datetime, day: timedelta) -> None:
 
 def seed_event() -> None:
     engine = create_engine(URLS["event"])
-    now = datetime.utcnow()
+    now = schedule_anchor()
     day = timedelta(days=1)
+    # SPM-47: Beacon Media's event, which Apex Partners organisers must never see. Its text is
+    # public, since attendees can open it (SPM-91 AC8: no internal notes or client details).
     foreign_event = {
         "event_id": "e5",
         "organiser_id": "u7",
         "organisation_id": "org-2",
         "coordinator_id": None,
         "name": "Beacon Q4 Showcase",
-        "purpose": "Private planning for Beacon Media.",
-        "description": "Internal client showcase. Must stay invisible to Apex organisers.",
+        "purpose": "Present Beacon Media's Q4 campaign work to partners.",
+        "description": "An afternoon showcase of Beacon Media's Q4 campaigns, followed by networking.",
         "category": "Meeting",
         "proposed_start_at": now + 18 * day,
         "proposed_end_at": now + 18 * day + timedelta(hours=3),
@@ -269,8 +284,9 @@ def seed_event() -> None:
                 "organisation_id": "org-1",
                 "coordinator_id": "u2",
                 "name": "Partner Networking Night",
+                # In planning, with registration not enabled yet.
                 "purpose": "Informal networking for partner organisations.",
-                "description": "Evening reception. Registration not yet enabled.",
+                "description": "An evening reception for partner organisations, with short introductions and drinks.",
                 "category": "Networking",
                 "proposed_start_at": now + 30 * day,
                 "proposed_end_at": now + 30 * day + timedelta(hours=3),
@@ -292,8 +308,9 @@ def seed_event() -> None:
                 "organisation_id": "org-1",
                 "coordinator_id": "u2",
                 "name": "Q1 Client Briefing",
+                # Confirmed, with a registration period that opens in the future (SPM-11 AC6).
                 "purpose": "Quarterly briefing for Apex Partners.",
-                "description": "Registration opens in the future.",
+                "description": "A two-hour briefing on first-quarter plans and results, followed by questions.",
                 "category": "Meeting",
                 "proposed_start_at": now + 45 * day,
                 "proposed_end_at": now + 45 * day + timedelta(hours=2),
@@ -323,8 +340,9 @@ def seed_event() -> None:
                     "organisation_id": "org-1",
                     "coordinator_id": None,
                     "name": "Unassigned Client Brief",
-                    "purpose": "Waiting for a coordinator to pick it up.",
-                    "description": "Submitted request with no coordinator yet.",
+                    # Submitted and waiting in the Lead's queue, with no coordinator yet (SPM-117).
+                    "purpose": "Brief the client team on the year's priorities.",
+                    "description": "A working session to walk the client team through the brief.",
                     "category": "Meeting",
                     "proposed_start_at": now + 10 * day,
                     "proposed_end_at": now + 10 * day + timedelta(hours=2),
@@ -353,8 +371,10 @@ def seed_event() -> None:
                     "organisation_id": "org-1",
                     "coordinator_id": "u2",
                     "name": "Colleague Town Hall",
-                    "purpose": "Created by a colleague in Apex Partners.",
-                    "description": "Must appear on EO-01's organiser dashboard.",
+                    # Filed by EO-03, a colleague in Apex Partners, so it must appear on EO-01's
+                    # organiser dashboard too (SPM-47, SPM-56).
+                    "purpose": "Update staff on company news and plans.",
+                    "description": "An all-hands town hall with updates from the leadership team and an open Q&A.",
                     "category": "Meeting",
                     "proposed_start_at": now + 12 * day,
                     "proposed_end_at": now + 12 * day + timedelta(hours=2),
@@ -381,8 +401,10 @@ def seed_event() -> None:
                     "organisation_id": "org-1",
                     "coordinator_id": "u2",
                     "name": "Cancelled Briefing",
-                    "purpose": "Cancelled after registrations were taken.",
-                    "description": "Attendees who registered must see this as cancelled.",
+                    # Cancelled after registrations were taken, so attendees who registered must
+                    # see it as cancelled (SPM-59 AC3, SPM-92 AC4).
+                    "purpose": "Brief clients on the new service schedule.",
+                    "description": "A one-hour briefing on the new service schedule.",
                     "category": "Meeting",
                     "proposed_start_at": now + 8 * day,
                     "proposed_end_at": now + 8 * day + timedelta(hours=1),
@@ -400,6 +422,15 @@ def seed_event() -> None:
                 },
                 now,
             )
+        # SPM-88 AC10: a cancelled event keeps why, by whom and when. Filled only while blank.
+        conn.execute(
+            text(
+                "UPDATE events SET cancellation_reason = 'The briefing was merged into the quarterly review.', "
+                "cancelled_by = 'u1', cancelled_at = :cancelled_at "
+                "WHERE event_id = 'e8' AND status = 'cancelled' AND cancellation_reason IS NULL"
+            ),
+            {"cancelled_at": now - 2 * day},
+        )
         if not conn.execute(text("SELECT review_id FROM event_reviews WHERE review_id = 'rv-clarify-e3'")).first():
             conn.execute(
                 text(
@@ -589,6 +620,7 @@ DEMO_LAYOUTS = {
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
 ALL_DAYS = WEEKDAYS + ["Sat", "Sun"]
+AROUND_THE_CLOCK = _hours(ALL_DAYS, "00:00", "24:00")
 
 
 def _ensure_venue_bookings(conn, now: datetime, day: timedelta) -> None:
@@ -670,7 +702,7 @@ def _ensure_venue_bookings(conn, now: datetime, day: timedelta) -> None:
 
 def seed_venue() -> None:
     engine = create_engine(URLS["venue"])
-    now = datetime.utcnow()
+    now = schedule_anchor()
     day = timedelta(days=1)
     with engine.begin() as conn:
         if _empty(conn, "venues"):
@@ -685,7 +717,7 @@ def seed_venue() -> None:
                 ["Projector", "PA system", "Video-conferencing", "Stage"],
                 ["Wheelchair accessible", "Accessible restrooms nearby"],
                 DEMO_LAYOUTS["v1"],
-                _hours(ALL_DAYS, "08:00", "22:00"),
+                AROUND_THE_CLOCK,
                 60,
                 30,
             ),
@@ -696,7 +728,7 @@ def seed_venue() -> None:
                 ["Projector", "Whiteboard"],
                 ["Wheelchair accessible"],
                 DEMO_LAYOUTS["v2"],
-                _hours(WEEKDAYS + ["Sat"], "08:00", "20:00"),
+                AROUND_THE_CLOCK,
                 30,
                 15,
             ),
@@ -707,7 +739,7 @@ def seed_venue() -> None:
                 ["Loading dock", "PA system", "Booth power points"],
                 ["Wheelchair accessible", "Accessible restrooms nearby"],
                 DEMO_LAYOUTS["v3"],
-                _hours(ALL_DAYS, "07:00", "23:00"),
+                AROUND_THE_CLOCK,
                 120,
                 45,
             ),
@@ -718,7 +750,7 @@ def seed_venue() -> None:
                 ["Video-conferencing", "Smart TV"],
                 ["Wheelchair accessible"],
                 DEMO_LAYOUTS["v4"],
-                _hours(WEEKDAYS, "08:00", "18:00"),
+                AROUND_THE_CLOCK,
                 15,
                 10,
             ),
@@ -762,6 +794,7 @@ def seed_venue() -> None:
             )
         _ensure_venue_layouts(conn)
         _ensure_venue_safety_details(conn)
+        _ensure_venues_open_around_the_clock(conn)
         _ensure_venue_bookings(conn, now, day)
 
 
@@ -780,6 +813,32 @@ def _ensure_venue_layouts(conn) -> None:
         conn.execute(
             text("UPDATE venues SET layouts = CAST(:layouts AS JSON) WHERE venue_id = :venue_id"),
             {"venue_id": venue_id, "layouts": json.dumps(layouts)},
+        )
+
+
+def _ensure_venues_open_around_the_clock(conn) -> None:
+    """The demo venues open 24 hours every day, so opening hours never decide
+    whether one suits an event. A database still holding hours an earlier seed
+    wrote is moved over; hours a venue staff member set are left alone."""
+    earlier_seeds = {
+        "v1": [_hours(ALL_DAYS, "08:00", "22:00")],
+        "v2": [_hours(WEEKDAYS + ["Sat"], "08:00", "20:00"), _hours(ALL_DAYS, "08:00", "20:00")],
+        "v3": [_hours(ALL_DAYS, "07:00", "23:00")],
+        "v4": [_hours(WEEKDAYS, "08:00", "18:00"), _hours(ALL_DAYS, "08:00", "18:00")],
+    }
+    for venue_id, seeded in earlier_seeds.items():
+        raw = conn.execute(
+            text("SELECT operating_hours FROM venues WHERE venue_id = :venue_id"),
+            {"venue_id": venue_id},
+        ).scalar()
+        if raw is None:
+            continue
+        current = json.loads(raw) if isinstance(raw, str) else raw
+        if current not in seeded:
+            continue
+        conn.execute(
+            text("UPDATE venues SET operating_hours = CAST(:hours AS JSON) WHERE venue_id = :venue_id"),
+            {"venue_id": venue_id, "hours": json.dumps(AROUND_THE_CLOCK)},
         )
 
 
@@ -870,7 +929,8 @@ def _ensure_equipment_requests(conn, now: datetime, day: timedelta) -> None:
             "quantity": 2,
             "technical_requirements": "LED wall — one unit still unavailable",
             "requested_by": "u2",
-            "status": "approved",
+            # SPM-77: a partly fulfilled line, as recording one leaves it: one of two reserved, one short.
+            "status": "partial",
             "starts_at": now + 30 * day,
             "ends_at": now + 30 * day + timedelta(hours=3),
             "reviewed_by": "u4",
@@ -965,6 +1025,15 @@ def _ensure_equipment_requests(conn, now: datetime, day: timedelta) -> None:
             "WHERE request_id = 'eq-reverify' AND status = 'approved'"
         )
     )
+    # SPM-58: the insert above does not set the shortfall, and databases seeded before this
+    # stored the line as `approved`. Either way it becomes one of two reserved, one short.
+    # A shortfall someone already resolved is left alone.
+    conn.execute(
+        text(
+            "UPDATE equipment_requests SET status = 'partial', shortfall = 1, reserved_quantity = 1 "
+            "WHERE request_id = 'eq-shortfall' AND status IN ('approved', 'partial') AND COALESCE(shortfall, 0) = 0"
+        )
+    )
 
 
 # Fifteen catalogue types. eq1–eq3 keep the ids that equipment requests already use.
@@ -1050,7 +1119,7 @@ def _ensure_equipment_catalogue(conn) -> None:
 
 def seed_equipment() -> None:
     engine = create_engine(URLS["equipment"])
-    now = datetime.utcnow()
+    now = schedule_anchor()
     day = timedelta(days=1)
     with engine.begin() as conn:
         _title_case_equipment_categories(conn)
@@ -1135,6 +1204,14 @@ def _ensure_registrations(conn, now: datetime, day: timedelta) -> None:
             ),
             {"id": row["id"]},
         ).first():
+            # A test may have withdrawn Amy's demo registration; re-seeding puts it back.
+            conn.execute(
+                text(
+                    "UPDATE attendee_registrations SET status = :status, withdrawn_at = NULL "
+                    "WHERE attendee_registration_id = :id"
+                ),
+                row,
+            )
             continue
         conn.execute(
             text(
@@ -1148,7 +1225,7 @@ def _ensure_registrations(conn, now: datetime, day: timedelta) -> None:
 
 def seed_registration() -> None:
     engine = create_engine(URLS["registration"])
-    now = datetime.utcnow()
+    now = schedule_anchor()
     day = timedelta(days=1)
     with engine.begin() as conn:
         if not _empty(conn, "registration_windows"):
@@ -1197,7 +1274,7 @@ def seed_registration() -> None:
 
 def seed_notification() -> None:
     engine = create_engine(URLS["notification"])
-    now = datetime.utcnow()
+    now = schedule_anchor()
     with engine.begin() as conn:
         if not _empty(conn, "notifications"):
             return

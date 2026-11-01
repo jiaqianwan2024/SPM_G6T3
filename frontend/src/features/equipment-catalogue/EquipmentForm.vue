@@ -4,16 +4,16 @@
       <h3>{{ mode === 'create' ? 'Add equipment' : 'Edit equipment' }}</h3>
     </div>
     <div class="fields">
-      <label>Code<input v-model="form.code" required /></label>
-      <label>Name<input v-model="form.name" required /></label>
+      <label><span>Code <span class="req">*</span></span><input v-model="form.code" required /></label>
+      <label><span>Name <span class="req">*</span></span><input v-model="form.name" required /></label>
       <label>
-        Category
+        <span>Category <span class="req">*</span></span>
         <select v-model="form.category" required>
           <option value="" disabled>Select a category</option>
           <option v-for="item in categoryOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
         </select>
       </label>
-      <label>Total owned<input v-model.number="form.totalQuantity" type="number" min="0" required /></label>
+      <label><span>Total owned <span class="req">*</span></span><input v-model.number="form.totalQuantity" type="number" min="0" required /></label>
       <label class="wide">Description<textarea v-model="form.description" rows="2" /></label>
       <label>Home location<input v-model="form.homeLocation" /></label>
       <label>Damaged<input v-model.number="form.damaged" type="number" min="0" /></label>
@@ -120,7 +120,7 @@ function submit(acknowledge = false) {
 .item-detail {
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 26px;
 }
 .detail-header { margin-bottom: 16px; }
@@ -131,7 +131,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color:
 input, textarea, select {
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -144,7 +144,7 @@ select option {
 .warning {
   margin: 16px 0 0;
   padding: 12px;
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .3);
   color: var(--text);

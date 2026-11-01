@@ -46,7 +46,9 @@ test.describe('SPM-17 View venue catalogue', () => {
   })
 
   test('TC-SPM17-AC03 retired venues are hidden by default and can be filtered back', async ({ page }) => {
-    const created = await venueRequest('POST', '/venues', 'VS-01', newVenuePayload('Retired Catalogue Venue'))
+    // A name of its own, so an earlier run's retired copy is never the one found below.
+    const name = `AUTO-SPM17 Retired Venue ${Date.now()}`
+    const created = await venueRequest('POST', '/venues', 'VS-01', newVenuePayload(name))
     expect(created.status).toBe(201)
     const retired = await venueRequest('POST', `/venues/${created.body.venueId}/retire`, 'VS-01')
     expect(retired.status).toBe(200)
@@ -58,9 +60,9 @@ test.describe('SPM-17 View venue catalogue', () => {
 
     await login(page, account('VS-01'))
     await page.locator('.nav-item').getByText('Venue Catalogue', { exact: true }).click()
-    await expect(page.getByText('Retired Catalogue Venue')).toHaveCount(0)
+    await expect(page.getByText(name)).toHaveCount(0)
     await page.getByLabel(/show retired/i).check()
-    await expect(page.getByText('Retired Catalogue Venue')).toBeVisible()
+    await expect(page.getByText(name)).toBeVisible()
   })
 
   test('TC-SPM17-AC04 a venue opens its availability calendar', async ({ page }) => {

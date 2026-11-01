@@ -18,7 +18,8 @@ ALL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 def at(hour, minute=0):
-    return MONDAY + timedelta(hours=hour, minutes=minute)
+    """`hour`:`minute` Singapore time, stored as naive UTC (eight hours earlier)."""
+    return MONDAY + timedelta(hours=hour - 8, minutes=minute)
 
 
 class ApprovalCase(VenueCase):
@@ -244,7 +245,7 @@ class TestApprovalIsBlocked(ApprovalCase):
 
         self.assertEqual(
             detail,
-            "Harbour Hall is unavailable from 07 Jan 2030, 09:00 AM to 09:45 AM UTC (maintenance), "
+            "Harbour Hall is unavailable from 07 Jan 2030, 09:00 AM to 09:45 AM SGT (maintenance), "
             "so this request cannot be approved.",
         )
         self.assert_still_pending(self.a)
@@ -269,7 +270,7 @@ class TestApprovalIsBlocked(ApprovalCase):
 
         detail = self.refused(lambda: self.approve(self.a))
 
-        self.assertIn('Harbour Hall is on a tentative hold until 06 Jan 2030, 08:00 AM UTC for "Event e-b"', detail)
+        self.assertIn('Harbour Hall is on a tentative hold until 06 Jan 2030, 08:00 AM SGT for "Event e-b"', detail)
         self.assert_still_pending(self.a)
 
 

@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
+import { setReadinessDue } from './support/database.js'
 import { eventApi } from './support/event.js'
 
 const EVENT = 'e1'
@@ -28,6 +29,16 @@ test.describe('SPM-05 Follow-up pending items of the given request', () => {
     await expect(item.getByTestId('readiness-status')).toBeVisible()
     await expect(item.getByTestId('readiness-assigned-at')).toBeVisible()
     await expect(item.getByTestId('readiness-attachments')).toBeVisible()
+
+    // The personnel are ConnectSphere staff only: no organiser or attendee can be chosen or saved.
+    const choices = page.getByTestId('readiness-create-handler').locator('option')
+    await expect(choices.filter({ hasText: 'venue@connectsphere.com' })).toHaveCount(1)
+    await expect(choices.filter({ hasText: /organiser\d*@connectsphere\.com/ })).toHaveCount(0)
+    await expect(choices.filter({ hasText: /attendee\d*@connectsphere\.com/ })).toHaveCount(0)
+    for (const handlerId of ['u1', 'u5']) {
+      const refused = await eventApi('POST', `/${EVENT}/readiness-items`, 'EC-01', { category: 'venue', handlerId })
+      expect(refused.status, handlerId).toBe(422)
+    }
   })
 
   test('TC-SPM05-AC02 the coordinator can update a line-item readiness status', async () => {
@@ -135,17 +146,46 @@ test.describe('SPM-05 Follow-up pending items of the given request', () => {
   })
 
   test('TC-SPM05-AC09 an overdue line item is flagged', async () => {
-    const past = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+    // A new due date cannot be before today (AC10), so the item is made due later and then moved
+    // two days into the past in the database.
     const created = await eventApi('POST', `/${EVENT}/readiness-items`, 'EC-01', {
       category: 'equipment',
       handlerId: 'u4',
       status: 'outstanding',
-      dueAt: past,
+      dueAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
     })
     expect(created.status).toBe(201)
-    expect(created.body.overdue).toBe(true)
+    setReadinessDue(created.body.itemId, -2)
     const list = await eventApi('GET', `/${EVENT}/readiness`, 'EC-01')
     const row = (list.body || []).find((item) => item.itemId === created.body.itemId)
     expect(row.overdue).toBe(true)
+  })
+
+  test('TC-SPM05-AC10 a new or changed due date cannot be before today (SGT); an existing overdue date stays valid', async () => {
+    const day = 24 * 60 * 60 * 1000
+    const create = (dueAt) =>
+      eventApi('POST', `/${EVENT}/readiness-items`, 'EC-01', { category: 'venue', handlerId: 'u3', status: 'outstanding', dueAt })
+    const made = []
+    try {
+      const past = await create(new Date(Date.now() - 2 * day).toISOString())
+      if (past.status === 201) made.push(past.body.itemId)
+      expect(past.status).toBe(422)
+      expect(JSON.stringify(past.body)).toMatch(/today/i)
+
+      const item = await create(new Date(Date.now() + 3 * day).toISOString())
+      expect(item.status).toBe(201)
+      made.push(item.body.itemId)
+      const moved = await eventApi('PATCH', `/${EVENT}/readiness-items/${item.body.itemId}`, 'EC-01', {
+        dueAt: new Date(Date.now() - day).toISOString(),
+      })
+      expect(moved.status).toBe(422)
+
+      // Once overdue (set in the database, as the app never saves a past date), other edits still save.
+      setReadinessDue(item.body.itemId, -1)
+      const noted = await eventApi('PATCH', `/${EVENT}/readiness-items/${item.body.itemId}`, 'EC-01', { note: 'Chasing the venue' })
+      expect(noted.status, JSON.stringify(noted.body)).toBe(200)
+    } finally {
+      for (const itemId of made) await eventApi('DELETE', `/${EVENT}/readiness-items/${itemId}`, 'EC-01')
+    }
   })
 })

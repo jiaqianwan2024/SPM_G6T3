@@ -13,8 +13,11 @@ export const getConfirmedEvents = () => axiosClient.get("/events/confirmed");
 // Coordinator-only: submitted / under-review / changes-requested events.
 // sort: "proposedStartAt" to order by event date instead of wait time.
 // assignedTo: a coordinator userId, to see only their own assignments.
-export const getSubmissionQueue = ({ sort, assignedTo } = {}) =>
-  axiosClient.get("/events/queue", { params: { sort, assignedTo } });
+export const getSubmissionQueue = ({ sort, assignedTo, includeCompleted } = {}) =>
+  axiosClient.get("/events/queue", { params: { sort, assignedTo, includeCompleted: includeCompleted || undefined } });
+
+// Coordinator only: every event assigned to the caller except drafts, soonest first.
+export const getAssignedEvents = () => axiosClient.get("/events/assigned");
 
 export const getEvent = (eventId) => axiosClient.get(`/events/${eventId}`);
 
@@ -56,7 +59,17 @@ export const discardEvent = (eventId) => axiosClient.delete(`/events/${eventId}`
 // passed yet; 403 if the caller isn't the assigned coordinator.
 export const completeEvent = (eventId) => axiosClient.post(`/events/${eventId}/complete`);
 
+// SPM-88: the organiser or the assigned coordinator cancels at once, with a reason. Venue and
+// equipment are released first; 503 when a release failed, in which case nothing changed.
+export const cancelEvent = (eventId, reason) => axiosClient.post(`/events/${eventId}/cancel`, { reason });
+
 export const getActivityLog = (eventId) => axiosClient.get(`/events/${eventId}/activity-log`);
+
+// SPM-87: what a move would do (nothing is changed), then the move itself, with a reason.
+export const previewReschedule = (eventId, proposedStartAt, proposedEndAt) =>
+  axiosClient.post(`/events/${eventId}/reschedule/preview`, { proposedStartAt, proposedEndAt });
+
+export const rescheduleEvent = (eventId, body) => axiosClient.post(`/events/${eventId}/reschedule`, body);
 
 // SPM-71: the assigned coordinator edits an event. Send only the changed fields.
 // A significant change on an event with confirmed arrangements comes back as a
@@ -73,6 +86,10 @@ export const getRequirementOptions = () => axiosClient.get("/events/requirement-
 export const getOpenEvents = (params = {}) => axiosClient.get("/events/open-for-registration", { params });
 
 export const getOpenEvent = (eventId) => axiosClient.get(`/events/open-for-registration/${eventId}`);
+
+// SPM-127: an event's public page. An attendee can open a confirmed event or one
+// they are registered for; the full event record is for staff and organisers.
+export const getAttendeeCard = (eventId) => axiosClient.get(`/events/${eventId}/attendee-card`);
 
 export const getReadiness = (eventId) => axiosClient.get(`/events/${eventId}/readiness`);
 
@@ -113,6 +130,7 @@ export const updateRegistrationSettings = (eventId, settings, confirmations = {}
 // SPM-106: change requests, newest first, each with { status, reason,
 // proposedChanges, currentValues, decisionReason }. Organisers (their
 // organisation's events) and staff only.
+export const getMyChangeRequests = () => axiosClient.get("/events/mine/change-requests");
 export const getChangeRequests = (eventId) => axiosClient.get(`/events/${eventId}/change-requests`);
 
 // Organiser only. proposedChanges maps field -> proposed value; a reason is required.
@@ -128,8 +146,15 @@ export const withdrawChangeRequest = (eventId, changeRequestId) =>
 export const acceptChangeRequest = (eventId, changeRequestId, reason = "", confirmSignificantChange = false) =>
   axiosClient.post(`/events/${eventId}/change-requests/${changeRequestId}/accept`, { reason, confirmSignificantChange });
 
-export const declineChangeRequest = (eventId, changeRequestId, reason) =>
-  axiosClient.post(`/events/${eventId}/change-requests/${changeRequestId}/decline`, { reason });
+// SPM-85 AC8: askNarrower declines it and asks the organiser for a narrower request.
+export const declineChangeRequest = (eventId, changeRequestId, reason, askNarrower = false) =>
+  axiosClient.post(`/events/${eventId}/change-requests/${changeRequestId}/decline`, { reason, askNarrower });
+
+// SPM-85 AC2 to AC5: assigned coordinator only, while pending. What accepting would
+// affect: venueBookings, venueSuitability, capacity, equipmentReservations,
+// equipmentAvailability, registrations, and the parts left `unchecked`.
+export const getChangeRequestImpact = (eventId, changeRequestId) =>
+  axiosClient.get(`/events/${eventId}/change-requests/${changeRequestId}/impact`);
 
 // SPM-68: clarification threads — the question, then every reply, each with
 // { authorName, authorRole, createdAt }. Organisers (their organisation's

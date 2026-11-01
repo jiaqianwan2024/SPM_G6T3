@@ -14,6 +14,8 @@ that each recipient's role is one this trigger is meant for.
 from dataclasses import dataclass
 
 EVENT_LINK = "/app/events/{eventId}"
+# Technical support review and reserve an event's equipment on its equipment page.
+EQUIPMENT_LINK = "/app/events/{eventId}/equipment"
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,13 @@ TRIGGERS: dict[str, Trigger] = {
             title="New booking request assigned",
             body="{eventName} has been assigned to you. Open it to review the booking request.",
             recipient_roles=frozenset({"coordinator"}),
+        ),
+        # An organiser submitted a request. The Lead is told so it can be assigned to a coordinator.
+        Trigger(
+            key="booking.submitted",
+            title="New booking request submitted",
+            body="{eventName} was submitted and is waiting to be assigned to a coordinator.",
+            recipient_roles=frozenset({"coordinatorlead"}),
         ),
         Trigger(
             key="safety.submitted",
@@ -77,6 +86,58 @@ TRIGGERS: dict[str, Trigger] = {
             recipient_roles=_SAFETY_RECIPIENTS,
             required_context=("eventName", "reason"),
         ),
+        # A significant change sent the event back to planning, so the officer's review or approval no
+        # longer stands. `what` is "review" or "approval"; `reason` is what changed.
+        Trigger(
+            key="safety.withdrawn",
+            title="Safety {what} withdrawn for {eventName}",
+            body=(
+                "{eventName} changed, so its safety {what} was withdrawn and it is back in planning. "
+                "It will be sent for a safety review again once it is resubmitted. What changed: {reason}"
+            ),
+            recipient_roles=frozenset({"safety"}),
+            required_context=("eventName", "what", "reason"),
+        ),
+        # SPM-106: the organiser asked to change an event, or took the request back.
+        Trigger(
+            key="change_request.raised",
+            title="Change requested for {eventName}",
+            body=(
+                "{requesterName} asked to change {fields} on {eventName}. Reason: {reason} "
+                "Open the event to accept or decline it."
+            ),
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "requesterName", "fields", "reason"),
+        ),
+        Trigger(
+            key="change_request.withdrawn",
+            title="Change request withdrawn for {eventName}",
+            body="{requesterName} withdrew their request to change {fields} on {eventName}. Nothing needs deciding.",
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "requesterName", "fields"),
+        ),
+        # Technical support decided on an equipment request, or reserved it.
+        Trigger(
+            key="equipment.approved",
+            title="Equipment approved for {eventName}",
+            body="{quantity} × {equipmentName} for {eventName} was approved by technical support. It is reserved next.",
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "equipmentName", "quantity"),
+        ),
+        Trigger(
+            key="equipment.rejected",
+            title="Equipment request rejected for {eventName}",
+            body="Technical support rejected {quantity} × {equipmentName} for {eventName}. Reason: {reason}",
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "equipmentName", "quantity", "reason"),
+        ),
+        Trigger(
+            key="equipment.reserved",
+            title="Equipment reserved for {eventName}",
+            body="{quantity} × {equipmentName} is reserved for {eventName}.",
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "equipmentName", "quantity"),
+        ),
         # SPM-70 AC4: the coordinator rejected the request. The organiser reads the reason and explanation.
         Trigger(
             key="event.rejected",
@@ -84,6 +145,14 @@ TRIGGERS: dict[str, Trigger] = {
             body="{eventName} was rejected. Reason: {reason}. Explanation: {explanation}",
             recipient_roles=frozenset({"organiser"}),
             required_context=("eventName", "reason", "explanation"),
+        ),
+        # SPM-87 AC7: the coordinator moved the event. Attendees are told by event-service directly.
+        Trigger(
+            key="event.rescheduled",
+            title="{eventName} has been rescheduled",
+            body="{eventName} has moved from {oldPeriod} to {newPeriod}. Reason: {reason}",
+            recipient_roles=frozenset({"organiser", "venue", "techsupport"}),
+            required_context=("eventName", "oldPeriod", "newPeriod", "reason"),
         ),
         # SPM-78 AC4: a reservation released on a confirmed event. The reason is required,
         # so a release with no reason publishes nothing.
@@ -119,6 +188,58 @@ TRIGGERS: dict[str, Trigger] = {
             required_context=("eventName", "equipmentName", "shortfall", "reason"),
             extras=(("alternative", "Suggested alternative: {alternative}"),),
         ),
+        # SPM-88 AC7 and AC8: the event was cancelled. Registered attendees, the coordinator, the
+        # organiser, the Venue Staff who approved its bookings and the technical support members who
+        # handled its equipment are told, with the reason.
+        Trigger(
+            key="event.cancelled",
+            title="{eventName} has been cancelled",
+            body="{eventName} has been cancelled. Reason: {reason}",
+            recipient_roles=frozenset({"attendee", "coordinator", "organiser", "venue", "techsupport"}),
+            required_context=("eventName", "reason"),
+            attendee_visible=True,
+        ),
+        # SPM-75 AC6: technical support took units out of service that were reserved for the event.
+        Trigger(
+            key="equipment.out_of_service",
+            title="Equipment for {eventName} is short",
+            body=(
+                "Units of {equipmentName} reserved for {eventName} have been taken out of service, so fewer "
+                "are available than were reserved. Check the event's equipment with technical support."
+            ),
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "equipmentName"),
+        ),
+        # SPM-11 AC9: the last place was taken.
+        Trigger(
+            key="registration.full",
+            title="{eventName} is full",
+            body=(
+                "{eventName} has reached its registration capacity of {capacity}. "
+                "New registrations are refused until someone withdraws."
+            ),
+            recipient_roles=frozenset({"coordinator", "organiser"}),
+            required_context=("eventName", "capacity"),
+            link="/app/events/{eventId}/registrations",
+        ),
+        # A coordinator asked for equipment, so technical support know a request is waiting for review.
+        Trigger(
+            key="equipment.requested",
+            title="New equipment request",
+            body="{eventName} needs {equipment}. The request is waiting for review.",
+            recipient_roles=frozenset({"techsupport"}),
+            required_context=("eventName", "equipment"),
+            link=EQUIPMENT_LINK,
+        ),
+        # A coordinator changed a request: refined it, sent it back for review, or accepted its shortfall.
+        Trigger(
+            key="equipment.request_changed",
+            title="Equipment request changed",
+            body="The {equipment} request for {eventName} changed: {change}.",
+            recipient_roles=frozenset({"techsupport"}),
+            required_context=("eventName", "equipment", "change"),
+            link=EQUIPMENT_LINK,
+        ),
         # SPM-95: a scheduled check finds approaching events whose arrangements are still outstanding.
         Trigger(
             key="readiness.reminder",
@@ -140,6 +261,25 @@ TRIGGERS: dict[str, Trigger] = {
             body="The equipment for {eventName} on {eventDate} is still outstanding.",
             recipient_roles=frozenset({"techsupport"}),
             required_context=("eventName", "eventDate"),
+        ),
+        Trigger(
+            key="hold.expired",
+            title="The hold on {venueName} for {eventName} has expired",
+            body=(
+                "The tentative hold on {venueName} for {eventName} expired on {expiredAt}. The venue is no longer "
+                "held; the booking request is still waiting for Venue Staff."
+            ),
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "venueName", "expiredAt"),
+            link="/app/events/{eventId}/venues",
+        ),
+        Trigger(
+            key="readiness.due_soon",
+            title="A readiness item for {eventName} is due soon",
+            body="The {category} item for {eventName} is due on {dueDate} and is still {status}.",
+            recipient_roles=frozenset({"coordinator", "coordinatorlead"}),
+            required_context=("eventName", "category", "dueDate", "status"),
+            link="/app/events/{eventId}/readiness",
         ),
         Trigger(
             key="readiness.reminder.unassigned",

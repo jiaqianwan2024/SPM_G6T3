@@ -11,12 +11,13 @@ OTHER_COORDINATOR = {"userId": "u-other", "userName": "Cara", "role": "coordinat
 
 
 def at(hour, day=MONDAY):
-    return day + timedelta(hours=hour)
+    """`hour`:00 Singapore time on `day`, stored as naive UTC (eight hours earlier)."""
+    return day + timedelta(hours=hour - 8)
 
 
 class BookingRequestCase(VenueCase):
-    """A weekday venue open 08:00 to 18:00 UTC, and an approved event on a
-    Monday 10:00 to 12:00 UTC for 10 people in a Theatre layout, assigned to
+    """A weekday venue open 08:00 to 18:00 SGT, and an approved event on a
+    Monday 10:00 to 12:00 SGT for 10 people in a Theatre layout, assigned to
     the test coordinator. On its own, it suits the venue with no warnings."""
 
     def setUp(self):
@@ -120,8 +121,8 @@ class TestWhatTheRequestCarries(BookingRequestCase):
             {
                 "eventName": "AI Summit",
                 "clientOrganisation": "Apex Partners",
-                "startsAt": "2030-01-07T10:00:00",
-                "endsAt": "2030-01-07T12:00:00",
+                "startsAt": "2030-01-07T02:00:00",
+                "endsAt": "2030-01-07T04:00:00",
                 "expectedAttendance": 10,
                 "layout": "Theatre",
                 "accessibilityNeeds": "Wheelchair access required.",
@@ -211,7 +212,7 @@ class TestPendingQueueAndNotifications(BookingRequestCase):
         self.assertEqual(
             body,
             "A coordinator has requested Marina Hall A for AI Summit, 07 Jan 2030, 10:00 AM to 07 Jan 2030, "
-            "12:00 PM UTC. It is waiting in your pending queue.",
+            "12:00 PM SGT. It is waiting in your pending queue.",
         )
 
     def test_a_request_without_event_facts_is_still_described(self):

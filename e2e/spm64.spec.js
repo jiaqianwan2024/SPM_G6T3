@@ -17,7 +17,7 @@ import {
 
 // The suite's own hall needs 30 minutes of setup and 60 of turnaround, so a 10:00 to
 // 12:00 booking occupies it from 09:30 to 13:00. Each test books its own fixed day
-// on it, so no test meets another's bookings or an earlier run's. All times are UTC.
+// on it, so no test meets another's bookings or an earlier run's. All times are Singapore time (SGT); the server stores UTC.
 
 let hall
 

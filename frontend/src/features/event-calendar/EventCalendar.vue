@@ -108,7 +108,7 @@ watch(showAll, loadEvents)
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin-bottom: 12px;
 }

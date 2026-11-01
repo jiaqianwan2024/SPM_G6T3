@@ -9,7 +9,7 @@ import { venueRequest, venueToken } from './venue.js'
 
 const CROWD = 'Guests enter by the lift lobby and leave by the promenade doors; aisles stay 2 m wide.'
 
-// A 10:00 to 12:00 UTC slot on a random day among a million, starting 11
+// A 10:00 to 12:00 Singapore time (02:00 to 04:00 UTC) slot on a random day among a million, starting 11
 // years ahead. These events book the venue for their own time, so they keep
 // clear of the days freshPeriod() uses and of each other's leftover bookings
 // across reruns.

@@ -13,7 +13,8 @@
             Browse events
           </button>
         </div>
-        <template v-else>
+        <div v-else class="cards">
+          <!-- AC1: the next upcoming registration is the first card, marked out from the rest. -->
           <button
             v-if="next"
             type="button"
@@ -24,12 +25,18 @@
             @click="openRegistration(next)"
           >
             <span class="eyebrow">Next up</span>
-            <span class="event-name">{{ next.eventName || next.eventId }}</span>
-            <span class="facts">
+            <span class="card-name" :title="next.eventName || next.eventId">{{ next.eventName || next.eventId }}</span>
+            <span class="card-facts">
               <span class="fact"><span class="label">Date</span><span data-testid="attendee-next-upcoming-date">{{ datePart(startOf(next)) }}</span></span>
               <span class="fact"><span class="label">Time</span><span data-testid="attendee-next-upcoming-time">{{ timeRange(next) }}</span></span>
-              <span class="fact"><span class="label">Venue</span><span data-testid="attendee-next-upcoming-venue">{{ next.venueName || 'To be confirmed' }}</span></span>
-              <span class="fact"><span class="label">Location</span><span data-testid="attendee-next-upcoming-location">{{ next.venueLocation || 'To be confirmed' }}</span></span>
+              <span class="fact">
+                <span class="label">Venue</span>
+                <span>
+                  <span data-testid="attendee-next-upcoming-venue">{{ next.venueName || 'To be confirmed' }}</span>
+                  <template v-if="next.venueLocation"> · </template>
+                  <span data-testid="attendee-next-upcoming-location">{{ next.venueLocation }}</span>
+                </span>
+              </span>
             </span>
             <span v-if="changeFlags(next).length" class="flags">
               <span v-for="flag in changeFlags(next)" :key="flag" class="flag">{{ flag }}</span>
@@ -46,19 +53,18 @@
             :data-cancelled="row.cancelled ? 'true' : 'false'"
             @click="openRegistration(row)"
           >
-            <span class="event-name">{{ row.eventName || row.eventId }}</span>
-            <span class="facts">
+            <span class="card-name" :title="row.eventName || row.eventId">{{ row.eventName || row.eventId }}</span>
+            <span class="card-facts">
               <span class="fact"><span class="label">Date</span><span>{{ datePart(startOf(row)) }}</span></span>
               <span class="fact"><span class="label">Time</span><span>{{ timeRange(row) }}</span></span>
-              <span class="fact"><span class="label">Venue</span><span>{{ row.venueName || 'To be confirmed' }}</span></span>
-              <span class="fact"><span class="label">Location</span><span>{{ row.venueLocation || 'To be confirmed' }}</span></span>
+              <span class="fact"><span class="label">Venue</span><span>{{ placeOf(row) }}</span></span>
             </span>
             <span v-if="row.cancelled" class="flags"><span class="flag cancelled">Cancelled</span></span>
             <span v-else-if="changeFlags(row).length" class="flags">
               <span v-for="flag in changeFlags(row)" :key="flag" class="flag">{{ flag }}</span>
             </span>
           </button>
-        </template>
+        </div>
       </section>
 
       <!-- SPM-59 AC4: events open for registration, beneath the attendee's own. -->
@@ -68,22 +74,24 @@
         <p v-else-if="!openEvents.length" class="empty-note" data-testid="attendee-open-empty">
           No other events are open for registration right now.
         </p>
-        <button
-          v-for="event in openEvents"
-          :key="event.eventId"
-          type="button"
-          class="event-card"
-          :data-testid="`attendee-open-${event.eventId}`"
-          @click="router.push(`/app/browse/${event.eventId}`)"
-        >
-          <span class="event-name">{{ event.eventName }}</span>
-          <span class="facts">
-            <span class="fact"><span class="label">Date</span><span>{{ datePart(startOf(event)) }}</span></span>
-            <span class="fact"><span class="label">Time</span><span>{{ timeRange(event) }}</span></span>
-            <span class="fact"><span class="label">Location</span><span>{{ [event.venueName, event.venueLocation].filter(Boolean).join(' · ') || 'To be confirmed' }}</span></span>
-          </span>
-          <span class="places">{{ event.full ? 'Full' : `${event.remaining} place(s) remaining` }}</span>
-        </button>
+        <div v-else class="cards">
+          <button
+            v-for="event in openEvents"
+            :key="event.eventId"
+            type="button"
+            class="event-card"
+            :data-testid="`attendee-open-${event.eventId}`"
+            @click="router.push(`/app/browse/${event.eventId}`)"
+          >
+            <span class="card-name" :title="event.eventName">{{ event.eventName }}</span>
+            <span class="card-facts">
+              <span class="fact"><span class="label">Date</span><span>{{ datePart(startOf(event)) }}</span></span>
+              <span class="fact"><span class="label">Time</span><span>{{ timeRange(event) }}</span></span>
+              <span class="fact"><span class="label">Venue</span><span>{{ placeOf(event) }}</span></span>
+            </span>
+            <span class="places">{{ event.full ? 'Full' : `${event.remaining} place(s) remaining` }}</span>
+          </button>
+        </div>
       </section>
     </template>
   </div>
@@ -94,6 +102,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getMyRegistrations } from '../../api/registrationService.js'
 import { getOpenEvents } from '../../api/eventService.js'
+import { formatSgtDate, formatSgtTime, parseServerTime } from '../../utils/datetime.js'
 
 const emit = defineEmits(['open-tab'])
 const router = useRouter()
@@ -109,11 +118,11 @@ const endOf = (row) => row.proposedEndAt || row.endsAt
 
 function isPast(row) {
   const end = endOf(row) || startOf(row)
-  return Boolean(end) && new Date(end).getTime() < Date.now()
+  return Boolean(end) && parseServerTime(end).getTime() < Date.now()
 }
 
 function byStart(a, b) {
-  return new Date(startOf(a) || 0).getTime() - new Date(startOf(b) || 0).getTime()
+  return (parseServerTime(startOf(a))?.getTime() || 0) - (parseServerTime(startOf(b))?.getTime() || 0)
 }
 
 // Withdrawn and finished registrations stay on My Registrations; the home shows what is still ahead.
@@ -146,18 +155,22 @@ function changeFlags(row) {
 }
 
 function datePart(value) {
-  return value ? new Date(value).toLocaleDateString() : 'To be confirmed'
+  return value ? formatSgtDate(value) : 'To be confirmed'
 }
 
 function timePart(value) {
-  return value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+  return formatSgtTime(value)
 }
 
 function timeRange(row) {
   const start = timePart(startOf(row))
   const end = timePart(endOf(row))
   if (!start) return 'To be confirmed'
-  return end ? `${start} – ${end}` : start
+  return end ? `${start} – ${end} SGT` : `${start} SGT`
+}
+
+function placeOf(row) {
+  return [row.venueName, row.venueLocation].filter(Boolean).join(' · ') || 'To be confirmed'
 }
 
 function openRegistration(row) {
@@ -180,11 +193,11 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.attendee-home { display: flex; flex-direction: column; gap: 28px; max-width: 860px; }
+.attendee-home { display: flex; flex-direction: column; gap: 28px; }
 .block { display: flex; flex-direction: column; gap: 12px; }
 .block h3 {
   margin: 0;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   font-size: 15px;
   font-weight: 500;
   color: var(--text);
@@ -195,10 +208,11 @@ onMounted(async () => {
   color: #FF8A76;
   font-size: 13px;
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 .event-card {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -206,33 +220,41 @@ onMounted(async () => {
   text-align: left;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 18px 20px;
   cursor: pointer;
   color: inherit;
   font: inherit;
 }
-.event-card:hover { border-color: rgba(167, 139, 250, .38); }
+.event-card:hover { border-color: rgba(167, 139, 250, .38); background: var(--glass-strong); }
+.event-card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .event-card.next {
-  border-color: rgba(167, 139, 250, .45);
   background: var(--glass-strong);
+  border-color: rgba(167, 139, 250, .45);
 }
+.event-card.next:hover { border-color: rgba(167, 139, 250, .6); }
+.event-card.next .eyebrow { margin-bottom: -6px; }
 .eyebrow {
   font-size: 11px;
   letter-spacing: .08em;
   text-transform: uppercase;
   color: var(--muted);
 }
-.event-name {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 20px;
+/* All registrations are cards, three to a row, with the next one first. */
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.card-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-lg);
   font-weight: 500;
-  letter-spacing: -.02em;
+  letter-spacing: -.01em;
   color: var(--text);
 }
-.facts { display: flex; flex-direction: column; gap: 6px; }
+.card-facts { display: flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; }
 .fact { display: flex; gap: 8px; font-size: 14px; line-height: 1.4; color: var(--body); }
-.label { min-width: 72px; color: var(--muted); }
+.label { min-width: 52px; color: var(--muted); }
 .flags { display: flex; flex-wrap: wrap; gap: 8px; }
 .flag {
   font-size: 11px;
@@ -242,4 +264,11 @@ onMounted(async () => {
 }
 .flag.cancelled { color: #FF8A76; }
 .places { font-size: 13px; color: var(--muted); }
+
+@media (max-width: 1100px) {
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .cards { grid-template-columns: minmax(0, 1fr); }
+}
 </style>

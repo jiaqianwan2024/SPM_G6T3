@@ -12,21 +12,21 @@
     <ul v-if="handoff" class="parts">
       <li data-testid="safety-handoff-venue-status">
         <span class="kind">Venue arrangements</span>
-        <span v-if="handoff.venue">Sent by {{ nameOf(handoff.venue.sentBy, 'Venue Staff') }} on {{ formatUtc(handoff.venue.sentAt) }}</span>
+        <span v-if="handoff.venue">Sent by {{ nameOf(handoff.venue.sentBy, 'Venue Staff') }} on {{ formatSgt(handoff.venue.sentAt) }}</span>
         <span v-else class="waiting">Waiting for Venue Staff</span>
       </li>
       <li data-testid="safety-handoff-technical-status">
         <span class="kind">Technical arrangements</span>
         <span v-if="!handoff.technicalNeeded" class="muted">Not needed: the event has no equipment</span>
         <span v-else-if="handoff.technical">
-          Sent by {{ nameOf(handoff.technical.sentBy, 'technical support') }} on {{ formatUtc(handoff.technical.sentAt) }}
+          Sent by {{ nameOf(handoff.technical.sentBy, 'technical support') }} on {{ formatSgt(handoff.technical.sentAt) }}
         </span>
         <span v-else class="waiting">Waiting for technical support</span>
       </li>
     </ul>
 
     <form v-if="canSend" class="send-form" data-testid="safety-handoff-form" @submit.prevent="send">
-      <label for="safety-handoff-note">{{ isVenueStaff ? 'Crowd movement' : 'Equipment placement' }}</label>
+      <label for="safety-handoff-note">{{ isVenueStaff ? 'Crowd movement' : 'Equipment placement' }} <span class="req">*</span></label>
       <textarea
         id="safety-handoff-note"
         v-model="note"
@@ -59,7 +59,7 @@ import { getSafetyHandoff, sendTechnicalArrangements, sendVenueArrangements } fr
 import { getUsers } from '../../api/userService.js'
 import { SAFETY_SUBMITTABLE_STATUSES } from '../../config/eventStatus.js'
 import { session } from '../../store/session.js'
-import { formatUtc } from '../../utils/datetime.js'
+import { formatSgt } from '../../utils/datetime.js'
 
 const props = defineProps({ event: { type: Object, required: true } })
 // The last part opens the review, which changes the event's status.
@@ -174,7 +174,7 @@ watch(
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
   margin-top: 18px;
 }
@@ -189,20 +189,20 @@ watch(
 .waiting { color: #FFD9A8; }
 .muted { color: var(--muted); }
 
-.send-form { border: 1px solid var(--hairline); border-radius: 12px; padding: 16px; margin: 0 0 14px; }
+.send-form { border: 1px solid var(--hairline); border-radius: var(--radius); padding: 16px; margin: 0 0 14px; }
 label { display: block; margin-bottom: 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 textarea {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 10px 12px;
   margin-bottom: 12px;
   font-size: 14px;
   line-height: 1.5;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
   resize: vertical;
 }
 textarea:focus { outline: none; border-color: rgba(167, 139, 250, .6); box-shadow: 0 0 0 3px rgba(124, 77, 255, .16); }
@@ -211,7 +211,7 @@ textarea:focus { outline: none; border-color: rgba(167, 139, 250, .6); box-shado
 .notice, .warning {
   font-size: 13px;
   line-height: 1.6;
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 0 0 12px;
 }
@@ -223,7 +223,7 @@ textarea:focus { outline: none; border-color: rgba(167, 139, 250, .6); box-shado
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 0 0 12px;
 }

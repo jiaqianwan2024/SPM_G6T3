@@ -37,18 +37,19 @@
       <p v-if="dateRangeInvalid" class="hint">The From date is after the To date.</p>
 
       <div class="flags">
-        <button type="button" class="flag" :class="{ active: !statusFilter }" @click="statusFilter = ''">
+        <button type="button" class="flag" :class="{ active: !stageFilter }" @click="stageFilter = ''">
           All <span>{{ narrowed.length }}</span>
         </button>
         <button
           v-for="flag in flags"
-          :key="flag.status"
+          :key="flag.key"
           type="button"
           class="flag"
-          :class="{ active: statusFilter === flag.status, empty: flag.count === 0 }"
-          @click="toggleStatus(flag.status)"
+          :class="{ active: stageFilter === flag.key, empty: flag.count === 0 }"
+          :data-testid="`organiser-stage-${flag.key}`"
+          @click="toggleStage(flag.key)"
         >
-          {{ eventStatusLabel(flag.status) }} <span>{{ flag.count }}</span>
+          {{ flag.label }} <span>{{ flag.count }}</span>
         </button>
       </div>
 
@@ -71,7 +72,7 @@
           <dl class="event-facts">
             <div>
               <dt>Category</dt>
-              <dd>{{ event.category || '—' }}</dd>
+              <dd>{{ event.category || 'Not set' }}</dd>
             </div>
             <div>
               <dt>Date</dt>
@@ -83,11 +84,17 @@
             </div>
             <div>
               <dt>Location</dt>
-              <dd :data-testid="`organiser-event-${event.eventId}-venue`">{{ event.preferredLocation || '—' }}</dd>
+              <dd :data-testid="`organiser-event-${event.eventId}-venue`">{{ event.preferredLocation || 'Not set' }}</dd>
             </div>
           </dl>
-          <p v-if="safetyNote(event)" class="safety-note" :data-testid="`organiser-event-${event.eventId}-safety`">
-            {{ safetyNote(event) }}
+          <div v-if="event.status === 'draft'" class="draft-actions">
+            <button type="button" class="btn btn-outline" :data-testid="`organiser-event-${event.eventId}-edit`"
+                    @click.stop="edit(event.eventId)">
+              Edit draft
+            </button>
+          </div>
+          <p v-if="eventSafetyNote(event)" class="safety-note" :data-testid="`organiser-event-${event.eventId}-safety`">
+            {{ eventSafetyNote(event) }}
           </p>
         </div>
       </div>
@@ -99,28 +106,12 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getMyEvents } from '../../api/eventService.js'
-import { SAFETY_SUBMITTABLE_STATUSES, eventStatusLabel } from '../../config/eventStatus.js'
+import { editDraft } from '../../store/draftEditor.js'
+import { EVENT_STAGES, eventSafetyNote, eventStatusLabel } from '../../config/eventStatus.js'
+import { formatSgtDate, formatSgtTime, parseServerTime, sgtDay } from '../../utils/datetime.js'
 
 const router = useRouter()
-const emit = defineEmits(['create'])
-
-const STATUS_ORDER = [
-  'draft',
-  'submitted',
-  'under review',
-  'changes requested',
-  'approved',
-  'planning',
-  'safety review',
-  'safety approved',
-  'preparing',
-  'prepared',
-  'reconsidering',
-  'confirmed',
-  'rejected',
-  'cancelled',
-  'completed',
-]
+const emit = defineEmits(['create', 'edit-draft'])
 
 const events = ref([])
 const loading = ref(true)
@@ -129,7 +120,7 @@ const query = ref('')
 const category = ref('')
 const fromDate = ref('')
 const toDate = ref('')
-const statusFilter = ref('')
+const stageFilter = ref('')
 
 const categories = computed(() =>
   [...new Set(events.value.map((event) => event.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
@@ -138,7 +129,7 @@ const dateRangeInvalid = computed(
   () => Boolean(fromDate.value && toDate.value && fromDate.value > toDate.value),
 )
 const filtersActive = computed(
-  () => Boolean(query.value.trim() || category.value || fromDate.value || toDate.value || statusFilter.value),
+  () => Boolean(query.value.trim() || category.value || fromDate.value || toDate.value || stageFilter.value),
 )
 
 const narrowed = computed(() => {
@@ -155,38 +146,33 @@ const narrowed = computed(() => {
   })
 })
 
-const flags = computed(() => {
-  // SPM-70 AC6: Rejected is always offered, so an organiser knows where a rejected request will be.
-  const counts = new Map([['rejected', 0], ...events.value.map((event) => [event.status, 0])])
-  for (const event of narrowed.value) {
-    counts.set(event.status, (counts.get(event.status) || 0) + 1)
-  }
-  return [...counts.entries()]
-    .map(([status, count]) => ({ status, count }))
-    .sort((a, b) => statusRank(a.status) - statusRank(b.status) || a.status.localeCompare(b.status))
-})
+// Every stage is always offered, so an organiser knows where a rejected (Closed) request will be (SPM-70 AC6).
+const flags = computed(() =>
+  EVENT_STAGES.map((stage) => ({
+    ...stage,
+    count: narrowed.value.filter((event) => stage.statuses.includes(event.status)).length,
+  })),
+)
 
 const visible = computed(() => {
-  if (!statusFilter.value) return narrowed.value
-  return narrowed.value.filter((event) => event.status === statusFilter.value)
+  const stage = EVENT_STAGES.find((item) => item.key === stageFilter.value)
+  const shown = stage ? narrowed.value.filter((event) => stage.statuses.includes(event.status)) : narrowed.value
+  return [...shown].sort(byDate)
 })
 
-function statusRank(status) {
-  const index = STATUS_ORDER.indexOf(status)
-  return index === -1 ? STATUS_ORDER.length : index
+// Soonest event first; one with no date yet (a draft) goes last.
+function byDate(a, b) {
+  const when = (event) => parseServerTime(event.proposedStartAt)?.getTime() ?? Infinity
+  return when(a) - when(b) || (a.eventName || '').localeCompare(b.eventName || '')
 }
 
+// The Singapore date, which is what the date filters hold.
 function startDay(value) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
+  return sgtDay(value)
 }
 
-function toggleStatus(status) {
-  statusFilter.value = statusFilter.value === status ? '' : status
+function toggleStage(key) {
+  stageFilter.value = stageFilter.value === key ? '' : key
 }
 
 function clearFilters() {
@@ -194,7 +180,7 @@ function clearFilters() {
   category.value = ''
   fromDate.value = ''
   toDate.value = ''
-  statusFilter.value = ''
+  stageFilter.value = ''
 }
 
 function lifecycle(status) {
@@ -203,30 +189,16 @@ function lifecycle(status) {
   return status
 }
 
-// SPM-121 AC5: an event back in planning after its safety review says why.
-// One waiting on the review already reads so from its status.
-const SAFETY_NOTES = {
-  changes_requested: 'Safety changes requested',
-  rejected: 'Safety review rejected',
-}
-
-function safetyNote(event) {
-  if (!SAFETY_SUBMITTABLE_STATUSES.includes(event.status)) return ''
-  return SAFETY_NOTES[event.safetyReviewStatus] || ''
-}
-
 function datePart(value) {
-  return value ? new Date(value).toLocaleDateString() : ''
+  return formatSgtDate(value)
 }
 
 function timePart(value) {
-  return value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+  return formatSgtTime(value)
 }
 
 function sameDay(start, end) {
-  const a = new Date(start)
-  const b = new Date(end)
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  return sgtDay(start) === sgtDay(end)
 }
 
 function dateLabel(event) {
@@ -241,12 +213,17 @@ function dateLabel(event) {
 function timeLabel(event) {
   const start = event.proposedStartAt
   const end = event.proposedEndAt
-  if (!start || !end) return '—'
-  return `${timePart(start)} – ${timePart(end)}`
+  if (!start || !end) return 'Not set'
+  return `${timePart(start)} – ${timePart(end)} SGT`
 }
 
 function open(eventId) {
   router.push(`/app/events/${eventId}`)
+}
+
+function edit(eventId) {
+  editDraft(eventId)
+  emit('edit-draft')
 }
 
 function create() {
@@ -270,6 +247,7 @@ onMounted(load)
 </script>
 
 <style scoped>
+.draft-actions { display: flex; justify-content: flex-end; }
 .my-events { display: flex; flex-direction: column; gap: 16px; width: 100%; }
 .empty-note { font-size: 14px; color: var(--muted); margin: 0; }
 .hint { margin: 0; font-size: 13px; color: #ffc66d; }
@@ -278,7 +256,7 @@ onMounted(load)
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
 }
 
@@ -302,7 +280,7 @@ onMounted(load)
 .toolbar select {
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--text);
   font: inherit;
   font-size: 14px;
@@ -321,7 +299,7 @@ onMounted(load)
 .toolbar select {
   appearance: none;
   padding-right: 32px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23A78BFA' d='M1.4.6 6 5.2 10.6.6 12 2 6 8 0 2z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23FFFFFF' d='M1.4.6 6 5.2 10.6.6 12 2 6 8 0 2z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   cursor: pointer;
@@ -369,7 +347,7 @@ onMounted(load)
   gap: 12px;
   background: var(--glass);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 18px 20px;
   cursor: pointer;
 }
@@ -377,7 +355,7 @@ onMounted(load)
 .event-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .event-name {
   margin: 0;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: var(--font);
   font-size: 18px;
   font-weight: 500;
   letter-spacing: -.02em;

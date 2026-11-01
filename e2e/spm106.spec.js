@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { login } from './support/auth.js'
+import { login, logout } from './support/auth.js'
 import { account } from './support/test-data.js'
 import {
   assignCoordinator,
@@ -8,10 +8,20 @@ import {
   eventApi,
   raiseChangeRequest,
 } from './support/event.js'
+import { confirm, planningEvent, readyToConfirm } from './support/confirmation.js'
 
 async function underReviewEvent(name) {
   const event = await createSubmittedEvent('EO-01', name)
   await assignCoordinator(event.eventId, 'u2')
+  return event
+}
+
+// A confirmed event of its own at Marina Hall A. A change request left pending on seeded e1
+// blocked every later request there and showed on the organiser's dashboard.
+async function confirmedEvent(label) {
+  const event = await readyToConfirm(label)
+  const confirmed = await confirm(event)
+  expect(confirmed.status, JSON.stringify(confirmed.body)).toBe(200)
   return event
 }
 
@@ -23,16 +33,18 @@ test.describe('SPM-106 Request a change to a submitted event', () => {
       proposedChanges: { eventName: 'Clearer title' },
     })
     expect(raised.status).toBe(201)
-    const planning = await raiseChangeRequest('e3', 'EO-01', {
+    const inPlanning = await planningEvent('SPM106-planning')
+    const planning = await raiseChangeRequest(inPlanning.eventId, 'EO-01', {
       reason: 'Tweak description',
       proposedChanges: { description: 'Updated' },
     })
-    expect([201, 409]).toContain(planning.status)
-    const confirmed = await raiseChangeRequest('e1', 'EO-01', {
-      reason: 'Second on e1 may be blocked if one is pending',
+    expect(planning.status, JSON.stringify(planning.body)).toBe(201)
+    const isConfirmed = await confirmedEvent('SPM106-confirmed')
+    const confirmed = await raiseChangeRequest(isConfirmed.eventId, 'EO-01', {
+      reason: 'Client restated the purpose',
       proposedChanges: { purpose: 'Updated purpose' },
     })
-    expect([201, 409]).toContain(confirmed.status)
+    expect(confirmed.status, JSON.stringify(confirmed.body)).toBe(201)
   })
 
   test('TC-SPM106-AC02 the request states current and proposed values and requires a reason', async () => {
@@ -86,7 +98,7 @@ test.describe('SPM-106 Request a change to a submitted event', () => {
     // A signed-in user is sent away from /login, so sign the coordinator out
     // first (Log out is on the dashboard, not the event page).
     await page.goto('/app')
-    await page.getByRole('button', { name: 'Log out' }).click()
+    await logout(page)
     await login(page, account('EO-01'))
     await page.goto(`/app/events/${event.eventId}`)
     await expect(page.getByTestId('pending-change-request')).toContainText(/Banquet|pending/i)
@@ -165,11 +177,17 @@ test.describe('SPM-106 Request a change to a submitted event', () => {
   test('TC-SPM106-AC10 confirmed details continue to read as confirmed while a change request is pending', async ({
     page,
   }) => {
+    const event = await confirmedEvent('SPM106-pending')
+    const pending = await raiseChangeRequest(event.eventId, 'EO-01', {
+      reason: 'Client may need a larger room',
+      proposedChanges: { expectedAttendance: 70 },
+    })
+    expect(pending.status, JSON.stringify(pending.body)).toBe(201)
     await login(page, account('EO-01'))
-    await page.goto('/app/events/e1')
+    await page.goto(`/app/events/${event.eventId}`)
     await expect(page.getByTestId('organiser-confirmed-arrangements')).toBeVisible()
     await expect(page.getByTestId('organiser-confirmed-arrangements')).toContainText('Marina Hall A')
-    const stored = await eventApi('GET', '/e1', 'EO-01')
-    expect(stored.body.status).toMatch(/confirmed/i)
+    const stored = await eventApi('GET', `/${event.eventId}`, 'EO-01')
+    expect(stored.body.status).toBe('confirmed')
   })
 })

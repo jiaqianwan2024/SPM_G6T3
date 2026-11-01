@@ -73,6 +73,14 @@ test.describe('SPM-94 Manage my notifications', () => {
   test('TC-SPM94-AC07 when the user has no notifications, an empty state says so', async ({
     page,
   }) => {
+    // A user with nothing in their inbox. Any real account collects notices as the suite runs
+    // (attendees are told when an event they hold changes or is cancelled), so the list is answered as empty.
+    // Only notification-service's list: the app's own /app/notifications page must still load.
+    await page.route(
+      (url) => url.port === '8006' && url.pathname === '/notifications',
+      (route) => (route.request().method() === 'GET' ? route.fulfill({ json: [] }) : route.continue()),
+    )
+    await page.route('**/notifications/unread-count', (route) => route.fulfill({ json: { count: 0 } }))
     await login(page, account('ATT-02'))
     await page.goto('/app/notifications')
     const empty = page.getByTestId('notifications-empty')
@@ -83,8 +91,87 @@ test.describe('SPM-94 Manage my notifications', () => {
   test('TC-SPM94-AC08 the list loads a page at a time rather than every notification ever raised', async () => {
     const page1 = await notificationApi('GET', '/notifications?page=1&pageSize=10', 'EO-01')
     expect(page1.status).toBe(200)
-    const items = page1.body.items || page1.body
-    expect(items.length).toBeLessThanOrEqual(10)
-    expect(page1.body.page || page1.body.nextPage).toBeTruthy()
+    const page2 = await notificationApi('GET', '/notifications?page=2&pageSize=10', 'EO-01')
+    expect(page1.body.length).toBeLessThanOrEqual(10)
+    // The next page holds different, older notifications, so nothing is read twice.
+    const first = new Set(page1.body.map((row) => row.notificationId))
+    expect(page2.body.some((row) => first.has(row.notificationId))).toBe(false)
+  })
+
+
+  // AC09-AC12: clearing from the bell. Clearing hides a notification from the bell panel only (and marks it
+  // read); the full notifications page still lists it. EC-02 is used for clear-all because it empties the
+  // bell, and no other SPM-94 test depends on EC-02's notifications.
+  const ownRecord = (accountId, title) =>
+    notificationApi('POST', '/notifications/records', accountId, { title, body: 'AUTO clear test' })
+  const bellList = async (accountId) => (await notificationApi('GET', '/notifications?bell=true&pageSize=100', accountId)).body
+  const fullList = async (accountId) => (await notificationApi('GET', '/notifications?pageSize=100', accountId)).body
+  const openBell = async (page) => {
+    await page.getByTestId('notification-bell').click()
+    await expect(page.getByTestId('notification-panel')).toBeVisible()
+  }
+
+  test('TC-SPM94-AC09 Clear all empties the bell and the badge but keeps the full history', async ({ page }) => {
+    await ownRecord('EC-02', 'AUTO clear-all one')
+    await ownRecord('EC-02', 'AUTO clear-all two')
+    await login(page, account('EC-02'))
+    await openBell(page)
+    await page.getByTestId('notification-clear-all').click()
+    await expect(page.getByTestId('notification-empty')).toBeVisible()
+    await expect(page.getByTestId('notification-unread-count')).toHaveCount(0)
+    await expect(page.getByTestId('notification-clear-all')).toBeDisabled()
+
+    expect(await bellList('EC-02')).toEqual([])
+    const history = await fullList('EC-02')
+    expect(history.length).toBeGreaterThanOrEqual(2)
+    expect(history.every((row) => row.isRead)).toBe(true)
+
+    // Something that arrives afterwards shows in the bell again.
+    await ownRecord('EC-02', 'AUTO clear-all after')
+    expect((await bellList('EC-02')).map((row) => row.title)).toEqual(['AUTO clear-all after'])
+  })
+
+  test('TC-SPM94-AC10 removing one notification hides only that one from the bell', async ({ page }) => {
+    const stamp = Date.now()
+    const keep = (await ownRecord('EO-01', `AUTO keep ${stamp}`)).body
+    const gone = (await ownRecord('EO-01', `AUTO remove ${stamp}`)).body
+    await login(page, account('EO-01'))
+    await openBell(page)
+    const row = page.getByTestId(`notification-${gone.notificationId}`)
+    await row.hover()
+    await page.getByTestId(`notification-remove-${gone.notificationId}`).click()
+    await expect(row).toHaveCount(0)
+    await expect(page.getByTestId(`notification-${keep.notificationId}`)).toBeVisible()
+
+    expect((await bellList('EO-01')).map((n) => n.notificationId)).not.toContain(gone.notificationId)
+    const full = (await fullList('EO-01')).find((n) => n.notificationId === gone.notificationId)
+    expect(full?.isRead).toBe(true)
+  })
+
+  test('TC-SPM94-AC11 a user cannot clear another user\'s notification, enforced on the server', async () => {
+    const theirs = (await ownRecord('ATT-01', 'AUTO not yours')).body
+    const clear = await notificationApi('POST', `/notifications/${theirs.notificationId}/clear`, 'EO-01')
+    expect(clear.status).toBe(404)
+    expect((await bellList('ATT-01')).map((n) => n.notificationId)).toContain(theirs.notificationId)
+
+    // Clear all only touches the caller's own.
+    await notificationApi('POST', '/notifications/clear-all', 'EC-02')
+    expect((await bellList('ATT-01')).map((n) => n.notificationId)).toContain(theirs.notificationId)
+  })
+
+  test('TC-SPM94-AC12 Mark all read is disabled when nothing in the bell is unread', async ({ page }) => {
+    await notificationApi('POST', '/notifications/clear-all', 'EC-02')
+    await ownRecord('EC-02', 'AUTO already read')
+    const [only] = await bellList('EC-02')
+    await notificationApi('POST', `/notifications/${only.notificationId}/read`, 'EC-02')
+    await login(page, account('EC-02'))
+    await openBell(page)
+    await expect(page.getByTestId('notification-mark-all-read')).toBeDisabled()
+
+    await ownRecord('EC-02', 'AUTO unread again')
+    await page.keyboard.press('Escape')
+    await page.reload()
+    await openBell(page)
+    await expect(page.getByTestId('notification-mark-all-read')).toBeEnabled()
   })
 })

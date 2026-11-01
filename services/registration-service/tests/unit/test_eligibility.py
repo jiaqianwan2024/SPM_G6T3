@@ -44,7 +44,14 @@ class TestEligibility(unittest.TestCase):
         ok, reason = eligibility(confirmed_event(registrationOpensAt=opens), 0)
 
         self.assertFalse(ok)
-        self.assertIn("opens", reason.lower())
+        self.assertIn("not opened yet", reason)
+
+    def test_the_opening_date_given_is_the_singapore_date(self):
+        # 17:00 UTC on 1 Jan is 01:00 on 2 Jan in Singapore.
+        ok, reason = eligibility(confirmed_event(registrationOpensAt="2099-01-01T17:00:00Z"), 0)
+
+        self.assertFalse(ok)
+        self.assertTrue(reason.startswith("Registration has not opened yet. The registration period is 02 Jan 2099 01:00 to "))
 
     def test_not_eligible_after_registration_closes(self):
         closes = (datetime.utcnow() - timedelta(hours=1)).isoformat()
@@ -57,7 +64,7 @@ class TestEligibility(unittest.TestCase):
         ok, reason = eligibility(confirmed_event(capacity=5), 5)
 
         self.assertFalse(ok)
-        self.assertEqual(reason, "This event has reached capacity.")
+        self.assertEqual(reason, "This event is full: it has reached capacity.")
 
     def test_one_place_below_capacity_is_still_open(self):
         ok, reason = eligibility(confirmed_event(capacity=5), 4)
@@ -104,6 +111,7 @@ class TestEligibility(unittest.TestCase):
         self.assertTrue(at_close)
         self.assertIsNone(close_reason)
         self.assertFalse(too_early)
-        self.assertIn("opens", early_reason.lower())
+        self.assertIn("not opened yet", early_reason)
         self.assertFalse(too_late)
-        self.assertEqual(late_reason, "Registration has closed for this event.")
+        self.assertTrue(late_reason.startswith("Registration has closed for this event. The registration period was "))
+        self.assertTrue(late_reason.endswith(" SGT."))

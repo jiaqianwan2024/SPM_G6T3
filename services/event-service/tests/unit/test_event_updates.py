@@ -7,13 +7,14 @@ from pydantic import ValidationError
 from app.models.event_field_change import EventFieldChange
 from app.models.event_status_history import EventStatusHistory
 from app.schemas.event import EventUpdate
+from app.core.sgt import to_sgt
 from app.services.event_service import QUIET_FIELDS, SIGNIFICANT_FIELDS
 from shared.exceptions.http import service_unavailable
 from tests.unit.support import EventCase, insert_event
 
 START = datetime(2026, 12, 1, 9)
 END = datetime(2026, 12, 1, 17)
-VENUE = {"kind": "venue", "id": "vb-1", "summary": "Venue booking at Marina Hall A, 01 Dec 2026 09:00 to 01 Dec 2026 17:00 UTC"}
+VENUE = {"kind": "venue", "id": "vb-1", "summary": "Venue booking at Marina Hall A, 01 Dec 2026 17:00 to 02 Dec 2026 01:00 SGT"}
 EQUIPMENT = {"kind": "equipment", "id": "er-1", "summary": "Equipment reservation: 2 x Projector"}
 
 
@@ -65,13 +66,13 @@ class TestQuietEdits(UpdateCase):
             eventName="Partner Networking Night",
             description="New description",
             purpose="New purpose",
-            category="networking",
+            category="Networking",
             internalNotes="Staff only",
             organiserContact="organiser@connectsphere.com",
         )
 
         self.assertEqual(updated.eventName, "Partner Networking Night")
-        self.assertEqual(updated.category, "networking")
+        self.assertEqual(updated.category, "Networking")
         self.assertEqual(updated.internalNotes, "Staff only")
         self.assertEqual(updated.organiserContact, "organiser@connectsphere.com")
         self.assertEqual(updated.status, "confirmed")
@@ -82,11 +83,12 @@ class TestQuietEdits(UpdateCase):
     def test_every_quiet_edit_is_logged_with_the_field_old_and_new_value_actor_and_time(self):
         self.event()
 
-        self.update(description="New description", category="networking")
+        self.update(description="New description", category="Networking")
 
         edits = self.edits()
         self.assertEqual([edit.field for edit in edits], ["category", "description"])
-        self.assertEqual((edits[0].oldValue, edits[0].newValue), (None, "networking"))
+        # The category is stored the way the organiser form spells it.
+        self.assertEqual((edits[0].oldValue, edits[0].newValue), (None, "Networking"))
         self.assertEqual((edits[1].oldValue, edits[1].newValue), ("Old description", "New description"))
         self.assertTrue(all(edit.changedBy == "coord-1" for edit in edits))
         self.assertTrue(all(edit.createdAt for edit in edits))
@@ -360,3 +362,49 @@ class TestEventUpdateSchema(EventCase):
     def test_attendance_cannot_be_negative(self):
         with self.assertRaises(ValidationError):
             EventUpdate(expectedAttendance=-1)
+
+
+def singapore_midnight_today():
+    """Today's 00:00 in Singapore, as naive UTC."""
+    today = to_sgt(datetime.utcnow()).date()
+    return datetime(today.year, today.month, today.day) - timedelta(hours=8)
+
+
+class TestPastDates(UpdateCase):
+    """SPM-71 AC8: a changed start or end cannot be before today; a saved date stays valid until changed."""
+
+    def test_a_start_moved_before_today_is_refused_and_nothing_is_saved(self):
+        self.event()
+        yesterday = singapore_midnight_today() - timedelta(minutes=1)
+
+        with self.assertRaises(HTTPException) as ctx:
+            self.update(proposedStartAt=yesterday, proposedEndAt=yesterday + timedelta(hours=2), confirmSignificantChange=True)
+
+        self.assertEqual((ctx.exception.status_code, ctx.exception.detail), (422, "The start cannot be before today."))
+        self.assertEqual(self.edits(), [])
+
+    def test_an_end_moved_before_today_is_refused(self):
+        # The start is already in the past and stays as it is; only the end changes.
+        long_ago = singapore_midnight_today() - timedelta(days=5)
+        self.event(proposedStartAt=long_ago, proposedEndAt=long_ago + timedelta(hours=2))
+
+        with self.assertRaises(HTTPException) as ctx:
+            self.update(proposedEndAt=long_ago + timedelta(hours=3), confirmSignificantChange=True)
+
+        self.assertEqual((ctx.exception.status_code, ctx.exception.detail), (422, "The end cannot be before today."))
+
+    def test_today_is_allowed_from_singapore_midnight(self):
+        self.event()
+        midnight = singapore_midnight_today()
+
+        self.update(proposedStartAt=midnight, proposedEndAt=midnight + timedelta(hours=2), confirmSignificantChange=True)
+
+        self.assertEqual(self.service.event_dao.get_by_id("e1").proposedStartAt, midnight)
+
+    def test_a_saved_past_date_stays_valid_when_other_fields_change(self):
+        long_ago = singapore_midnight_today() - timedelta(days=5)
+        self.event(proposedStartAt=long_ago, proposedEndAt=long_ago + timedelta(hours=2))
+
+        self.update(description="Still editable", proposedStartAt=long_ago)
+
+        self.assertEqual(self.service.event_dao.get_by_id("e1").description, "Still editable")

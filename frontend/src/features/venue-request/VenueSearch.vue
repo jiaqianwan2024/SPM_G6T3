@@ -1,16 +1,16 @@
 <template>
   <form class="venue-search" data-testid="venue-search" @submit.prevent="search">
     <h3>Search venues for this event</h3>
-    <p class="hint">Filled in from the event. Change anything, then search. Times are in UTC.</p>
+    <p class="hint">Filled in from the event. Change anything, then search. Times are in Singapore time (SGT).</p>
 
     <div class="fields">
       <label>
-        Starts (UTC)
-        <input v-model="startsAt" type="datetime-local" data-testid="venue-search-starts" />
+        Starts (SGT)
+        <input v-model="startsAt" type="datetime-local" :min="today" data-testid="venue-search-starts" />
       </label>
       <label>
-        Ends (UTC)
-        <input v-model="endsAt" type="datetime-local" data-testid="venue-search-ends" />
+        Ends (SGT)
+        <input v-model="endsAt" type="datetime-local" :min="laterInput(today, startsAt)" data-testid="venue-search-ends" />
       </label>
       <label>
         Expected attendance
@@ -73,6 +73,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
+import { fromSgtInput, laterInput, sgtMinInput, toSgtInput } from '../../utils/datetime.js'
 import { searchVenues } from '../../api/venueService.js'
 
 const props = defineProps({
@@ -81,13 +82,17 @@ const props = defineProps({
 })
 const emit = defineEmits(['results'])
 
-// datetime-local works without a timezone; the team reads every time as UTC.
+// datetime-local works without a timezone: it shows and takes Singapore time,
+// and the search is sent in UTC.
 function toInput(iso) {
-  return iso ? iso.replace(/Z|[+-]\d\d:\d\d$/, '').slice(0, 16) : ''
+  return toSgtInput(iso)
 }
 
+// A venue is booked for a time to come, so the search starts at today.
+const today = sgtMinInput()
+
 function toUtc(value) {
-  return value ? `${value}:00Z` : undefined
+  return fromSgtInput(value) || undefined
 }
 
 // The event's requirements are free text, so a venue's option counts as asked
@@ -107,15 +112,17 @@ function unique(lists) {
 
 const facilityOptions = computed(() => unique(props.venues.map((v) => v.facilities || [])))
 const accessibilityOptions = computed(() => unique(props.venues.map((v) => v.accessibility || [])))
+// SPM-80 AC1: "No preference" means any layout will do, which is the "Any layout" choice here.
+const eventLayout = /^\s*no preference\s*$/i.test(props.event.layoutPreference || '') ? '' : props.event.layoutPreference || ''
 const layoutOptions = computed(() =>
-  unique([...props.venues.map((v) => (v.layouts || []).map((l) => l.name)), props.event.layoutPreference || '']),
+  unique([...props.venues.map((v) => (v.layouts || []).map((l) => l.name)), eventLayout]),
 )
 
 // SPM-61 AC1: everything starts from the event's own requirements.
 const startsAt = ref(toInput(props.event.proposedStartAt))
 const endsAt = ref(toInput(props.event.proposedEndAt))
 const attendance = ref(props.event.expectedAttendance || 0)
-const layout = ref(props.event.layoutPreference || '')
+const layout = ref(eventLayout)
 const location = ref('')
 const facilities = ref(mentioned(facilityOptions.value, props.event.venueRequirements))
 const accessibility = ref(mentioned(accessibilityOptions.value, props.event.accessibilityNeeds))
@@ -167,7 +174,7 @@ function reset() {
 
 <style scoped>
 .venue-search {
-  margin: 0 0 22px; padding: 18px; border-radius: 12px;
+  margin: 0 0 22px; padding: 18px; border-radius: var(--radius);
   background: var(--glass); border: 1px solid var(--hairline);
 }
 .venue-search h3 { margin: 0 0 4px; font-size: 15px; color: var(--text); }
@@ -177,7 +184,7 @@ function reset() {
 /* Same look as the notes box on this page. */
 .fields input, .fields select {
   font: inherit; font-size: 13px; color: var(--text); color-scheme: dark;
-  background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: 9px; padding: 8px 10px;
+  background: rgba(255, 255, 255, .03); border: 1px solid var(--hairline); border-radius: var(--radius); padding: 8px 10px;
 }
 .fields select option { background: #1A1030; color: #F3EEFF; }
 .check input { accent-color: var(--iris); }
@@ -188,7 +195,7 @@ legend { font-size: 13px; color: var(--text); margin-bottom: 6px; }
 .form-error {
   margin: 12px 0 0; color: #FF8A76; font-size: 13px;
   background: rgba(255, 138, 118, .08); border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px; padding: 11px 14px;
+  border-radius: var(--radius); padding: 11px 14px;
 }
 .venue-search > .hint:last-child { margin: 12px 0 0; }
 </style>

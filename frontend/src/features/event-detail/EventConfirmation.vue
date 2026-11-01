@@ -195,7 +195,7 @@ onMounted(load)
   border: 1px solid var(--hairline);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 14px;
+  border-radius: var(--radius);
   padding: 22px 24px;
   margin-top: 18px;
 }
@@ -208,7 +208,7 @@ onMounted(load)
 .ready, .missing {
   font-size: 13px;
   line-height: 1.6;
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 12px 14px;
   margin: 0;
 }
@@ -233,11 +233,11 @@ onMounted(load)
   box-sizing: border-box;
   border: 1px solid var(--hairline);
   background: rgba(255, 255, 255, .03);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 7px 10px;
   font-size: 13px;
   color: var(--text);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font);
 }
 .not-required { list-style: none; margin: 12px 0 0; padding: 0; font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
 .form-error {
@@ -245,7 +245,7 @@ onMounted(load)
   font-size: 13px;
   background: rgba(255, 138, 118, .08);
   border: 1px solid rgba(255, 138, 118, .25);
-  border-radius: 9px;
+  border-radius: var(--radius);
   padding: 11px 14px;
   margin: 12px 0 0;
 }

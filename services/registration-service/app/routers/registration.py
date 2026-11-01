@@ -12,6 +12,7 @@ from app.schemas.registration import (
     AttendeeOut,
     RegisterRequest,
     RegistrationCountOut,
+    RegistrationCountsOut,
     RegistrationRosterOut,
 )
 from app.services.registration_service import RegistrationService
@@ -121,6 +122,24 @@ def registered_count(
 
 
 @router.get(
+    "/counts",
+    response_model=RegistrationCountsOut,
+    summary="Count current registrations for several events",
+    description=(
+        "Same figure as `/count`, for a comma-separated list of event ids in one call, so a list of "
+        "events does not need one request per event. Every id asked for is in the answer, with 0 when "
+        "nobody is registered. Does not return names or other registration details."
+    ),
+)
+def registered_counts(
+    eventIds: str = Query(..., description="Comma-separated event ids, e.g. `e1,e2`."),
+    service: RegistrationService = Depends(get_registration_service),
+):
+    ids = list(dict.fromkeys(part.strip() for part in eventIds.split(",") if part.strip()))
+    return RegistrationCountsOut(counts=service.registered_counts(ids))
+
+
+@router.get(
     "",
     response_model=RegistrationRosterOut,
     summary="List registrations for an event",
@@ -163,6 +182,22 @@ def my_registrations(
     caller = resolve_caller(authorization, settings.user_service_url)
     rows = service.list_owned(caller.get("userId"), caller.get("email"))
     return [_enrich(row, authorization) for row in rows]
+
+
+@router.get(
+    "/mine/event-ids",
+    response_model=list[str],
+    summary="Events the caller registered for",
+    description="SPM-127. The ids of the events the signed-in user holds a registration for (registered or "
+    "withdrawn), sorted. Event-service uses it to let an attendee open those events' public pages.",
+)
+def my_registered_event_ids(
+    authorization: str | None = Depends(forwarded_bearer),
+    service: RegistrationService = Depends(get_registration_service),
+):
+    caller = resolve_caller(authorization, settings.user_service_url)
+    rows = service.list_owned(caller.get("userId"), caller.get("email"))
+    return sorted({row.eventId for row in rows})
 
 
 @router.get(
@@ -219,10 +254,11 @@ def withdraw_registration(
     status_code=201,
     summary="Register an attendee",
     description=(
-        "Creates a registration when the event is `confirmed`, registration is enabled and open, "
-        "capacity is not exceeded, and the email is not already registered."
+        "Registers the signed-in user when the event is `confirmed`, registration is enabled and open, "
+        "and a place remains. The email is the caller's own (filled in when left out; any other is 403), "
+        "and an account holds one registration per event (409)."
     ),
-    responses=error_responses(404, 409),
+    responses=error_responses(403, 404, 409),
 )
 def register(
     body: RegisterRequest,
@@ -230,5 +266,12 @@ def register(
     service: RegistrationService = Depends(get_registration_service),
 ):
     caller = resolve_caller(authorization, settings.user_service_url)
-    row = service.register(body.eventId, body.name, body.email, caller.get("userId"), authorization)
+    row = service.register(
+        body.eventId,
+        body.name,
+        body.email,
+        caller.get("userId"),
+        authorization,
+        account_email=caller.get("email"),
+    )
     return _to_attendee(row)

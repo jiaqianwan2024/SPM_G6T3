@@ -209,6 +209,68 @@ class TestNotificationRoutes(ServiceTestCase):
         self.assertEqual(result.json(), {"updated": 2})
         self.assertTrue(all(row["isRead"] for row in inbox.json()))
 
+    def test_clear_all_hides_notifications_from_the_bell_but_keeps_the_history(self):
+        for title in ("One", "Two"):
+            self.client.post(
+                "/notifications/records", headers={"Authorization": "Bearer token"}, json={"title": title, "body": "x"}
+            )
+        self.db.add(
+            Notification(notificationId="n-other", userId="u-other", type="t", title="Theirs", body="", isRead=False)
+        )
+        self.db.commit()
+        auth = {"Authorization": "Bearer token"}
+
+        result = self.client.post("/notifications/clear-all", headers=auth)
+        bell = self.client.get("/notifications", params={"bell": True}, headers=auth)
+        history = self.client.get("/notifications", headers=auth)
+        unread = self.client.get("/notifications/unread-count", headers=auth)
+        again = self.client.post("/notifications/clear-all", headers=auth)
+
+        self.assertEqual(result.json(), {"cleared": 2})
+        self.assertEqual(bell.json(), [])
+        self.assertEqual(len(history.json()), 2)
+        self.assertTrue(all(row["isRead"] for row in history.json()))
+        self.assertEqual(unread.json(), {"unreadCount": 0})
+        self.assertEqual(again.json(), {"cleared": 0})
+        # Someone else's notification is untouched.
+        self.assertFalse(self.db.get(Notification, "n-other").clearedFromBell)
+
+    def test_a_notification_arriving_after_clear_all_shows_in_the_bell(self):
+        auth = {"Authorization": "Bearer token"}
+        self.client.post("/notifications/records", headers=auth, json={"title": "Old", "body": "a"})
+        self.client.post("/notifications/clear-all", headers=auth)
+        self.client.post("/notifications/records", headers=auth, json={"title": "New", "body": "b"})
+
+        bell = self.client.get("/notifications", params={"bell": True}, headers=auth)
+
+        self.assertEqual([row["title"] for row in bell.json()], ["New"])
+
+    def test_clearing_one_hides_only_that_one_from_the_bell(self):
+        auth = {"Authorization": "Bearer token"}
+        keep = self.client.post("/notifications/records", headers=auth, json={"title": "Keep", "body": "a"}).json()
+        gone = self.client.post("/notifications/records", headers=auth, json={"title": "Gone", "body": "b"}).json()
+
+        cleared = self.client.post(f"/notifications/{gone['notificationId']}/clear", headers=auth)
+        bell = self.client.get("/notifications", params={"bell": True}, headers=auth)
+        history = self.client.get("/notifications", headers=auth)
+
+        self.assertEqual(cleared.status_code, 200)
+        self.assertTrue(cleared.json()["isRead"])
+        self.assertEqual([row["notificationId"] for row in bell.json()], [keep["notificationId"]])
+        self.assertEqual(len(history.json()), 2)
+
+    def test_someone_else_s_notification_cannot_be_cleared(self):
+        self.db.add(
+            Notification(notificationId="n-other", userId="u-other", type="t", title="Theirs", body="", isRead=False)
+        )
+        self.db.commit()
+        auth = {"Authorization": "Bearer token"}
+
+        cleared = self.client.post("/notifications/n-other/clear", headers=auth)
+
+        self.assertEqual(cleared.status_code, 404)
+        self.assertFalse(self.db.get(Notification, "n-other").clearedFromBell)
+
     def test_unread_count_reflects_read_state(self):
         self.client.post(
             "/notifications/records", headers={"Authorization": "Bearer token"}, json={"title": "One", "body": "a"}

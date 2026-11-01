@@ -24,7 +24,7 @@ test.describe('SPM-14 Establish event with ConnectSphere', () => {
   })
 
   test('TC-SPM14-AC02 a complete draft becomes Submitted with a timestamp and appears in the review queue', async () => {
-    const draft = await eventApi('POST', '', 'EO-01', completeRequestPayload('AUTO-SPM14-submit'))
+    const draft = await eventApi('POST', '/drafts', 'EO-01', completeRequestPayload('AUTO-SPM14-submit'))
     expect(draft.status).toBe(201)
     const submitted = await submitEvent(draft.body.eventId)
     expect(submitted.status).toBe(200)
@@ -37,7 +37,7 @@ test.describe('SPM-14 Establish event with ConnectSphere', () => {
   test('TC-SPM14-AC03 the organiser sees immediate confirmation naming the event and its reference', async ({
     page,
   }) => {
-    const draft = await eventApi('POST', '', 'EO-01', completeRequestPayload('AUTO-SPM14-confirm'))
+    const draft = await eventApi('POST', '/drafts', 'EO-01', completeRequestPayload('AUTO-SPM14-confirm'))
     await login(page, account('EO-01'))
     await page.goto(`/app/events/${draft.body.eventId}`)
     await page.getByTestId('event-submit').click()
@@ -84,7 +84,7 @@ test.describe('SPM-14 Establish event with ConnectSphere', () => {
     const end = new Date(start.getTime() + 60 * 60 * 1000)
     const draft = await eventApi(
       'POST',
-      '',
+      '/drafts',
       'EO-01',
       completeRequestPayload('AUTO-SPM14-soon', {
         proposedStartAt: start.toISOString(),

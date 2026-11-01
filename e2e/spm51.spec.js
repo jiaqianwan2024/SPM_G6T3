@@ -8,6 +8,8 @@ import { bearer, firebaseIdToken } from './support/auth.js'
 import { serviceUrls } from './support/api-data.js'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+// This spec holds the key patterns it searches for, so it is left out of its own content scan.
+const THIS_SPEC = path.relative(ROOT, fileURLToPath(import.meta.url)).split(path.sep).join('/')
 
 const TEXT_FILE = /\.(env.*|example|gitignore|js|json|md|py|txt|toml|yml|yaml)$/i
 
@@ -94,6 +96,7 @@ test.describe('SPM-51 Set up Firebase Authentication', () => {
     expect(banned, banned.join(', ')).toEqual([])
 
     for (const file of tracked) {
+      if (file === THIS_SPEC) continue
       if (!TEXT_FILE.test(file) && path.basename(file) !== '.env') continue
       const text = fs.readFileSync(path.join(ROOT, file), 'utf8')
       expect(text, file).not.toMatch(/BEGIN PRIVATE KEY/)
