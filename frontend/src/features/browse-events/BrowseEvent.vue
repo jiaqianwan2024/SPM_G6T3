@@ -268,6 +268,7 @@ onMounted(async () => {
   font-size: 14px;
 }
 .register-form input[readonly] { color: var(--muted); cursor: default; }
+.req { color: var(--iris-soft); }
 .field-error { margin: 0; font-size: 12px; color: #FF8A76; }
 .field-hint { margin: 0; font-size: 12px; color: var(--muted); }
 .register-form .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
@@ -277,3 +278,4 @@ onMounted(async () => {
   .facts { grid-template-columns: 1fr; }
 }
 </style>
+
