@@ -39,6 +39,7 @@ class TestReplacementRoutes(VenueCase):
         self.patches = {
             "event": patch("app.routers.venue.fetch_event_facts", return_value=EVENT),
             "notify": patch("app.routers.venue.notify_venue_staff", return_value=2),
+            "role": patch("app.routers.venue.notify_role", return_value=2),
             "coordinator": patch("app.routers.venue.notify_coordinator", return_value=True),
         }
         self.mocks = {name: p.start() for name, p in self.patches.items()}
@@ -118,7 +119,13 @@ class TestReplacementRoutes(VenueCase):
         self.assertEqual(created.json()["status"], "pending")
         self.assertEqual(created.json()["venueId"], self.other_id)
         self.mocks["event"].assert_called_once()
-        self.assertEqual(self.mocks["notify"].call_count, 2)
+        # SPM-93 AC4b: the new request also lands in Venue Staff's in-app inbox, not just email.
+        self.assertEqual(self.mocks["notify"].call_count, 1)  # the original booking's "cancelled" notice
+        self.mocks["role"].assert_called_once()
+        role, event_id, title, body, _authorization, notice_type = self.mocks["role"].call_args.args
+        self.assertEqual((role, event_id, notice_type), ("venue", "e1", "venue.replacement"))
+        self.assertIn("New venue request", title)
+        self.assertIn("Exhibition Hall B", body)
         original = self.call("coordinator", "GET", f"/venues/bookings/{booking_id}")
         self.assertEqual(original.status_code, 200)
         self.assertEqual(original.json()["status"], "cancelled")
