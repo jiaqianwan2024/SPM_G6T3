@@ -35,7 +35,12 @@ COLUMNS = [
     "Created By",
     "Date of Creation",
 ]
-DEFAULT_PRECONDITION = "Fresh seeded database and running app (npm run test:prepare)."
+OLD_PRECONDITION = "Fresh seeded database and running app (npm run test:prepare)."
+
+
+def default_precondition(case_id: str) -> str:
+    """Each case's setup SQL (scripts/build_test_setup.py) resets the test database first."""
+    return f"Run docs/testing/setup/{case_id}.sql on testDB (python scripts/test_setup.py {case_id}); app running."
 TEST_TITLE = re.compile(r"""test\(\s*['"`](TC-[^'"`]*)""")
 # A full ID, then any short forms that borrow its prefix: "TC-SPM08-AC01, AC01b" or
 # "TC-SPM116-AC03 and AC04" name two cases each.
@@ -132,14 +137,17 @@ def main() -> None:
             "Test Case ID": case_id,
             "Story": trace.get("Story") or _story_of(case_id),
             "Test Scenario": scenario,
-            "Pre-conditions": DEFAULT_PRECONDITION,
+            "Pre-conditions": default_precondition(case_id),
             "Test Steps": "",
             "Test Data": "",
             "Expected Result": scenario,
             "Created By": author,
             "Date of Creation": _uk_date(day),
         }
-        kept = existing.get(case_id, {})
+        kept = dict(existing.get(case_id, {}))
+        # The old shared pre-condition gives way to the case's own setup file.
+        if kept.get("Pre-conditions") == OLD_PRECONDITION:
+            kept["Pre-conditions"] = ""
         rows.append({column: kept.get(column) or generated[column] for column in COLUMNS})
 
     CATALOGUE.parent.mkdir(parents=True, exist_ok=True)

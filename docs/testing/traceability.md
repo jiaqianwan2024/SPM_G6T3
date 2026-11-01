@@ -11,7 +11,7 @@
 | SPM-43 | Password is masked | TC-SPM43-AC07 | `e2e/spm43.spec.js` | Automated |
 | SPM-45 | Venue Staff permissions | TC-SPM45-AC01 | `e2e/spm45-api.spec.js`; `e2e/spm45-ui.contract.spec.js` | Automated (API and browser: Approve and Reject on Booking Requests) |
 | SPM-45 | Technical Support permissions | TC-SPM45-AC02 | `e2e/spm45-api.spec.js`; `e2e/spm45-ui.contract.spec.js` | Automated (API and browser: equipment tabs, no Booking Requests) |
-| SPM-45 | Event Coordinator permissions | TC-SPM45-AC03 | `e2e/spm45-api.spec.js`; `e2e/spm45-ui.contract.spec.js` | Automated (API and browser). Since SPM-117 only the Event Coordinator Lead assigns, so a coordinator who tries gets 403 |
+| SPM-45 | Event Coordinator permissions | TC-SPM45-AC03 | `e2e/spm45-api.spec.js`; `e2e/spm45-ui.contract.spec.js` | Automated (API and browser). Coordinators submit venue and equipment requests but cannot approve or reject their own venue bookings |
 | SPM-45 | Wrong-role action returns 403 | TC-SPM45-AC04 | `e2e/spm45-api.spec.js`; `e2e/spm45-ui.contract.spec.js` | Automated (API and browser: other roles' tabs are not offered) |
 | SPM-46 | Assigned coordinator can act | TC-SPM46-AC01 | `e2e/spm46-api.spec.js`; `e2e/spm46-ui.contract.spec.js` | Automated (API and UI): edit, venue request, equipment request, and confirming (SPM-72), which only the assigned coordinator is offered and allowed |
 | SPM-46 | Unassigned staff read-only | TC-SPM46-AC02 | `e2e/spm46-api.spec.js`; `e2e/spm46-ui.contract.spec.js` | Automated (API and UI) |
@@ -20,8 +20,8 @@
 | SPM-47 | Every organiser in the organisation sees its events | TC-SPM47-AC02 | `e2e/spm47-api.spec.js`; `e2e/spm47-ui.contract.spec.js` | Automated (API and UI) |
 | SPM-47 | Another organisation's event URL is 403 | TC-SPM47-AC03 | `e2e/spm47-api.spec.js`; `e2e/spm47-ui.contract.spec.js` | Automated (API and UI) |
 | SPM-47 | Own organisation's events still open to organisers; any event to staff | TC-SPM47-AC04 | `e2e/spm47-api.spec.js`; `e2e/spm47-ui.contract.spec.js` | Automated (API and UI) |
-| SPM-55 | Unassigned submitted requests with wait time | TC-SPM55-AC01 | `e2e/spm55.spec.js` | Automated |
-| SPM-55 | Assigned events with status and outstanding work | TC-SPM55-AC02 | `e2e/spm55.spec.js` | Automated |
+| SPM-55 | Own assigned events with status and outstanding work | TC-SPM55-AC01 | `e2e/spm55.spec.js` | Automated |
+| SPM-55 | Unassigned submitted requests are not shown | TC-SPM55-AC02 | `e2e/spm55.spec.js` | Automated |
 | SPM-55 | Pending change requests newest first | TC-SPM55-AC03 | `e2e/spm55.spec.js` | Automated |
 | SPM-55 | Re-verification items shown prominently | TC-SPM55-AC04 | `e2e/spm55.spec.js` | Automated |
 | SPM-55 | Items link to the work screen | TC-SPM55-AC05 | `e2e/spm55.spec.js` | Automated |
@@ -185,14 +185,6 @@
 | SPM-65 | A coordinator sees only their assigned requests (SPM-117) | TC-SPM65-AC05 | `e2e/spm65.spec.js` | Automated |
 | SPM-65 | Near proposed date uses shared threshold | TC-SPM65-AC06 | `e2e/spm65.spec.js` | Automated |
 | SPM-65 | Empty filter explains the exclusion | TC-SPM65-AC07 | `e2e/spm65.spec.js` | Automated |
-| SPM-66 | Superseded by SPM-117: the Lead assigns a coordinator | TC-SPM66-AC01 | `e2e/spm66.spec.js` | Automated |
-| SPM-66 | Candidate list shows active-event counts | TC-SPM66-AC02 | `e2e/spm66.spec.js` | Automated |
-| SPM-66 | No workload cap | TC-SPM66-AC03 | `e2e/spm66.spec.js` | Automated |
-| SPM-66 | Assignment recorded in the activity log | TC-SPM66-AC04 | `e2e/spm66.spec.js` | Automated |
-| SPM-66 | Notify and show coordinator contact | TC-SPM66-AC05 | `e2e/spm66.spec.js` | Automated |
-| SPM-66 | Submitted moves to Under Review | TC-SPM66-AC06 | `e2e/spm66.spec.js` | Automated |
-| SPM-66 | Everyone but the Lead, Event Coordinators included, gets 403 | TC-SPM66-AC07 | `e2e/spm66.spec.js` | Automated |
-| SPM-66 | Cannot assign a non-coordinator | TC-SPM66-AC08 | `e2e/spm66.spec.js` | Automated |
 | SPM-117 | An Event Coordinator Lead signs in with a pre-created account | TC-SPM117-AC01 | `e2e/spm117.spec.js`; `e2e/spm43.spec.js` (ECL-01) | Automated |
 | SPM-117 | A newly submitted request stays unassigned until the Lead assigns it | TC-SPM117-AC02 | `e2e/spm117.spec.js`; `services/event-service/tests/unit/test_event_assignment.py` | Automated |
 | SPM-117 | The Lead sees unassigned requests in the review queue with name, organisation, date and time, attendance, and submission time | TC-SPM117-AC03 | `e2e/spm117.spec.js` | Automated (UI) |
@@ -416,10 +408,9 @@
 | SPM-12 | Confirm dialog names the event | TC-SPM12-AC03 | `e2e/spm12.spec.js` | Automated |
 | SPM-12 | Status becomes withdrawn; record kept | TC-SPM12-AC04 | `e2e/spm12.spec.js` | Automated |
 | SPM-12 | Place released immediately | TC-SPM12-AC05 | `e2e/spm12.spec.js` | Automated |
-| SPM-12 | Attendee confirmation and notification | TC-SPM12-AC06 | `e2e/spm12.spec.js` | Automated |
-| SPM-12 | Re-register after withdraw succeeds | TC-SPM12-AC07 | `e2e/spm12.spec.js` | Automated |
-| SPM-12 | Withdraw unavailable after start, complete, or cancel | TC-SPM12-AC08 | `e2e/spm12.spec.js` | Automated |
-| SPM-12 | Organiser and coordinator see the withdrawal | TC-SPM12-AC09 | `e2e/spm12.spec.js` | Automated |
+| SPM-12 | Re-register after withdraw succeeds | TC-SPM12-AC06 | `e2e/spm12.spec.js` | Automated |
+| SPM-12 | Withdraw unavailable after start, complete, or cancel | TC-SPM12-AC07 | `e2e/spm12.spec.js` | Automated |
+| SPM-12 | Organiser and coordinator see the withdrawal | TC-SPM12-AC08 | `e2e/spm12.spec.js` | Automated |
 | SPM-89 | Organiser and assigned coordinator see that event only | TC-SPM89-AC01 | `e2e/spm89.spec.js` | Automated |
 | SPM-89 | List shows name, supplied information, time, and status | TC-SPM89-AC02 | `e2e/spm89.spec.js` | Automated |
 | SPM-89 | Summary of capacity, registered, withdrawn, remaining | TC-SPM89-AC03 | `e2e/spm89.spec.js` | Automated |

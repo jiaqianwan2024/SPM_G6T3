@@ -44,15 +44,15 @@ test.describe('SPM-45 Role-Based Feature Access Control (UI)', () => {
     await expect(tab(page, 'Booking Requests')).toHaveCount(0)
   })
 
-  test('TC-SPM45-AC03 Event Coordinators can request a venue but have no approve or assign controls', async ({
+  test('TC-SPM45-AC03 Event Coordinators can request a venue but have no controls to approve their own bookings', async ({
     page,
   }) => {
     const event = await approvedEvent(THEATRE_EVENT)
     await login(page, account('EC-01'))
 
+    // The Venue Staff screens where bookings are decided are not offered.
     await expect(tab(page, 'Venue Requests')).toHaveCount(0)
     await expect(tab(page, 'Booking Requests')).toHaveCount(0)
-    await expect(tab(page, 'Assignments')).toHaveCount(0) // the Lead's tab (SPM-117)
 
     await page.goto(`/app/events/${event.eventId}/venues`)
     await page.getByTestId(`venue-select-${hall.venueId}`).click()

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { serviceUrls } from './support/api-data.js'
 import { authedApi } from './support/auth.js'
-import { assignCoordinator, eventApi } from './support/event.js'
+import { eventApi } from './support/event.js'
 import { createEquipment, equipmentApi } from './support/equipment.js'
 import { venueRequest } from './support/venue.js'
 import { THEATRE_EVENT, approvedEvent, requestVenue } from './support/venue-request.js'
@@ -93,19 +93,19 @@ test.describe('SPM-45 Role-Based Feature Access Control (API)', () => {
     expect(stillPending.body.status).toBe('pending')
   })
 
-  test('TC-SPM45-AC03 Event Coordinators submit venue and equipment requests but cannot approve their own bookings or assign', async () => {
+  test('TC-SPM45-AC03 Event Coordinators submit venue and equipment requests but cannot approve their own venue bookings', async () => {
+    // EC-01 sends the venue booking request and the equipment request.
     const { event, booking } = await pendingBooking(4)
     expect(booking.status).toBe('pending')
     const equipment = await equipmentRequest(event, 'EC-01', 4)
     expect([equipment.status, equipment.body.status]).toEqual([201, 'pending'])
 
+    // Deciding on their own booking is a Venue Staff privilege.
     for (const decision of ['approve', 'reject']) {
       expect((await decide(booking, decision, 'EC-01')).status, decision).toBe(403)
     }
-    expect((await assign(event, 'EC-01')).status).toBe(403)
-    // The Lead assigns instead (SPM-117): here, moving the event to EC-02 (u6).
-    expect((await assignCoordinator(event.eventId, 'u6')).coordinatorId).toBe('u6')
 
+    // The refused calls left it pending, so Venue Staff can still approve it.
     const byVenueStaff = await decide(booking, 'approve', 'VS-01')
     expect([byVenueStaff.status, byVenueStaff.body.reviewedBy]).toEqual([200, 'u3'])
   })

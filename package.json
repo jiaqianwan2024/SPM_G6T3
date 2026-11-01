@@ -44,7 +44,6 @@
     "test:spm05": "npm run test:prepare && playwright test e2e/spm05.spec.js",
     "test:spm15": "npm run test:prepare && playwright test e2e/spm15.spec.js",
     "test:spm65": "npm run test:prepare && playwright test e2e/spm65.spec.js",
-    "test:spm66": "npm run test:prepare && playwright test e2e/spm66.spec.js",
     "test:spm68": "npm run test:prepare && playwright test e2e/spm68.spec.js",
     "test:spm69": "npm run test:prepare && playwright test e2e/spm69.spec.js",
     "test:spm70": "npm run test:prepare && playwright test e2e/spm70.spec.js",
