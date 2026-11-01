@@ -24,7 +24,7 @@
         everything at once. The Safety Officer sees the confirmed venue and equipment with these notes, and the
         event waits in Safety review until they decide.
       </p>
-      <label for="safety-crowd">Crowd movement</label>
+      <label for="safety-crowd">Crowd movement <span class="req">*</span></label>
       <textarea
         id="safety-crowd"
         v-model="crowdMovement"
@@ -178,7 +178,7 @@
 
     <!-- AC3: the claiming Safety Officer decides; the server refuses everyone else with 403 (AC8). -->
     <div v-if="isMine && latest?.status === 'pending'" class="decision" data-testid="safety-decision">
-      <label for="safety-decision-text">Notes for the coordinator</label>
+      <label for="safety-decision-text">Notes for the coordinator <span class="req">*</span><span class="req-note"> (needed to reject or request changes)</span></label>
       <textarea
         id="safety-decision-text"
         v-model="decisionText"

@@ -36,7 +36,7 @@
         accepts it.
       </p>
       <fieldset class="fields">
-        <legend>What should change?</legend>
+        <legend>What should change? <span class="req">*</span></legend>
         <label v-for="field in CHANGEABLE_FIELDS" :key="field" class="pick">
           <input
             type="checkbox"
@@ -50,7 +50,7 @@
 
       <div v-for="(value, field) in proposed" :key="field" class="value">
         <label :for="`change-${field}`">
-          New {{ fieldLabel(field).toLowerCase() }}
+          New {{ fieldLabel(field).toLowerCase() }}<span v-if="field === 'eventName'" class="req"> *</span>
           <span class="now">now: {{ formatValue(field, event[field]) }}</span>
         </label>
         <!-- SPM-85 AC5: each equipment type and how many, so the coordinator can check the stock. -->
@@ -119,7 +119,7 @@
         <option v-for="option in choices.layouts" :key="option" :value="option" />
       </datalist>
 
-      <label for="change-reason">Why is this changing?</label>
+      <label for="change-reason">Why is this changing? <span class="req">*</span></label>
       <textarea id="change-reason" v-model="reason" rows="2" maxlength="2000" data-testid="change-request-reason"></textarea>
 
       <p v-if="formError" class="form-error">{{ formError }}</p>

@@ -132,15 +132,15 @@
         <p v-if="form.id" class="hint">Update the time, reason, or note. The block stays where it is until you save. Times are Singapore time (SGT).</p>
         <p v-else class="hint">Click a day, or drag across one or more days or times. The selected range stays on the calendar until you close this form or choose a different range. Times are Singapore time (SGT).</p>
         <label>
-          Start (SGT)
+          <span>Start (SGT) <span class="req">*</span></span>
           <input v-model="form.startsAt" type="datetime-local" required />
         </label>
         <label>
-          End (SGT)
+          <span>End (SGT) <span class="req">*</span></span>
           <input v-model="form.endsAt" type="datetime-local" required />
         </label>
         <label>
-          Reason
+          <span>Reason <span class="req">*</span></span>
           <select v-model="form.reason" required>
             <option v-for="reason in reasons" :key="reason" :value="reason">{{ reason }}</option>
           </select>
@@ -152,7 +152,7 @@
         <p v-if="form.error" class="error">{{ form.error }}</p>
         <label v-if="form.needsAck" class="ack">
           <input v-model="form.acknowledge" type="checkbox" />
-          I have seen these events. Save the block anyway. Their bookings stay as they are.
+          <span>I have seen these events. Save the block anyway. Their bookings stay as they are. <span class="req">*</span></span>
         </label>
         <div class="form-actions">
           <button type="submit" class="mark-btn" :disabled="form.saving || (form.needsAck && !form.acknowledge)">

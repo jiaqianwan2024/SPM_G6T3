@@ -64,7 +64,7 @@
           <form class="modal mark-form" role="dialog" aria-modal="true" data-testid="unavailability-form" @submit.prevent="save">
             <h3>Mark unavailable</h3>
             <label>
-              Venue
+              <span>Venue <span class="req">*</span></span>
               <select v-model="form.venueId" required data-testid="unavailability-form-venue">
                 <option v-for="venue in activeVenues" :key="venue.venueId" :value="venue.venueId">
                   {{ venue.name }}
@@ -73,16 +73,16 @@
             </label>
             <div class="form-times">
               <label>
-                Start (SGT)
+                <span>Start (SGT) <span class="req">*</span></span>
                 <input v-model="form.startsAt" type="datetime-local" required />
               </label>
               <label>
-                End (SGT)
+                <span>End (SGT) <span class="req">*</span></span>
                 <input v-model="form.endsAt" type="datetime-local" required />
               </label>
             </div>
             <label>
-              Reason
+              <span>Reason <span class="req">*</span></span>
               <select v-model="form.reason" required>
                 <option v-for="item in reasons" :key="item" :value="item">{{ item }}</option>
               </select>
@@ -94,7 +94,7 @@
             <p v-if="form.error" class="form-error">{{ form.error }}</p>
             <label v-if="form.needsAck" class="ack">
               <input v-model="form.acknowledge" type="checkbox" />
-              I have seen these events. Save the block anyway. Their bookings stay as they are.
+              <span>I have seen these events. Save the block anyway. Their bookings stay as they are. <span class="req">*</span></span>
             </label>
             <div class="form-actions">
               <button type="submit" class="mark-btn" :disabled="form.saving || (form.needsAck && !form.acknowledge)">

@@ -4,16 +4,16 @@
       <h3>{{ mode === 'create' ? 'Add equipment' : 'Edit equipment' }}</h3>
     </div>
     <div class="fields">
-      <label>Code<input v-model="form.code" required /></label>
-      <label>Name<input v-model="form.name" required /></label>
+      <label><span>Code <span class="req">*</span></span><input v-model="form.code" required /></label>
+      <label><span>Name <span class="req">*</span></span><input v-model="form.name" required /></label>
       <label>
-        Category
+        <span>Category <span class="req">*</span></span>
         <select v-model="form.category" required>
           <option value="" disabled>Select a category</option>
           <option v-for="item in categoryOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
         </select>
       </label>
-      <label>Total owned<input v-model.number="form.totalQuantity" type="number" min="0" required /></label>
+      <label><span>Total owned <span class="req">*</span></span><input v-model.number="form.totalQuantity" type="number" min="0" required /></label>
       <label class="wide">Description<textarea v-model="form.description" rows="2" /></label>
       <label>Home location<input v-model="form.homeLocation" /></label>
       <label>Damaged<input v-model.number="form.damaged" type="number" min="0" /></label>

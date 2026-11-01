@@ -26,7 +26,7 @@
     <form v-else class="modal edit-modal" data-testid="event-edit-form" novalidate @submit.prevent="save(false)">
       <h3>Edit event</h3>
 
-      <label for="edit-eventName">Event name</label>
+      <label for="edit-eventName">Event name <span class="req">*</span></label>
       <input id="edit-eventName" v-model.trim="form.eventName" type="text" maxlength="255" />
 
       <div class="row">
@@ -60,18 +60,18 @@
 
         <div class="row">
           <div class="col">
-            <label for="edit-start">Starts (SGT)</label>
+            <label for="edit-start">Starts (SGT) <span class="req">*</span></label>
             <input id="edit-start" v-model="form.proposedStartAt" type="datetime-local" :min="startMin" />
           </div>
           <div class="col">
-            <label for="edit-end">Ends (SGT)</label>
+            <label for="edit-end">Ends (SGT) <span class="req">*</span></label>
             <input id="edit-end" v-model="form.proposedEndAt" type="datetime-local" :min="laterInput(endMin, form.proposedStartAt)" />
           </div>
         </div>
 
         <div class="row">
           <div class="col">
-            <label for="edit-attendance">Expected attendance</label>
+            <label for="edit-attendance">Expected attendance <span class="req">*</span></label>
             <input id="edit-attendance" v-model.number="form.expectedAttendance" type="number" min="0" step="1" />
           </div>
           <div class="col">

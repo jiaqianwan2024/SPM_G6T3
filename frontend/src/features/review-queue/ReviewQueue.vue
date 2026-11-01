@@ -178,12 +178,12 @@
     <div v-if="rejecting" class="modal-backdrop" @click.self="rejecting = null">
       <div class="modal">
         <h3>Reject {{ rejecting.eventName }}</h3>
-        <label for="reject-reason">Reason</label>
+        <label for="reject-reason">Reason <span class="req">*</span></label>
         <select id="reject-reason" v-model="rejectReason" data-testid="reject-reason">
           <option value="" disabled>Choose a reason</option>
           <option v-for="reason in REJECTION_REASONS" :key="reason" :value="reason">{{ reason }}</option>
         </select>
-        <label for="reject-explanation">Explanation for the organiser</label>
+        <label for="reject-explanation">Explanation for the organiser <span class="req">*</span></label>
         <textarea
           id="reject-explanation"
           v-model="rejectExplanation"

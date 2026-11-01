@@ -55,10 +55,10 @@
           Register
         </button>
         <form v-else class="register-form" novalidate @submit.prevent="submit">
-          <label for="register-name">Name</label>
+          <label for="register-name">Name <span class="req">*</span></label>
           <input id="register-name" v-model.trim="form.name" autocomplete="name" data-testid="register-name" />
           <p v-if="attempted && !form.name" class="field-error" data-testid="register-name-error">Enter your name.</p>
-          <label for="register-email">Email</label>
+          <label for="register-email">Email <span class="req">*</span></label>
           <!-- An attendee registers only themselves, so the email is their account's (enforced on the server too). -->
           <input id="register-email" :value="form.email" type="email" readonly data-testid="register-email" />
           <p class="field-hint" data-testid="register-email-hint">You can only register yourself, with your account's email.</p>
@@ -267,6 +267,7 @@ onMounted(async () => {
   font-size: 14px;
 }
 .register-form input[readonly] { color: var(--muted); cursor: default; }
+.req { color: var(--iris-soft); }
 .field-error { margin: 0; font-size: 12px; color: #FF8A76; }
 .field-hint { margin: 0; font-size: 12px; color: var(--muted); }
 .register-form .actions { display: flex; margin-top: 12px; }
@@ -276,3 +277,4 @@ onMounted(async () => {
   .facts { grid-template-columns: 1fr; }
 }
 </style>
+

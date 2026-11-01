@@ -26,7 +26,7 @@
     </ul>
 
     <form v-if="canSend" class="send-form" data-testid="safety-handoff-form" @submit.prevent="send">
-      <label for="safety-handoff-note">{{ isVenueStaff ? 'Crowd movement' : 'Equipment placement' }}</label>
+      <label for="safety-handoff-note">{{ isVenueStaff ? 'Crowd movement' : 'Equipment placement' }} <span class="req">*</span></label>
       <textarea
         id="safety-handoff-note"
         v-model="note"

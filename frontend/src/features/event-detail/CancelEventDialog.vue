@@ -19,7 +19,7 @@
         <li v-for="line in notified" :key="line">{{ line }}</li>
       </ul>
 
-      <label for="cancel-reason">Reason</label>
+      <label for="cancel-reason">Reason <span class="req">*</span></label>
       <textarea
         id="cancel-reason"
         v-model="reason"

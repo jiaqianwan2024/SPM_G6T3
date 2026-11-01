@@ -64,10 +64,10 @@
           <!-- SPM-77 AC1 and AC2: unavailable with an optional alternative, or partly reserved with the shortfall. -->
           <form v-if="decisionFor === request.requestId" class="unavailable-form" @submit.prevent="confirmDecision(request)">
             <label v-if="decisionKind === 'partial'">
-              Units to reserve now (of {{ request.quantity }})
+              <span>Units to reserve now (of {{ request.quantity }}) <span class="req">*</span></span>
               <input v-model.number="decisionQuantity" type="number" min="0" :max="request.quantity - 1" required data-testid="equipment-partial-quantity" />
             </label>
-            <label>Reason<input v-model="decisionReason" required /></label>
+            <label><span>Reason <span class="req">*</span></span><input v-model="decisionReason" required /></label>
             <label v-if="decisionKind === 'unavailable'">Note<input v-model="decisionNote" /></label>
             <label v-if="decisionKind === 'unavailable'">
               Suggest an alternative (optional)
@@ -115,11 +115,11 @@
             </div>
             <form v-else class="unavailable-form" @submit.prevent="saveReservation(row)">
               <label v-if="reservationKind === 'adjust'">
-                New quantity
+                <span>New quantity <span class="req">*</span></span>
                 <input v-model.number="reservationQuantity" type="number" min="0" required data-testid="reservation-quantity" />
               </label>
               <label v-else>
-                Reason (required once the event is confirmed)
+                <span>Reason <span class="req">*</span><span class="req-note"> (needed once the event is confirmed)</span></span>
                 <input v-model="reservationReason" data-testid="reservation-reason" />
               </label>
               <div class="actions">

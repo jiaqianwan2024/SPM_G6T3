@@ -8,11 +8,11 @@
         <input id="vf-code" v-model="form.code" type="text" placeholder="e.g. MH-A" @input="codeEditedByUser = true" />
       </div>
       <div class="field">
-        <label for="vf-name">Name</label>
+        <label for="vf-name">Name <span class="req">*</span></label>
         <input id="vf-name" v-model="form.name" type="text" required />
       </div>
       <div class="field">
-        <label for="vf-location">Location (building or complex name)</label>
+        <label for="vf-location">Location (building or complex name) <span class="req">*</span></label>
         <input id="vf-location" v-model="form.location" type="text" placeholder="e.g. HarbourFront Centre" required />
       </div>
       <div class="field">
@@ -24,11 +24,11 @@
         <input id="vf-floor" v-model="form.floor" type="text" placeholder="e.g. 2" />
       </div>
       <div class="field">
-        <label for="vf-setup">Setup (minutes)</label>
+        <label for="vf-setup">Setup (minutes) <span class="req">*</span></label>
         <input id="vf-setup" v-model.number="form.setupMinutes" type="number" min="0" step="1" required />
       </div>
       <div class="field">
-        <label for="vf-turnaround">Turnaround (minutes)</label>
+        <label for="vf-turnaround">Turnaround (minutes) <span class="req">*</span></label>
         <input id="vf-turnaround" v-model.number="form.turnaroundMinutes" type="number" min="0" step="1" required />
       </div>
     </div>

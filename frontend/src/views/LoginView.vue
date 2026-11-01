@@ -10,11 +10,11 @@
         <p class="eyebrow">Welcome back</p>
         <h2>Log in</h2>
 
-        <label for="username">Email</label>
+        <label for="username">Email <span class="req">*</span></label>
         <input id="username" v-model="username" type="text" placeholder="you@connectsphere.com" autocomplete="username" />
         <p v-if="showErrors && !username" class="field-error">Email is required.</p>
 
-        <label for="password">Password</label>
+        <label for="password">Password <span class="req">*</span></label>
         <div class="password-field">
           <input
             id="password"
