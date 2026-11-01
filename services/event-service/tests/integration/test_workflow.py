@@ -14,6 +14,7 @@ LEAD = {"userId": "lead-1", "role": "coordinatorlead", "userName": "Rachel"}
 DIRECTORY = [
     {"userId": "coord-1", "userName": "Ben", "email": "ben@example.com", "role": "coordinator"},
     {"userId": "org-1", "userName": "Amy", "email": "amy@example.com", "role": "organiser", "organisationId": "o1"},
+    {"userId": "u3", "userName": "Vinod", "email": "venue@example.com", "role": "venue"},
 ]
 
 
@@ -109,11 +110,13 @@ class TestEventWorkflow(ServiceTestCase):
         self.assertEqual(assigned.status_code, 201)
         self.assertEqual(assigned.json()["assignedBy"], "lead-1")
 
-        line = self.client.post(
-            f"/events/{open_id}/readiness-items",
-            headers=self.headers,
-            json={"category": "venue", "handlerId": "u3", "status": "outstanding"},
-        )
+        # Only staff handle a line (SPM-5), so creating one reads the user directory.
+        with patch("app.services.event_followup.list_users", return_value=DIRECTORY):
+            line = self.client.post(
+                f"/events/{open_id}/readiness-items",
+                headers=self.headers,
+                json={"category": "venue", "handlerId": "u3", "status": "outstanding"},
+            )
         self.assertEqual(line.status_code, 201)
         listed = self.client.get(f"/events/{open_id}/readiness", headers=self.headers)
         self.assertEqual(listed.status_code, 200)
