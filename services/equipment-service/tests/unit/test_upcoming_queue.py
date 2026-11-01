@@ -5,7 +5,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.orchestration.clients import fetch_upcoming_events, fetch_venue_name
+from app.orchestration.clients import fetch_upcoming_events, fetch_venue_names
 from app.schemas.equipment import EquipmentRequestCreate
 from app.services.equipment_service import _equipment_state
 from shared.auth.deps import require_authenticated_user
@@ -209,17 +209,23 @@ class TestUpcomingClients(EquipmentCase):
                 fetch_upcoming_events("Bearer token")
         self.assertEqual(raised.exception.status_code, 503)
 
-    def test_the_venue_name_comes_from_the_booking_summary(self):
-        with patch("app.orchestration.clients.httpx.get", return_value=self.reply(200, {"venueName": "Hall"})):
-            self.assertEqual(fetch_venue_name("e1"), "Hall")
-        with patch("app.orchestration.clients.httpx.get", return_value=self.reply(200, {"venueName": None})):
-            self.assertEqual(fetch_venue_name("e1"), "")
+    def test_every_venue_name_comes_from_one_booking_summary_call(self):
+        summaries = {"e1": {"venueName": "Hall"}, "e2": {"venueName": None}}
+        with patch("app.orchestration.clients.httpx.get", return_value=self.reply(200, summaries)) as called:
+            self.assertEqual(fetch_venue_names(["e1", "e2"]), {"e1": "Hall", "e2": ""})
+        self.assertEqual(called.call_count, 1)
+        self.assertEqual(called.call_args.kwargs["params"], {"eventIds": "e1,e2"})
 
-    def test_a_missing_venue_service_leaves_the_venue_blank(self):
+    def test_no_events_need_no_call(self):
+        with patch("app.orchestration.clients.httpx.get") as called:
+            self.assertEqual(fetch_venue_names([]), {})
+        called.assert_not_called()
+
+    def test_a_missing_venue_service_leaves_the_venues_blank(self):
         with patch("app.orchestration.clients.httpx.get", side_effect=httpx.ConnectError("down")):
-            self.assertEqual(fetch_venue_name("e1"), "")
+            self.assertEqual(fetch_venue_names(["e1"]), {})
         with patch("app.orchestration.clients.httpx.get", return_value=self.reply(500, {})):
-            self.assertEqual(fetch_venue_name("e1"), "")
+            self.assertEqual(fetch_venue_names(["e1"]), {})
 
 
 class TestUpcomingRoute(EquipmentCase):
@@ -244,7 +250,7 @@ class TestUpcomingRoute(EquipmentCase):
         with (
             patch("app.routers.equipment.resolve_caller", return_value=CALLER),
             patch("app.routers.equipment.fetch_upcoming_events", return_value=[event("e1"), event("e6")]),
-            patch("app.routers.equipment.fetch_venue_name", return_value="Hall"),
+            patch("app.routers.equipment.fetch_venue_names", return_value={"e1": "Hall"}),
         ):
             response = self.client.get(
                 "/equipment/upcoming?state=awaiting_review&dateFrom=2026-10-01&dateTo=2026-10-31",

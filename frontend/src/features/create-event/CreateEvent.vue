@@ -1,7 +1,7 @@
 <template>
   <div class="create-event">
     <!-- Success state — the created/submitted event, straight from the API response -->
-    <div v-if="created" class="result-card">
+    <div v-if="created" class="result-card" data-testid="submit-confirmation">
       <h3>Event request submitted</h3>
       <p>
         <strong>{{ created.eventName }}</strong> was saved as a
@@ -57,24 +57,26 @@
                 id="expectedAttendance"
                 v-model.number="form.expectedAttendance"
                 type="number"
-                min="0"
+                min="1"
                 data-testid="expected-attendance"
               />
               <p v-if="submitted && !isValidAttendance" class="field-error">
-                Enter an attendance of 0 or more.
+                Enter an attendance of at least 1.
               </p>
             </div>
             <div class="col">
-              <label for="category">Category</label>
-              <select id="category" v-model="form.category">
-                <option :value="null">Not specified</option>
+              <label for="category">Category <span class="req">*</span></label>
+              <select id="category" v-model="form.category" data-testid="create-category">
+                <option :value="null" disabled>Choose a category</option>
                 <option v-for="option in categories" :key="option" :value="option">{{ option }}</option>
               </select>
+              <p v-if="submitted && !form.category" class="field-error">Choose a category.</p>
             </div>
           </div>
 
-          <label for="purpose">Purpose</label>
-          <input id="purpose" v-model.trim="form.purpose" type="text" placeholder="What is this event for?" />
+          <label for="purpose">Purpose <span class="req">*</span></label>
+          <input id="purpose" v-model.trim="form.purpose" type="text" placeholder="What is this event for?" data-testid="create-purpose" />
+          <p v-if="submitted && !form.purpose" class="field-error">Purpose is required.</p>
 
           <label for="description">Description</label>
           <textarea
@@ -182,6 +184,9 @@
         </div>
       </div>
 
+      <p v-if="submitted && missingFields.length" class="form-error" data-testid="submit-missing-fields">
+        Still needed to submit: {{ missingFields.join(', ') }}.
+      </p>
       <p v-if="error" class="form-error">{{ error }}</p>
       <p v-if="draftError" class="form-error">{{ draftError }}</p>
       <p v-if="draftSavedMessage" class="draft-saved">{{ draftSavedMessage }}</p>
@@ -196,7 +201,7 @@
         >
           {{ draftSaving ? 'Saving draft…' : 'Save as draft' }}
         </button>
-        <button class="btn btn-solid" type="submit" :disabled="saving">
+        <button class="btn btn-solid" type="submit" :disabled="saving" data-testid="event-submit">
           {{ saving ? 'Saving…' : 'Create event request' }}
         </button>
       </div>
@@ -298,8 +303,9 @@ const draftSavedMessage = ref('')
 const draftError = ref('')
 const lastSaved = ref('')
 
+// SPM-14 AC1: at least one person is expected. A draft may still save any number.
 const isValidAttendance = computed(
-  () => typeof form.expectedAttendance === 'number' && form.expectedAttendance >= 0
+  () => typeof form.expectedAttendance === 'number' && form.expectedAttendance >= 1
 )
 const endBeforeStart = computed(
   () =>
@@ -337,9 +343,26 @@ const capacityWarning = ref(false)
 const capacityAcknowledged = ref(false)
 let afterCapacityWarning = null
 
+// SPM-14 AC1 / SPM-82 AC1: every required field still missing, listed by the submit button.
+const missingFields = computed(() =>
+  [
+    ['Event name', !form.eventName],
+    ['Category', !form.category],
+    ['Purpose', !form.purpose],
+    ['Start', !form.proposedStartAt],
+    ['End', !form.proposedEndAt],
+    ['Expected attendance', !isValidAttendance.value],
+    ['Attendee registration', form.registrationEnabled === null],
+  ]
+    .filter(([, missing]) => missing)
+    .map(([label]) => label)
+)
+
 const isValid = computed(
   () =>
     !!form.eventName &&
+    !!form.category &&
+    !!form.purpose &&
     !!form.proposedStartAt &&
     !!form.proposedEndAt &&
     !startInPast.value &&

@@ -65,6 +65,12 @@ export const cancelEvent = (eventId, reason) => axiosClient.post(`/events/${even
 
 export const getActivityLog = (eventId) => axiosClient.get(`/events/${eventId}/activity-log`);
 
+// SPM-87: what a move would do (nothing is changed), then the move itself, with a reason.
+export const previewReschedule = (eventId, proposedStartAt, proposedEndAt) =>
+  axiosClient.post(`/events/${eventId}/reschedule/preview`, { proposedStartAt, proposedEndAt });
+
+export const rescheduleEvent = (eventId, body) => axiosClient.post(`/events/${eventId}/reschedule`, body);
+
 // SPM-71: the assigned coordinator edits an event. Send only the changed fields.
 // A significant change on an event with confirmed arrangements comes back as a
 // 409 whose detail names them (detail.requiresConfirmation); resend with

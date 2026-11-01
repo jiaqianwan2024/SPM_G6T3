@@ -29,3 +29,9 @@ class ReminderRunOut(BaseModel):
     checked: int = Field(description="Events inside the lead time that were looked at.")
     reminded: list[ReminderEventOut]
     skipped: list[ReminderSkippedOut]
+    expiredHolds: list[str] = Field(
+        default=[], description="SPM-93 AC4: bookings whose expired hold was announced to the coordinator."
+    )
+    dueSoonItems: list[str] = Field(
+        default=[], description="SPM-5 AC8: readiness line items whose coordinator was alerted that they fall due soon."
+    )

@@ -28,6 +28,6 @@ def event_arrangements(
 ):
     require_service_key(x_service_key, settings.internal_service_key)
     return {
-        "requests": [row.model_dump(mode="json") for row in service.list_requests() if row.eventId == event_id],
+        "requests": [row.model_dump(mode="json") for row in service.list_requests(event_id)],
         "reservations": [row.model_dump(mode="json") for row in service.list_event_reservations(event_id)],
     }

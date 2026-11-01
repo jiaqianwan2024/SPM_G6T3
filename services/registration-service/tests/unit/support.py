@@ -57,3 +57,22 @@ class FakeEventClient:
         if FakeEventClient.error:
             raise FakeEventClient.error
         return FakeEventClient.response
+
+
+class RecordingClient:
+    """Stands in for httpx.Client on notification posts and keeps what was sent."""
+
+    calls = []
+
+    def __init__(self, timeout):
+        self.timeout = timeout
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def post(self, url, json=None, headers=None):
+        RecordingClient.calls.append({"url": url, "json": json, "headers": headers})
+        return None

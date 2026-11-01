@@ -46,3 +46,27 @@ export const markEquipmentRequestUnavailable = (requestId, body) =>
 
 export const getEquipmentActivityLog = (equipmentId) =>
   axiosClient.get(`/equipment/${equipmentId}/activity-log`);
+
+// SPM-77: technical support's answers to a line that cannot be fully met, and the coordinator's.
+export const recordPartialFulfilment = (requestId, reservedQuantity, reason) =>
+  axiosClient.post(`/equipment/requests/${requestId}/partial`, { reservedQuantity, reason });
+
+export const acceptEquipmentShortfall = (requestId) =>
+  axiosClient.post(`/equipment/requests/${requestId}/accept-shortfall`);
+
+export const completeEquipmentReview = (requestId) =>
+  axiosClient.post(`/equipment/requests/${requestId}/complete-review`);
+
+// The coordinator amends an unavailable or partly met line and sends it back for review.
+export const resubmitEquipmentRequest = (requestId, quantity) =>
+  axiosClient.patch(`/equipment/requests/${requestId}`, { resubmit: true, quantity });
+
+// SPM-78 and SPM-86: technical support change, release, or re-confirm a held reservation.
+export const adjustEquipmentReservation = (reservationId, quantity) =>
+  axiosClient.patch(`/equipment/reservations/${reservationId}`, { quantity });
+
+export const releaseEquipmentReservation = (reservationId, reason) =>
+  axiosClient.post(`/equipment/reservations/${reservationId}/release`, { reason });
+
+export const reconfirmEquipmentReservation = (reservationId) =>
+  axiosClient.post(`/equipment/reservations/${reservationId}/reconfirm`);

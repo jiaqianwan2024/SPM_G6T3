@@ -73,6 +73,14 @@ test.describe('SPM-94 Manage my notifications', () => {
   test('TC-SPM94-AC07 when the user has no notifications, an empty state says so', async ({
     page,
   }) => {
+    // A user with nothing in their inbox. Any real account collects notices as the suite runs
+    // (ATT-02 is told about each registration, SPM-11 AC3), so the list is answered as empty.
+    // Only notification-service's list: the app's own /app/notifications page must still load.
+    await page.route(
+      (url) => url.port === '8006' && url.pathname === '/notifications',
+      (route) => (route.request().method() === 'GET' ? route.fulfill({ json: [] }) : route.continue()),
+    )
+    await page.route('**/notifications/unread-count', (route) => route.fulfill({ json: { count: 0 } }))
     await login(page, account('ATT-02'))
     await page.goto('/app/notifications')
     const empty = page.getByTestId('notifications-empty')
@@ -83,9 +91,11 @@ test.describe('SPM-94 Manage my notifications', () => {
   test('TC-SPM94-AC08 the list loads a page at a time rather than every notification ever raised', async () => {
     const page1 = await notificationApi('GET', '/notifications?page=1&pageSize=10', 'EO-01')
     expect(page1.status).toBe(200)
-    const items = page1.body.items || page1.body
-    expect(items.length).toBeLessThanOrEqual(10)
-    expect(page1.body.page || page1.body.nextPage).toBeTruthy()
+    const page2 = await notificationApi('GET', '/notifications?page=2&pageSize=10', 'EO-01')
+    expect(page1.body.length).toBeLessThanOrEqual(10)
+    // The next page holds different, older notifications, so nothing is read twice.
+    const first = new Set(page1.body.map((row) => row.notificationId))
+    expect(page2.body.some((row) => first.has(row.notificationId))).toBe(false)
   })
 
 

@@ -719,6 +719,20 @@ class VenueService(BaseService):
             upcomingDays=DASHBOARD_UPCOMING_DAYS,
         )
 
+    def expired_holds(self, since: datetime, until: datetime) -> list[dict]:
+        """SPM-93 AC4: holds that ran out in (since, until], with what the coordinator's notice names."""
+        rows = self.booking_dao.list_holds_expired_between(suitability._utc(since), suitability._utc(until))
+        return [
+            {
+                "bookingId": row.bookingId,
+                "eventId": row.eventId,
+                "venueId": row.venueId,
+                "venueName": row.venue.name if row.venue else row.venueId,
+                "expiresAt": row.holdExpiresAt,
+            }
+            for row in rows
+        ]
+
     def public_summary(self, event_id: str) -> dict:
         """Approved booking's venue name and location, for attendees (SPM-91)."""
         bookings = self.booking_dao.list("approved", event_id, None)

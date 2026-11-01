@@ -129,10 +129,15 @@ test.describe('SPM-88 Cancel an event and release its arrangements', () => {
     const event = await cancellableEvent(`AUTO-SPM88-staff-${Date.now()}`)
     const cancelled = await eventApi('POST', `/${event.eventId}/cancel`, 'EO-01', { reason: 'Notify staff' })
     expect(cancelled.status).toBe(200)
-    const inbox = await notificationRequest('/notifications', 'EC-01')
-    expect(inbox.status).toBe(200)
-    const notice = (inbox.body || []).find((row) => row.eventId === event.eventId && row.type === 'event.cancelled')
-    expect(notice, 'the coordinator is told').toBeTruthy()
+    // The notices are published after the cancellation is saved, so they can land a moment later.
+    let notice
+    await expect
+      .poll(async () => {
+        const inbox = await notificationRequest('/notifications?pageSize=50', 'EC-01')
+        notice = (inbox.body || []).find((row) => row.eventId === event.eventId && row.type === 'event.cancelled')
+        return Boolean(notice)
+      }, { message: 'the coordinator is told' })
+      .toBe(true)
     expect(notice.body).toContain('Reason: Notify staff')
   })
 

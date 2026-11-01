@@ -2,7 +2,7 @@
 
 Full-stack event management platform. Vue frontend, Python FastAPI microservices on the backend, and one MySQL instance with a schema owned by each service. Firebase Authentication is the identity layer: the frontend signs in directly against Firebase, and every service independently verifies the resulting ID token.
 
-**Developers:** start here — [docs/architecture.md](docs/architecture.md) (file tree, ports, how to run frontend / backend / MySQL). API docs: [docs/api.md](docs/api.md) (Swagger UI at `/docs` on each service). Data model: [docs/data-model.md](docs/data-model.md). Unit tests: [docs/testing/unit-tests.md](docs/testing/unit-tests.md). Acceptance tests: [docs/testing/README.md](docs/testing/README.md).
+**Developers:** start here — [docs/architecture.md](docs/architecture.md) (file tree, ports, how to run frontend / backend / MySQL). API docs: [docs/api.md](docs/api.md) (Swagger UI at `/docs` on each service). Data model: [docs/data-model.md](docs/data-model.md). Unit tests: [docs/testing/unit-tests.md](docs/testing/unit-tests.md). Acceptance tests: [docs/testing/README.md](docs/testing/README.md). Acceptance criteria still missing from Done stories: [docs/testing/acceptance-gaps.md](docs/testing/acceptance-gaps.md).
 
 **Important distinction:** `frontend/src/api/*.js` files are NOT microservices — they are thin axios wrappers that send HTTP requests. The actual microservices (business logic, database access) are Python FastAPI apps living under `services/`. The two are separate codebases that only communicate over HTTP.
 

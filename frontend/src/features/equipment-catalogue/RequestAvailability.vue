@@ -44,18 +44,38 @@
             <template v-if="request.reviewedAt"> at {{ formatWhen(request.reviewedAt) }}</template>
           </p>
           <p v-if="request.reviewNote" class="notes">{{ request.reviewNote }}</p>
+          <p v-if="request.status === 'partial'" class="notes" data-testid="equipment-shortfall">
+            {{ request.reservedQuantity }} reserved, {{ request.shortfall }} short.
+          </p>
+          <p v-if="request.alternativeEquipmentId" class="notes">
+            Suggested instead: {{ equipmentName(request.alternativeEquipmentId) }}
+          </p>
           <p v-if="actionError[request.requestId]" class="error">{{ actionError[request.requestId] }}</p>
           <div v-if="request.status === 'pending' && decisionFor !== request.requestId" class="actions">
             <button type="button" class="btn btn-solid small" :disabled="busy === request.requestId" @click="accept(request)">Accept</button>
             <button type="button" class="btn btn-ghost small" :disabled="busy === request.requestId" @click="startDecision(request, 'reject')">Reject</button>
             <button type="button" class="btn btn-ghost small" :disabled="busy === request.requestId" @click="startDecision(request, 'unavailable')">Mark unavailable</button>
+            <button type="button" class="btn btn-ghost small" data-testid="equipment-partial" :disabled="busy === request.requestId" @click="startDecision(request, 'partial')">Partly fulfil</button>
           </div>
-          <div v-else-if="request.status === 'approved'" class="actions">
+          <div v-else-if="request.status === 'approved' && decisionFor !== request.requestId" class="actions">
             <button type="button" class="btn btn-solid small" data-testid="equipment-reserve" :disabled="busy === request.requestId" @click="reserve(request)">Reserve</button>
+            <button type="button" class="btn btn-ghost small" data-testid="equipment-partial" :disabled="busy === request.requestId" @click="startDecision(request, 'partial')">Partly fulfil</button>
           </div>
+          <!-- SPM-77 AC1 and AC2: unavailable with an optional alternative, or partly reserved with the shortfall. -->
           <form v-if="decisionFor === request.requestId" class="unavailable-form" @submit.prevent="confirmDecision(request)">
+            <label v-if="decisionKind === 'partial'">
+              Units to reserve now (of {{ request.quantity }})
+              <input v-model.number="decisionQuantity" type="number" min="0" :max="request.quantity - 1" required data-testid="equipment-partial-quantity" />
+            </label>
             <label>Reason<input v-model="decisionReason" required /></label>
             <label v-if="decisionKind === 'unavailable'">Note<input v-model="decisionNote" /></label>
+            <label v-if="decisionKind === 'unavailable'">
+              Suggest an alternative (optional)
+              <select v-model="decisionAlternative" data-testid="equipment-alternative">
+                <option value="">No suggestion</option>
+                <option v-for="option in alternatives(request)" :key="option.id" :value="option.id">{{ option.name }}</option>
+              </select>
+            </label>
             <div class="actions">
               <button type="button" class="btn btn-ghost small" @click="cancelDecision(request)">Cancel</button>
               <button type="submit" class="btn btn-solid small" :disabled="busy === request.requestId || !decisionReason.trim()">Save</button>
@@ -63,6 +83,55 @@
           </form>
         </li>
       </ul>
+      <!-- SPM-77 AC6: the whole request reviewed and complete marks the equipment arrangement ready. -->
+      <div v-if="reviewable(group).length" class="actions group-actions">
+        <button
+          type="button"
+          class="btn btn-ghost small"
+          data-testid="equipment-complete-review"
+          :disabled="busy === group.eventId"
+          @click="completeReview(group)"
+        >
+          Mark review complete
+        </button>
+      </div>
+      <!-- SPM-78 and SPM-86: what is held for the event, to change, release, or re-confirm. -->
+      <section v-if="held(group.eventId).length" class="held" data-testid="equipment-reservations">
+        <h4>Reservations</h4>
+        <ul class="request-list">
+          <li v-for="row in held(group.eventId)" :key="row.reservationId" class="request-row" :data-testid="`reservation-${row.reservationId}`">
+            <div class="request-main">
+              <strong>{{ row.quantity }} × {{ row.equipmentName || equipmentName(row.equipmentId) }}</strong>
+              <span class="status">{{ row.status === 'partial' ? 'Partly reserved' : 'Reserved' }}</span>
+            </div>
+            <p v-if="row.needsReverification" class="notes flag" data-testid="reservation-reverify">
+              Needs re-verification<template v-if="row.reverificationNote">: {{ row.reverificationNote }}</template>
+            </p>
+            <p v-if="actionError[row.reservationId]" class="error">{{ actionError[row.reservationId] }}</p>
+            <div v-if="editingReservation !== row.reservationId" class="actions">
+              <button v-if="row.needsReverification" type="button" class="btn btn-solid small" data-testid="reservation-reconfirm" :disabled="busy === row.reservationId" @click="reconfirm(row)">Re-confirm</button>
+              <button type="button" class="btn btn-ghost small" data-testid="reservation-adjust" :disabled="busy === row.reservationId" @click="startReservation(row, 'adjust')">Change quantity</button>
+              <button type="button" class="btn btn-ghost small" data-testid="reservation-release" :disabled="busy === row.reservationId" @click="startReservation(row, 'release')">Release</button>
+            </div>
+            <form v-else class="unavailable-form" @submit.prevent="saveReservation(row)">
+              <label v-if="reservationKind === 'adjust'">
+                New quantity
+                <input v-model.number="reservationQuantity" type="number" min="0" required data-testid="reservation-quantity" />
+              </label>
+              <label v-else>
+                Reason (required once the event is confirmed)
+                <input v-model="reservationReason" data-testid="reservation-reason" />
+              </label>
+              <div class="actions">
+                <button type="button" class="btn btn-ghost small" @click="editingReservation = ''">Cancel</button>
+                <button type="submit" class="btn btn-solid small" :disabled="busy === row.reservationId" data-testid="reservation-save">
+                  {{ reservationKind === 'adjust' ? 'Save quantity' : 'Release' }}
+                </button>
+              </div>
+            </form>
+          </li>
+        </ul>
+      </section>
     </article>
   </div>
 </template>
@@ -70,10 +139,16 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import {
+  adjustEquipmentReservation,
   checkEquipmentAvailability,
+  completeEquipmentReview,
   getEquipmentList,
   getEquipmentRequests,
+  getEventReservations,
   markEquipmentRequestUnavailable,
+  reconfirmEquipmentReservation,
+  recordPartialFulfilment,
+  releaseEquipmentReservation,
   reserveEquipmentRequest,
   reviewEquipmentRequest,
 } from '../../api/equipmentService.js'
@@ -95,6 +170,17 @@ const decisionFor = ref('')
 const decisionKind = ref('')
 const decisionReason = ref('')
 const decisionNote = ref('')
+const decisionQuantity = ref(0)
+const decisionAlternative = ref('')
+// Reservations held for each event, by event id.
+const reservations = ref({})
+const editingReservation = ref('')
+const reservationKind = ref('')
+const reservationQuantity = ref(0)
+const reservationReason = ref('')
+// Lines that are still being worked on; a complete, rejected or cancelled line needs no review.
+const OPEN_LINES = ['pending', 'approved', 'reserved', 'partial', 'unavailable', 'attention', 'resolved']
+const HELD = ['active', 'reserved', 'partial']
 
 const groups = computed(() => {
   const grouped = new Map()
@@ -111,12 +197,30 @@ function equipmentName(equipmentId) {
   return names.value[equipmentId] || equipmentId
 }
 
+function alternatives(request) {
+  return Object.entries(names.value)
+    .filter(([id]) => id !== request.equipmentId)
+    .map(([id, name]) => ({ id, name }))
+}
+
+function held(eventId) {
+  return (reservations.value[eventId] || []).filter((row) => HELD.includes(row.status))
+}
+
+function reviewable(group) {
+  return group.requests.filter((request) => OPEN_LINES.includes(request.status))
+}
+
 function statusLabel(status) {
   if (status === 'pending') return 'Requested'
   if (status === 'approved') return 'Accepted'
   if (status === 'reserved') return 'Reserved'
   if (status === 'unavailable') return 'Unavailable'
   if (status === 'rejected') return 'Rejected'
+  if (status === 'partial') return 'Partly reserved'
+  if (status === 'resolved') return 'Shortfall accepted'
+  if (status === 'complete') return 'Review complete'
+  if (status === 'attention') return 'Needs attention'
   return status
 }
 
@@ -135,9 +239,17 @@ function detail(err, fallback) {
   return typeof message === 'string' ? message : fallback
 }
 
+async function loadReservations(eventIds) {
+  const rows = await Promise.all(
+    eventIds.map((eventId) => getEventReservations(eventId).then(({ data }) => [eventId, data]).catch(() => [eventId, []]))
+  )
+  reservations.value = { ...reservations.value, ...Object.fromEntries(rows) }
+}
+
 async function reload() {
   const { data } = await getEquipmentRequests()
   requests.value = data
+  await loadReservations(groups.value.map((group) => group.eventId))
 }
 
 async function run(request, action) {
@@ -166,6 +278,8 @@ function startDecision(request, kind) {
   decisionKind.value = kind
   decisionReason.value = ''
   decisionNote.value = ''
+  decisionAlternative.value = ''
+  decisionQuantity.value = Math.max(0, request.quantity - 1)
   actionError.value = { ...actionError.value, [request.requestId]: '' }
 }
 
@@ -188,11 +302,63 @@ function confirmDecision(request) {
   return run(request, async () => {
     if (kind === 'reject') {
       await reviewEquipmentRequest(request.requestId, { approve: false, reviewNote: reason })
+    } else if (kind === 'partial') {
+      await recordPartialFulfilment(request.requestId, Number(decisionQuantity.value) || 0, reason)
     } else {
-      await markEquipmentRequestUnavailable(request.requestId, { reason, note })
+      await markEquipmentRequestUnavailable(request.requestId, {
+        reason,
+        note,
+        alternativeEquipmentId: decisionAlternative.value || null,
+      })
     }
     decisionFor.value = ''
   })
+}
+
+async function completeReview(group) {
+  busy.value = group.eventId
+  error.value = ''
+  try {
+    for (const request of reviewable(group)) await completeEquipmentReview(request.requestId)
+    await reload()
+  } catch (err) {
+    error.value = detail(err, 'The review could not be marked complete.')
+  } finally {
+    busy.value = ''
+  }
+}
+
+function startReservation(row, kind) {
+  editingReservation.value = row.reservationId
+  reservationKind.value = kind
+  reservationQuantity.value = row.quantity
+  reservationReason.value = ''
+  actionError.value = { ...actionError.value, [row.reservationId]: '' }
+}
+
+async function runReservation(row, action) {
+  busy.value = row.reservationId
+  actionError.value = { ...actionError.value, [row.reservationId]: '' }
+  try {
+    await action()
+    editingReservation.value = ''
+    await reload()
+  } catch (err) {
+    actionError.value = { ...actionError.value, [row.reservationId]: detail(err, 'This change could not be saved.') }
+  } finally {
+    busy.value = ''
+  }
+}
+
+function saveReservation(row) {
+  if (reservationKind.value === 'adjust') {
+    return runReservation(row, () => adjustEquipmentReservation(row.reservationId, Number(reservationQuantity.value) || 0))
+  }
+  return runReservation(row, () => releaseEquipmentReservation(row.reservationId, reservationReason.value.trim()))
+}
+
+function reconfirm(row) {
+  return runReservation(row, () => reconfirmEquipmentReservation(row.reservationId))
 }
 
 async function check(eventId) {
@@ -210,6 +376,7 @@ onMounted(async () => {
     const [requestList, equipmentList] = await Promise.all([getEquipmentRequests(), getEquipmentList()])
     requests.value = requestList.data
     names.value = Object.fromEntries(equipmentList.data.map((item) => [item.equipmentId, item.name]))
+    await loadReservations(groups.value.map((group) => group.eventId))
   } catch {
     error.value = 'Unable to load equipment requests. Please try again.'
   } finally {
@@ -238,9 +405,14 @@ th, td { text-align: left; padding: 8px 10px 8px 0; border-bottom: 1px solid var
 .status { font-size: 12px; color: var(--muted); }
 .notes, .meta { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.group-actions { justify-content: flex-end; }
+.held { margin-top: 16px; }
+.held h4 { margin: 0; font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+.flag { color: #ffd38a; }
 .unavailable-form { display: grid; gap: 8px; margin-top: 10px; }
 .unavailable-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
-.unavailable-form input {
+.unavailable-form input,
+.unavailable-form select {
   background: rgba(255, 255, 255, .04);
   border: 1px solid var(--hairline);
   border-radius: var(--radius);

@@ -213,9 +213,15 @@ test.describe('SPM-120 Safety review after venue and technical arrangements are 
     const stored = await eventApi('GET', `/${event.eventId}`, 'EC-01')
     expect(stored.body.status).toBe('planning')
 
+    // AC09: the coordinator and organiser are told, with the reason, that it is not cancelled.
     for (const accountId of ['EC-01', 'EO-01']) {
-      const inbox = await notificationApi('GET', '/notifications', accountId)
-      expect(JSON.stringify(inbox.body), accountId).toContain(`${event.eventName} did not pass its safety review`)
+      await expect
+        .poll(async () => {
+          const inbox = await notificationApi('GET', '/notifications?pageSize=50', accountId)
+          const notice = (inbox.body || []).find((row) => row.eventId === event.eventId && row.type === 'safety.rejected')
+          return notice ? notice.body : ''
+        }, { message: accountId })
+        .toMatch(new RegExp(`rejected the plan for ${event.eventName}.*not cancelled`))
     }
 
     const again = await submit(event)

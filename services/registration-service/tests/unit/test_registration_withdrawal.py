@@ -10,7 +10,7 @@ from app.dao.registration_window_dao import RegistrationWindowDAO
 from app.models.attendee_registration import AttendeeRegistration
 from app.services.registration_service import RegistrationService
 from shared.testing.cases import ServiceTestCase
-from tests.unit.support import confirmed_event, make_window
+from tests.unit.support import RecordingClient, confirmed_event, make_window
 
 INSTANT = datetime(2026, 10, 6, 9, 0, 0)
 
@@ -19,23 +19,6 @@ class FrozenClock(datetime):
     @classmethod
     def utcnow(cls):
         return INSTANT
-
-
-class RecordingClient:
-    calls = []
-
-    def __init__(self, timeout):
-        self.timeout = timeout
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
-
-    def post(self, url, json=None, headers=None):
-        RecordingClient.calls.append({"url": url, "json": json, "headers": headers})
-        return None
 
 
 class FailingClient:

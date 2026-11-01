@@ -19,7 +19,7 @@ test.describe('SPM-82 Submit an event request for review', () => {
   })
 
   test('TC-SPM82-AC02 a complete draft becomes Submitted with a timestamp and appears in the review queue', async () => {
-    const draft = await eventApi('POST', '', 'EO-01', completeRequestPayload('AUTO-SPM82-submit'))
+    const draft = await eventApi('POST', '/drafts', 'EO-01', completeRequestPayload('AUTO-SPM82-submit'))
     const submitted = await submitEvent(draft.body.eventId)
     expect(submitted.status).toBe(200)
     expect(submitted.body.status).toMatch(/submitted/i)
@@ -31,7 +31,7 @@ test.describe('SPM-82 Submit an event request for review', () => {
   test('TC-SPM82-AC03 the organiser sees immediate confirmation naming the event and its reference', async ({
     page,
   }) => {
-    const draft = await eventApi('POST', '', 'EO-01', completeRequestPayload('AUTO-SPM82-confirm'))
+    const draft = await eventApi('POST', '/drafts', 'EO-01', completeRequestPayload('AUTO-SPM82-confirm'))
     await login(page, account('EO-01'))
     await page.goto(`/app/events/${draft.body.eventId}`)
     await page.getByTestId('event-submit').click()
@@ -73,7 +73,7 @@ test.describe('SPM-82 Submit an event request for review', () => {
     const start = new Date(Date.now() + 3 * 60 * 60 * 1000)
     const draft = await eventApi(
       'POST',
-      '',
+      '/drafts',
       'EO-01',
       completeRequestPayload('AUTO-SPM82-soon', {
         proposedStartAt: start.toISOString(),

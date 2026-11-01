@@ -23,9 +23,10 @@ class EventCreate(BaseModel):
     """
 
     eventName: str = Field(min_length=1, max_length=255)
-    purpose: str = ""
+    # SPM-14 AC1 / SPM-82 AC1: category and purpose are required to submit, like the name and dates.
+    purpose: str = Field(description="Required to submit.")
     description: str = ""
-    category: str | None = None
+    category: str = Field(description="Required to submit.")
     proposedStartAt: datetime
     proposedEndAt: datetime
     expectedAttendance: int = Field(ge=1, description="At least one. A draft may still save zero.")
@@ -37,6 +38,11 @@ class EventCreate(BaseModel):
     registrationOpensAt: datetime | None = None
     registrationClosesAt: datetime | None = None
     capacity: int = Field(default=0, ge=0, description="Intended registration cap.")
+
+    @field_validator("purpose", "category", mode="before")
+    @classmethod
+    def present(cls, value):
+        return _required_text(value or "")
 
     @model_validator(mode="after")
     def check_windows(self):
@@ -1187,7 +1193,8 @@ class EventIntake(BaseModel):
             category=self.category,
             proposedStartAt=self.proposedStartAt,
             proposedEndAt=self.proposedEndAt,
-            expectedAttendance=self.expectedAttendance if self.expectedAttendance is not None else 1,
+            # SPM-14 AC1: attendance must be stated to submit, so a missing one is listed, not assumed.
+            expectedAttendance=self.expectedAttendance,
             venueRequirements=self.venueRequirements,
             accessibilityNeeds=needs or "",
             equipmentRequirements=self.equipmentRequirements,

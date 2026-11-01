@@ -65,7 +65,7 @@
           type="button"
           class="btn btn-solid"
           data-testid="event-register"
-          @click="open(event.eventId)"
+          @click="open(event.eventId, true)"
         >
           Register
         </button>
@@ -108,8 +108,8 @@ function timePart(value) {
   return formatSgtTime(value)
 }
 
-function open(eventId) {
-  router.push(`/app/browse/${eventId}`)
+function open(eventId, register = false) {
+  router.push({ path: `/app/browse/${eventId}`, query: register ? { register: '1' } : {} })
 }
 
 onMounted(async () => {

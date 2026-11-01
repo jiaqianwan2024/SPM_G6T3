@@ -13,7 +13,10 @@ CLOSES = datetime(2026, 10, 1, 18, 0)
 
 class TestRegistrationNeededAtIntake(unittest.TestCase):
     def intake(self, **overrides):
-        data = dict(eventName="Summit", proposedStartAt=START, proposedEndAt=END, expectedAttendance=20)
+        data = dict(
+            eventName="Summit", category="Conference", purpose="Share", proposedStartAt=START, proposedEndAt=END,
+            expectedAttendance=20,
+        )
         data.update(overrides)
         return EventIntake(**data)
 

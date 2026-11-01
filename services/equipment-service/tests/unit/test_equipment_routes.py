@@ -94,6 +94,10 @@ class TestEquipmentRoutes(ServiceTestCase):
         requests = self.client.get("/equipment/requests", headers=self.headers)
         self.assertEqual(requests.status_code, 200)
         self.assertTrue(any(row["eventId"] == "e2" for row in requests.json()))
+        # One event's requests only, rather than the whole table filtered by the caller.
+        for event_id, expected in (("e2", ["e2"]), ("e-none", [])):
+            filtered = self.client.get("/equipment/requests", params={"eventId": event_id}, headers=self.headers)
+            self.assertEqual([row["eventId"] for row in filtered.json()], expected)
         checked = self.client.post("/equipment/availability", json={"eventId": "e2"})
         self.assertEqual(checked.status_code, 200)
         self.assertTrue(checked.json()["canMeet"])

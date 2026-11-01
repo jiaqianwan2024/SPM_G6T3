@@ -38,7 +38,7 @@ from app.schemas.equipment import (
     TechDashboardOut,
     UpcomingEventOut,
 )
-from app.orchestration.clients import check_event_access, fetch_event_coordinator, fetch_upcoming_events, fetch_venue_name
+from app.orchestration.clients import check_event_access, fetch_event_coordinator, fetch_upcoming_events, fetch_venue_names
 from app.services.equipment_service import EquipmentService, require_assigned_coordinator
 from shared.auth.deps import forwarded_bearer
 from shared.auth.roles import resolve_caller
@@ -112,7 +112,8 @@ def upcoming_events_queue(
 ):
     _technical_support(authorization)
     events = fetch_upcoming_events(authorization)
-    return service.upcoming_queue(events, fetch_venue_name, state, dateFrom, dateTo)
+    names = fetch_venue_names([event["eventId"] for event in events])
+    return service.upcoming_queue(events, lambda event_id: names.get(event_id, ""), state, dateFrom, dateTo)
 
 
 @router.get(
@@ -383,6 +384,7 @@ def flag_reservations_for_reverification(
     responses=error_responses(403, 503),
 )
 def list_requests(
+    eventId: str | None = Query(None, description="Only this event's requests."),
     authorization: str | None = Depends(forwarded_bearer),
     service: EquipmentService = Depends(get_equipment_service),
 ):
@@ -391,7 +393,7 @@ def list_requests(
         settings.user_service_url,
         allowed_roles={"techsupport", "coordinator"},
     )
-    return service.list_requests()
+    return service.list_requests(eventId)
 
 
 @router.get(
@@ -423,7 +425,7 @@ def update_equipment(
     service: EquipmentService = Depends(get_equipment_service),
 ):
     caller = _technical_support(authorization)
-    return service.update_equipment(equipment_id, body, caller)
+    return service.update_equipment(equipment_id, body, caller, authorization)
 
 
 @router.get(

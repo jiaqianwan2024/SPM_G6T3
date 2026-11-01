@@ -89,6 +89,11 @@ export const CONFIRMATION_PATH_STATUSES = ['approved', 'planning', 'safety revie
 // review once its venue and equipment are confirmed ("approved" is planning's older name).
 export const SAFETY_SUBMITTABLE_STATUSES = ['approved', 'planning']
 
+// SPM-87 AC1: statuses an event can be rescheduled from, as event-service's RESCHEDULABLE_STATUSES.
+export const RESCHEDULABLE_STATUSES = [
+  'approved', 'planning', 'safety review', 'safety approved', 'preparing', 'prepared', 'confirmed', 'reconsidering',
+]
+
 // An assigned request under review, or waiting on the organiser. Its assigned
 // coordinator can raise clarifications on it (SPM-68) or approve it (SPM-69).
 export const IN_REVIEW_EVENT_STATUSES = ['under review', 'changes requested']

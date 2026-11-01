@@ -7,9 +7,16 @@ user-service's /users/me, which re-verifies it and returns the local user
 record. This mirrors event-service's existing `current_organiser` pattern,
 generalized to an arbitrary allowed-role set for reuse across services.
 """
+import ssl
+
 import httpx
 
 from shared.exceptions.http import forbidden, service_unavailable, unauthorized
+
+# Every request to every service makes this check. A new httpx.Client loads the TLS trust
+# store again unless it is handed a context, which costs about 200 ms a call on Windows, so
+# one context made at import is shared by every client here.
+_TLS = ssl.create_default_context()
 
 
 def resolve_caller(
@@ -27,7 +34,7 @@ def resolve_caller(
     if not authorization:
         raise unauthorized()
     try:
-        with httpx.Client(timeout=timeout) as client:
+        with httpx.Client(timeout=timeout, verify=_TLS) as client:
             response = client.get(
                 f"{user_service_url}/users/me",
                 headers={"Authorization": authorization},

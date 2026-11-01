@@ -57,7 +57,27 @@ class TestPublish(ServiceTestCase):
             with self.subTest(trigger=key):
                 _, body, link = notifier.render(trigger, "e9", context)
                 self.assertIn("AI in Events Summit", body)
-                self.assertIn(link, ("/app/events/e9", "/app/events/e9/equipment"))
+                self.assertIn(
+                    link,
+                    (
+                        "/app/events/e9",
+                        "/app/events/e9/equipment",
+                        "/app/events/e9/registrations",
+                        "/app/events/e9/readiness",
+                        "/app/events/e9/venues",
+                    ),
+                )
+
+    def test_a_full_event_tells_the_organiser_and_coordinator_and_links_the_registration_list(self):
+        # SPM-11 AC10.
+        title, body, link = notifier.render(
+            TRIGGERS["registration.full"], "e9", {"eventName": "AI in Events Summit", "capacity": "120"}
+        )
+
+        self.assertEqual(title, "AI in Events Summit is full")
+        self.assertIn("registration capacity of 120", body)
+        self.assertEqual(link, "/app/events/e9/registrations")
+        self.assertEqual(TRIGGERS["registration.full"].recipient_roles, frozenset({"coordinator", "organiser"}))
 
     def test_a_cancellation_reaches_attendees_and_staff_with_the_reason(self):
         people = [

@@ -5,11 +5,12 @@ from datetime import datetime, timedelta
 from app.core.config import settings
 from app.core.sgt import to_sgt
 from app.dao.event_dao import EventDAO
+from app.dao.event_readiness_dao import EventReadinessDAO
 from app.models.event import Event
-from app.orchestration.clients import arrangement_inputs, publish_notification, users_with_roles
+from app.orchestration.clients import arrangement_inputs, expired_holds, publish_notification, users_with_roles
 from app.schemas.reminders import OutstandingOut, ReminderEventOut, ReminderRunOut, ReminderSkippedOut
 from app.services.audiences import people
-from app.services.event_followup import EventFollowUp
+from app.services.event_followup import DUE_SOON, READY_STATUSES, EventFollowUp
 from app.services.event_service import COORDINATOR_LEAD, LOCKED_STATUSES
 from shared.services.base import BaseService
 
@@ -26,6 +27,7 @@ class EventReminders(BaseService):
         super().__init__(db)
         self.events = EventDAO(db)
         self.followup = EventFollowUp(db)
+        self.readiness = EventReadinessDAO(db)
 
     def run(self, now: datetime | None = None) -> ReminderRunOut:
         """Looks at every event starting within the lead time that is not closed, and
@@ -43,7 +45,69 @@ class EventReminders(BaseService):
                 skipped.append(outcome)
             elif outcome is not None:
                 reminded.append(outcome)
-        return ReminderRunOut(ranAt=now, leadDays=lead, checked=len(rows), reminded=reminded, skipped=skipped)
+        return ReminderRunOut(
+            ranAt=now,
+            leadDays=lead,
+            checked=len(rows),
+            reminded=reminded,
+            skipped=skipped,
+            dueSoonItems=self._alert_due_soon(now),
+            expiredHolds=self._announce_expired_holds(now),
+        )
+
+    def _announce_expired_holds(self, now: datetime) -> list[str]:
+        """SPM-93 AC4 / SPM-116 AC5: the coordinator hears when a tentative hold runs out, and the
+        venue is free again. The last two days are looked at so a missed day is caught up; a
+        notice is one occurrence per booking and expiry, so nobody is told twice."""
+        rows = expired_holds(now - timedelta(days=2), now) or []
+        told = []
+        for row in rows:
+            event = self.events.get_by_id(row["eventId"])
+            if event is None or event.status in LOCKED_STATUSES or not event.coordinatorId:
+                continue
+            expired = datetime.fromisoformat(str(row["expiresAt"]).replace("Z", ""))
+            if publish_notification(
+                "hold.expired",
+                event.eventId,
+                f"{event.eventId}:hold.expired:{row['bookingId']}:{expired:%Y%m%d%H%M}",
+                people(event, ["coordinator"], {}),
+                {
+                    "eventName": event.eventName,
+                    "venueName": row["venueName"],
+                    "expiredAt": f"{to_sgt(expired):%d %b %Y %H:%M} SGT",
+                },
+                resource={"type": "booking", "id": row["bookingId"]},
+            ):
+                told.append(row["bookingId"])
+        return told
+
+    def _alert_due_soon(self, now: datetime) -> list[str]:
+        """SPM-5 AC8: a readiness line item that falls due within DUE_SOON, the same window the
+        readiness view flags, and is not ready alerts the event's coordinator, or the Lead while
+        nobody is assigned. One alert per item per due date, so the daily run does not repeat it."""
+        alerted = []
+        for item in self.readiness.list_due_between(now, now + DUE_SOON):
+            event = self.events.get_by_id(item.eventId)
+            if event is None or event.status in LOCKED_STATUSES or item.status in READY_STATUSES:
+                continue
+            audience = "coordinator" if event.coordinatorId else COORDINATOR_LEAD
+            directory = {} if event.coordinatorId else users_with_roles([COORDINATOR_LEAD]) or {}
+            published = publish_notification(
+                "readiness.due_soon",
+                event.eventId,
+                f"{event.eventId}:readiness.due_soon:{item.itemId}:{item.dueAt:%Y%m%d%H%M}",
+                people(event, [audience], directory),
+                {
+                    "eventName": event.eventName,
+                    "category": item.category,
+                    "dueDate": f"{to_sgt(item.dueAt):%d %b %Y %H:%M} SGT",
+                    "status": item.status.replace("_", " "),
+                },
+                resource={"type": "readiness_item", "id": item.itemId},
+            )
+            if published:
+                alerted.append(item.itemId)
+        return alerted
 
     def run_for_event(self, event_id: str, now: datetime | None = None) -> ReminderEventOut | ReminderSkippedOut | None:
         """SPM-87 AC10: after a reschedule the event's reminder follows its new date at once,

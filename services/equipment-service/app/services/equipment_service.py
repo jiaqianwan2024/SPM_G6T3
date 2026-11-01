@@ -130,6 +130,10 @@ def _conflicting_events(rows: list[EquipmentReservation]) -> list[dict]:
     return [{"eventId": event_id, "quantity": totals[event_id]} for event_id in sorted(totals)]
 
 
+# SPM-78 AC4: an event already confirmed, including one being reconsidered after a change (SPM-71).
+CONFIRMED_EVENT_STATUSES = ("confirmed", "reconsidering")
+
+
 def _events_over_serviceable(rows: list[EquipmentReservation], serviceable: int) -> list[str]:
     points = []
     for row in rows:
@@ -383,7 +387,9 @@ class EquipmentService(BaseService):
         self.db.refresh(row)
         return self._equipment_out(row)
 
-    def update_equipment(self, equipment_id: str, data: EquipmentUpdate, caller: dict) -> EquipmentOut:
+    def update_equipment(
+        self, equipment_id: str, data: EquipmentUpdate, caller: dict, authorization: str | None = None
+    ) -> EquipmentOut:
         row = self._require_equipment(equipment_id)
         total = data.totalQuantity if data.totalQuantity is not None else row.totalQuantity
         damaged = data.outOfService.damaged if data.outOfService is not None else row.damagedCount
@@ -430,7 +436,26 @@ class EquipmentService(BaseService):
             self.db.rollback()
             raise conflict("An equipment record with this code already exists") from exc
         self.db.refresh(row)
+        self._notify_short_events(row, blocked, caller, authorization)
         return self._equipment_out(row)
+
+    def _notify_short_events(
+        self, row: EquipmentInfo, event_ids: list[str], caller: dict, authorization: str | None
+    ) -> None:
+        """SPM-75 AC6: once technical support acknowledge that fewer units are in service than
+        are reserved, each affected event's coordinator is told. Best effort: the change is saved."""
+        at = datetime.utcnow()
+        for event_id in event_ids:
+            record = _event_record(event_id, authorization) or {"eventId": event_id}
+            publish_notification(
+                "equipment.out_of_service",
+                event_id,
+                f"{event_id}:equipment.out_of_service:{row.equipmentId}:{at:%Y%m%d%H%M%S}",
+                event_recipients(record, ("coordinator",)),
+                {"eventName": record.get("eventName") or event_id, "equipmentName": row.name},
+                actor_id=caller.get("userId"),
+                resource={"type": "equipment", "id": row.equipmentId},
+            )
 
     def check_availability(self, data: EquipmentAvailabilityIn) -> EquipmentAvailabilityOut:
         row = self._require_equipment(data.equipmentId)
@@ -999,8 +1024,13 @@ class EquipmentService(BaseService):
         row = self._require(self.reservation_dao.get_by_id(reservation_id), "Reservation not found")
         if row.status not in ("active", "reserved"):
             raise conflict(f"Reservation is already {row.status}")
-        record = _event_record(row.eventId, authorization) or {}
-        if record.get("status") == "confirmed" and not reason.strip():
+        record = _event_record(row.eventId, authorization)
+        # SPM-78 AC4: a confirmed event, including one whose arrangements are being reconsidered,
+        # may no longer be deliverable, so a release needs a reason. An event that could not be
+        # read for a signed-in caller is treated the same, rather than let it lose stock without one.
+        unreadable = record is None and authorization is not None
+        record = record or {}
+        if (unreadable or record.get("status") in CONFIRMED_EVENT_STATUSES) and not reason.strip():
             raise HTTPException(status_code=422, detail="A reason is required to release a confirmed event's reservation")
         previous = row.quantity
         row.status = "released"
@@ -1016,7 +1046,7 @@ class EquipmentService(BaseService):
         )
         self.db.commit()
         self.db.refresh(row)
-        if record.get("status") == "confirmed":
+        if record.get("status") in CONFIRMED_EVENT_STATUSES:
             publish_notification(
                 "equipment.released",
                 row.eventId,
@@ -1028,8 +1058,9 @@ class EquipmentService(BaseService):
             )
         return _reservation_to_out(row)
 
-    def list_requests(self) -> list[EquipmentRequestOut]:
-        return [_request_to_out(row) for row in self.request_dao.list_all()]
+    def list_requests(self, event_id: str | None = None) -> list[EquipmentRequestOut]:
+        rows = self.request_dao.list_for_event(event_id) if event_id else self.request_dao.list_all()
+        return [_request_to_out(row) for row in rows]
 
     def get_request(self, request_id: str) -> EquipmentRequestOut:
         return _request_to_out(self._require_request(request_id))

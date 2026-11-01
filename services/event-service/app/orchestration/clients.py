@@ -458,8 +458,13 @@ def venue_details(venue_id: str, authorization: str | None) -> dict:
 
 def equipment_requests_for(event_id: str, authorization: str | None) -> list[dict]:
     rows = _arrangement_rows(
-        "GET", f"{settings.equipment_service_url}/equipment/requests", authorization, ARRANGEMENTS_UNCHECKED
+        "GET",
+        f"{settings.equipment_service_url}/equipment/requests",
+        authorization,
+        ARRANGEMENTS_UNCHECKED,
+        params={"eventId": event_id},
     )
+    # Kept as a guard: an older equipment-service ignores the filter and answers with every event.
     return [row for row in rows if row.get("eventId") == event_id]
 
 
@@ -518,6 +523,18 @@ def _service_get(url: str, params: dict | None = None):
     return response.json()
 
 
+def handoff_arrangements(event_id: str) -> tuple[list, list, list]:
+    """SPM-120, change 6: the event's venue bookings, equipment requests and reservations, read
+    with the service key. Venue Staff may not read equipment rows and technical support may not
+    read venue bookings, yet each sends their part of the same handoff. Strict like the user-token
+    reads: 503 when either service cannot be read, so nothing is judged unchecked."""
+    bookings = _service_get(f"{settings.venue_service_url}/internal/venues/bookings", {"eventId": event_id})
+    equipment = _service_get(f"{settings.equipment_service_url}/internal/equipment/events/{event_id}/arrangements")
+    if not isinstance(bookings, list) or not isinstance(equipment, dict):
+        raise service_unavailable(ARRANGEMENTS_UNCHECKED)
+    return bookings, equipment.get("requests", []), equipment.get("reservations", [])
+
+
 def arrangement_inputs(event_id: str) -> tuple[list, list, dict] | None:
     """SPM-95: an event's equipment requests, equipment reservations and venue summary, as
     the readiness view reads them. None when either service cannot be read, so an outage is
@@ -527,6 +544,15 @@ def arrangement_inputs(event_id: str) -> tuple[list, list, dict] | None:
     if not isinstance(equipment, dict) or not isinstance(venue, dict):
         return None
     return equipment.get("requests", []), equipment.get("reservations", []), venue
+
+
+def expired_holds(since: datetime, until: datetime) -> list[dict] | None:
+    """SPM-93 AC4: venue holds that ran out in (since, until]. None when venue-service cannot be read."""
+    rows = _service_get(
+        f"{settings.venue_service_url}/internal/venues/holds/expired",
+        {"since": since.isoformat(), "until": until.isoformat()},
+    )
+    return rows if isinstance(rows, list) else None
 
 
 def users_with_roles(roles: list[str]) -> dict[str, dict] | None:

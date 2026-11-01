@@ -35,21 +35,73 @@
           </div>
         </dl>
       </section>
+
+      <!-- SPM-11: register, or see the registration already held (AC3, AC5). -->
+      <section v-if="mine" class="panel register" data-testid="existing-registration">
+        <p class="register-done" data-testid="register-confirmation">
+          You are registered for <strong>{{ event.eventName }}</strong><template v-if="schedule">, {{ schedule }}</template>,
+          at {{ venue }}.
+        </p>
+        <p class="muted">
+          Registered as {{ mine.attendeeName }} ({{ mine.attendeeEmail }}).
+          <RouterLink :to="`/app/registrations/${mine.attendeeRegistrationId}`">View or withdraw</RouterLink>
+        </p>
+      </section>
+      <p v-else-if="event.full" class="panel notice" data-testid="event-full">
+        This event is full, so registration is unavailable. A place may open up if someone withdraws.
+      </p>
+      <section v-else-if="openForRegistration" class="panel register">
+        <button v-if="!registering" type="button" class="btn btn-solid" data-testid="event-register" @click="registering = true">
+          Register
+        </button>
+        <form v-else class="register-form" novalidate @submit.prevent="submit">
+          <label for="register-name">Name</label>
+          <input id="register-name" v-model.trim="form.name" autocomplete="name" data-testid="register-name" />
+          <p v-if="attempted && !form.name" class="field-error" data-testid="register-name-error">Enter your name.</p>
+          <label for="register-email">Email</label>
+          <input id="register-email" v-model.trim="form.email" type="email" autocomplete="email" data-testid="register-email" />
+          <p v-if="attempted && emailError" class="field-error" data-testid="register-email-error">{{ emailError }}</p>
+          <p v-if="submitError" class="form-error" data-testid="register-error">{{ submitError }}</p>
+          <div class="actions">
+            <button type="button" class="btn btn-ghost" @click="registering = false">Cancel</button>
+            <button type="submit" class="btn btn-solid" :disabled="saving" data-testid="register-submit">
+              {{ saving ? 'Registering…' : 'Register' }}
+            </button>
+          </div>
+        </form>
+      </section>
     </template>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getAttendeeCard, getOpenEvent } from '../../api/eventService.js'
+import { getMyRegistrations, registerForEvent } from '../../api/registrationService.js'
 import { formatSgt, formatSgtDate, formatSgtTime, parseServerTime } from '../../utils/datetime.js'
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const route = useRoute()
 const router = useRouter()
 const event = ref(null)
 const loading = ref(true)
 const error = ref('')
+// Only an event read from the open-for-registration list can be registered for.
+const openForRegistration = ref(false)
+const mine = ref(null)
+// The list's Register button opens the form straight away.
+const registering = ref(route.query.register === '1')
+const form = reactive({ name: '', email: '' })
+const attempted = ref(false)
+const saving = ref(false)
+const submitError = ref('')
+
+const emailError = computed(() => {
+  if (!form.email) return 'Enter your email address.'
+  return EMAIL.test(form.email) ? '' : 'Enter a valid email address, like name@example.com.'
+})
 
 const schedule = computed(() => {
   const start = event.value?.proposedStartAt || event.value?.startsAt
@@ -93,10 +145,43 @@ function back() {
   router.push({ path: '/app', query: { tab: 'Browse Events' } })
 }
 
+async function loadMine() {
+  try {
+    const { data } = await getMyRegistrations()
+    mine.value = data.find((row) => row.eventId === route.params.id && row.status === 'registered') || null
+  } catch {
+    mine.value = null
+  }
+}
+
+async function submit() {
+  attempted.value = true
+  submitError.value = ''
+  if (!form.name || emailError.value) return
+  saving.value = true
+  try {
+    const { data } = await registerForEvent(route.params.id, form.name, form.email)
+    mine.value = data
+    // AC4: the places left drop at once.
+    const { data: fresh } = await getOpenEvent(route.params.id).catch(() => ({ data: event.value }))
+    event.value = fresh
+  } catch (err) {
+    const detail = err.response?.data?.detail
+    submitError.value = typeof detail === 'string' ? detail : 'Your registration could not be saved. Please try again.'
+    // AC6 and AC8: someone else took the last place meanwhile.
+    if (/full|capacity/i.test(submitError.value)) event.value = { ...event.value, full: true, remaining: 0 }
+    if (/already registered/i.test(submitError.value)) await loadMine()
+  } finally {
+    saving.value = false
+  }
+}
+
 onMounted(async () => {
+  loadMine()
   try {
     const { data } = await getOpenEvent(route.params.id)
     event.value = data
+    openForRegistration.value = true
   } catch {
     // SPM-127: not open for registration, but still public to this attendee when it is
     // confirmed or they registered for it (a notification about it can lead here).
@@ -171,6 +256,22 @@ onMounted(async () => {
 }
 .facts dd { margin: 0; font-size: 14px; line-height: 1.5; color: var(--body); }
 .facts dd.full { color: #FFB4A8; }
+.register { margin-top: 16px; }
+.register-done { margin: 0 0 6px; font-size: 15px; color: var(--text); }
+.muted { margin: 0; font-size: 13px; color: var(--muted); }
+.notice { margin: 16px 0 0; font-size: 14px; color: #FFB4A8; }
+.register-form { display: grid; gap: 6px; max-width: 420px; }
+.register-form label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-top: 8px; }
+.register-form input {
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 9px 12px;
+  font-size: 14px;
+}
+.field-error { margin: 0; font-size: 12px; color: #FF8A76; }
+.register-form .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
 @media (max-width: 720px) {
   .browse-detail { padding: 22px 18px 36px; }
   .back { margin-left: 0; }

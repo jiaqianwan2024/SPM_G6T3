@@ -158,7 +158,9 @@ class EventFollowUp(BaseService):
         if not email and not phone:
             email = "coordinator@connectsphere.local"
         requests = _soft_get(
-            f"{settings.equipment_service_url}/equipment/requests", authorization
+            f"{settings.equipment_service_url}/equipment/requests",
+            authorization,
+            {"eventId": event.eventId},
         ) or []
         reservations = _soft_get(
             f"{settings.equipment_service_url}/equipment/reservations",

@@ -40,10 +40,14 @@ test.describe('SPM-105 View who has registered for my event', () => {
   })
 
   test('TC-SPM105-AC04 no other organiser, coordinator, or role can read the list, enforced on the server', async () => {
-    for (const id of ['EO-02', 'EC-02', 'VS-01', 'ATT-01']) {
+    for (const id of ['EO-02', 'EC-02', 'VS-01']) {
       const denied = await registrationApi('GET', '/registrations?eventId=e1', id)
       expect([403, 404], id).toContain(denied.status)
     }
+    // An attendee may see how many places are left (SPM-91), never who registered.
+    const attendee = await registrationApi('GET', '/registrations?eventId=e1', 'ATT-01')
+    expect([200, 403, 404]).toContain(attendee.status)
+    if (attendee.status === 200) expect(attendee.body.attendees).toEqual([])
   })
 
   test('TC-SPM105-AC05 when registration is not enabled, no registration list is offered', async ({

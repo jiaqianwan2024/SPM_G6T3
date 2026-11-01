@@ -53,9 +53,12 @@ class ReminderCase(EventCase):
         self.directory.start()
         self.sent = patch("app.services.reminders.publish_notification", return_value=True)
         self.publish = self.sent.start()
+        self.holds = patch("app.services.reminders.expired_holds", return_value=[])
+        self.expired = self.holds.start()
         self.reminders = EventReminders(self.db)
 
     def tearDown(self):
+        self.holds.stop()
         self.sent.stop()
         self.directory.stop()
         self.read.stop()
@@ -272,6 +275,117 @@ class TestNotReady(ReminderCase):
         self.assertEqual(pending, [{"category": "equipment", "status": "needs attention"}])
 
 
+class TestDueSoonAlerts(ReminderCase):
+    """SPM-5 AC8: a readiness line item nearing its due date alerts the coordinator."""
+
+    def item(self, item_id, event_id, due_in, status="outstanding"):
+        self.db.add(
+            EventReadinessItem(
+                itemId=item_id,
+                eventId=event_id,
+                category="Catering",
+                status=status,
+                dueAt=NOW + due_in,
+                assignedAt=NOW - timedelta(days=5),
+            )
+        )
+        self.db.commit()
+
+    def alerts(self):
+        return [call for call in self.publish.call_args_list if call.args[0] == "readiness.due_soon"]
+
+    def test_an_item_due_within_three_days_alerts_the_assigned_coordinator_once_per_due_date(self):
+        event_in(self.db, 30)  # beyond the event lead time, so only the item is due soon
+        self.item("i-soon", "e-30", timedelta(days=2))
+
+        result = self.reminders.run(NOW)
+
+        self.assertEqual(result.dueSoonItems, ["i-soon"])
+        (alert,) = self.alerts()
+        trigger, event_id, occurrence, recipients, context = alert.args
+        self.assertEqual(occurrence, "e-30:readiness.due_soon:i-soon:202610170900")
+        self.assertEqual(recipients, [{"userId": "coord-1", "role": "coordinator"}])
+        self.assertEqual(
+            context,
+            {"eventName": "AI in Events Summit", "category": "Catering", "dueDate": "17 Oct 2026 17:00 SGT", "status": "outstanding"},
+        )
+
+    def test_an_unassigned_event_alerts_the_lead(self):
+        event_in(self.db, 30, coordinatorId=None)
+        self.item("i-lead", "e-30", timedelta(hours=6), status="in_progress")
+
+        self.reminders.run(NOW)
+
+        (alert,) = self.alerts()
+        self.assertEqual(alert.args[3], [{"userId": "lead-1", "role": "coordinatorlead"}])
+        self.assertEqual(alert.args[4]["status"], "in progress")
+
+    def test_ready_late_far_off_and_closed_items_alert_nobody(self):
+        event_in(self.db, 30)
+        event_in(self.db, 31, status="cancelled")
+        self.item("i-ready", "e-30", timedelta(days=1), status="ready")
+        self.item("i-late", "e-30", -timedelta(hours=1))
+        self.item("i-far", "e-30", timedelta(days=4))
+        self.item("i-closed", "e-31", timedelta(days=1))
+        self.item("i-orphan", "e-gone", timedelta(days=1))
+
+        self.assertEqual(self.reminders.run(NOW).dueSoonItems, [])
+        self.assertEqual(self.alerts(), [])
+
+    def test_an_alert_notification_service_refused_is_not_listed(self):
+        event_in(self.db, 30)
+        self.item("i-soon", "e-30", timedelta(days=2))
+        self.publish.return_value = False
+
+        self.assertEqual(self.reminders.run(NOW).dueSoonItems, [])
+
+
+class TestExpiredHolds(ReminderCase):
+    """SPM-93 AC4: the coordinator hears when a tentative hold runs out."""
+
+    def held(self, booking_id="b1", event_id="e-30", expires=NOW - timedelta(hours=3)):
+        return {"bookingId": booking_id, "eventId": event_id, "venueName": "Marina Hall A", "expiresAt": expires.isoformat()}
+
+    def notices(self):
+        return [call for call in self.publish.call_args_list if call.args[0] == "hold.expired"]
+
+    def test_an_expired_hold_tells_the_coordinator_once_per_booking_and_expiry(self):
+        event_in(self.db, 30)
+        self.expired.return_value = [self.held()]
+
+        result = self.reminders.run(NOW)
+
+        self.assertEqual(result.expiredHolds, ["b1"])
+        self.assertEqual(self.expired.call_args.args, (NOW - timedelta(days=2), NOW))
+        (notice,) = self.notices()
+        trigger, event_id, occurrence, recipients, context = notice.args
+        self.assertEqual(occurrence, "e-30:hold.expired:b1:202610150600")
+        self.assertEqual(recipients, [{"userId": "coord-1", "role": "coordinator"}])
+        self.assertEqual(
+            context, {"eventName": "AI in Events Summit", "venueName": "Marina Hall A", "expiredAt": "15 Oct 2026 14:00 SGT"}
+        )
+
+    def test_closed_unassigned_or_unknown_events_and_refused_notices_are_not_listed(self):
+        event_in(self.db, 30, status="cancelled")
+        event_in(self.db, 31, coordinatorId=None)
+        event_in(self.db, 32)
+        self.expired.return_value = [
+            self.held("b-closed", "e-30"),
+            self.held("b-nobody", "e-31"),
+            self.held("b-gone", "e-gone"),
+            self.held("b-refused", "e-32"),
+        ]
+        self.publish.return_value = False
+
+        self.assertEqual(self.reminders.run(NOW).expiredHolds, [])
+        self.assertEqual([call.args[2] for call in self.notices()], ["e-32:hold.expired:b-refused:202610150600"])
+
+    def test_venue_service_that_cannot_be_read_announces_nothing(self):
+        self.expired.return_value = None
+
+        self.assertEqual(self.reminders.run(NOW).expiredHolds, [])
+
+
 class TestServiceCalls(ServiceTestCase):
     def get(self, response=None, error=None):
         mocked = MagicMock(return_value=response) if error is None else MagicMock(side_effect=error)
@@ -307,6 +421,33 @@ class TestServiceCalls(ServiceTestCase):
         for answers in ([None, {"venueName": ""}], [{"requests": [], "reservations": []}, None]):
             with self.subTest(answers=answers), patch.object(clients, "_service_get", side_effect=answers):
                 self.assertIsNone(clients.arrangement_inputs("e1"))
+
+    def test_handoff_arrangements_reads_bookings_and_equipment_with_the_service_key(self):
+        # SPM-120: Venue Staff and technical support each send a part they cannot read across.
+        answers = [[{"bookingId": "b1"}], {"requests": [{"a": 1}], "reservations": [{"b": 2}]}]
+        with patch.object(clients, "_service_get", side_effect=answers) as called:
+            rows = clients.handoff_arrangements("e1")
+
+        self.assertEqual(rows, ([{"bookingId": "b1"}], [{"a": 1}], [{"b": 2}]))
+        self.assertTrue(called.call_args_list[0].args[0].endswith("/internal/venues/bookings"))
+        self.assertEqual(called.call_args_list[0].args[1], {"eventId": "e1"})
+        self.assertTrue(called.call_args_list[1].args[0].endswith("/internal/equipment/events/e1/arrangements"))
+
+    def test_handoff_arrangements_that_cannot_be_read_are_a_503_not_nothing_arranged(self):
+        for answers in ([None, {"requests": [], "reservations": []}], [[], None]):
+            with self.subTest(answers=answers), patch.object(clients, "_service_get", side_effect=answers):
+                with self.assertRaises(HTTPException) as ctx:
+                    clients.handoff_arrangements("e1")
+                self.assertEqual(ctx.exception.status_code, 503)
+
+    def test_expired_holds_reads_the_period_with_the_service_key(self):
+        since, until = datetime(2026, 10, 13, 9), datetime(2026, 10, 15, 9)
+        with patch.object(clients, "_service_get", return_value=[{"bookingId": "b1"}]) as called:
+            self.assertEqual(clients.expired_holds(since, until), [{"bookingId": "b1"}])
+        self.assertTrue(called.call_args.args[0].endswith("/internal/venues/holds/expired"))
+        self.assertEqual(called.call_args.args[1], {"since": "2026-10-13T09:00:00", "until": "2026-10-15T09:00:00"})
+        with patch.object(clients, "_service_get", return_value=None):
+            self.assertIsNone(clients.expired_holds(since, until))
 
     def test_users_with_roles_is_keyed_by_user_id_or_none(self):
         with patch.object(clients, "_service_get", return_value=[{"userId": "u1", "role": "venue"}]) as called:
