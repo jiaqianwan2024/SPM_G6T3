@@ -106,13 +106,12 @@ button, input, select, textarea { font-family: inherit; }
 
 /* Native menus (select lists, date pickers) follow the page colour scheme.
    Without this, Windows paints a white popup while the option text stays
-   light, so the list looks blank. */
+   light, so the list looks blank. Text fields need it too: Chrome paints an
+   autofilled field in the scheme's autofill colour, which is near-white in
+   the light scheme. */
 select,
-input[type="date"],
-input[type="time"],
-input[type="datetime-local"],
-input[type="month"],
-input[type="week"] {
+textarea,
+input:not([type="checkbox"], [type="radio"]) {
   color-scheme: dark;
 }
 
