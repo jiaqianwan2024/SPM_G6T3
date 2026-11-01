@@ -154,7 +154,7 @@ test.describe('SPM-121 Preparation stays blocked until the Safety Officer approv
     await expect(page.getByTestId('event-confirm')).toHaveCount(0)
   })
 
-  test('TC-SPM121-AC05 the organiser can see the event is waiting on the safety review or has had safety changes requested', async ({
+  test('TC-SPM121-AC05 TC-SPM15-AC07 the organiser can see the event is waiting on the safety review or has had safety changes requested', async ({
     page,
   }) => {
     const { event, review } = await underSafetyReview('SPM121-ac05')

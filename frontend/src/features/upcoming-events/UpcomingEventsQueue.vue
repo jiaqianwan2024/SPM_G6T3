@@ -69,9 +69,9 @@
             <span v-else-if="row.needsAttention" class="pill warn">Needs attention</span>
           </div>
           <dl class="row-facts">
-            <div><dt>Date</dt><dd data-testid="queue-date">{{ formatSgtDate(row.proposedStartAt) || '—' }}</dd></div>
-            <div><dt>Start</dt><dd data-testid="queue-start">{{ formatSgtTime(row.proposedStartAt) || '—' }}</dd></div>
-            <div><dt>End</dt><dd data-testid="queue-end">{{ formatSgtTime(row.proposedEndAt) || '—' }}</dd></div>
+            <div><dt>Date</dt><dd data-testid="queue-date">{{ formatSgtDate(row.proposedStartAt) || 'Not set' }}</dd></div>
+            <div><dt>Start</dt><dd data-testid="queue-start">{{ formatSgtTime(row.proposedStartAt) || 'Not set' }}</dd></div>
+            <div><dt>End</dt><dd data-testid="queue-end">{{ formatSgtTime(row.proposedEndAt) || 'Not set' }}</dd></div>
             <div><dt>Venue</dt><dd data-testid="queue-venue">{{ row.venueName || 'No venue booked' }}</dd></div>
             <div><dt>Coordinator</dt><dd data-testid="queue-coordinator">{{ coordinatorName(row.coordinatorId) }}</dd></div>
             <div class="wide"><dt>Equipment</dt><dd data-testid="queue-equipment-summary">{{ row.equipmentSummary }}</dd></div>

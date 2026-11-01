@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { eventApi } from './support/event.js'
 import { venueRequest } from './support/venue.js'
 import { bookVenue, confirm, planningEvent, readyToConfirm } from './support/confirmation.js'
+import { moveIntoPast } from './support/database.js'
 
 const DAY = 86400000
 
@@ -93,5 +94,25 @@ test.describe('SPM-71 Update event information and flag significant changes', ()
   test('TC-SPM71-AC07 completed, cancelled, or rejected events cannot be edited', async () => {
     const denied = await eventApi('PATCH', '/e8', 'EC-01', { description: 'nope' })
     expect([400, 403, 409]).toContain(denied.status)
+  })
+
+  test('TC-SPM71-AC08 a changed start or end cannot be before today; a date already saved stays valid', async () => {
+    const event = await planningEvent('SPM71-past-date')
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    yesterday.setUTCHours(2, 0, 0, 0)
+    const moved = await eventApi('PATCH', `/${event.eventId}`, 'EC-01', {
+      proposedStartAt: yesterday.toISOString().slice(0, 19),
+      proposedEndAt: new Date(yesterday.getTime() + 2 * 60 * 60 * 1000).toISOString().slice(0, 19),
+      confirmSignificantChange: true,
+    })
+    expect(moved.status).toBe(422)
+    expect(JSON.stringify(moved.body)).toMatch(/today/i)
+    expect((await eventApi('GET', `/${event.eventId}`, 'EC-01')).body.proposedStartAt).toBe(event.proposedStartAt)
+
+    // A start already in the past, left as it is, does not stop other edits. The app never saves a past
+    // date, so the event is moved into the past in the database.
+    moveIntoPast(event.eventId)
+    const edited = await eventApi('PATCH', `/${event.eventId}`, 'EC-01', { description: 'Still editable' })
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200)
   })
 })

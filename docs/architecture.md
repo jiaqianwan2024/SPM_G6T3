@@ -429,6 +429,6 @@ Because all schemas share one MySQL process and volume, an instance outage affec
 
 ## Current gaps (so nobody is surprised)
 
-- Some tabs are not built yet and say so on screen: Reservations, My Assignments, and Maintenance Status (technical support). The attendee Waiting List tab is hidden until waitlists exist.
+- Every tab in each role's menu has its screen; the placeholder tabs from the first template were removed. The attendee Waiting List tab is hidden until waitlists exist.
 - In-app notifications are stored in MySQL and shown in the bell. Email sending is still a stub: `notification-service` prints the message and reports it as queued.
 - `features/browse-events/events.data.js` and `features/venue-catalogue/venues.data.js` are no longer imported; both screens read their services.

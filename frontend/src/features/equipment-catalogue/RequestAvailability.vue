@@ -230,7 +230,7 @@ function formatWhen(value) {
 
 function heldBy(line) {
   const conflicts = line.conflictingEvents || []
-  if (!conflicts.length) return '—'
+  if (!conflicts.length) return 'None'
   return conflicts.map((item) => `${item.eventId} (${item.quantity})`).join(', ')
 }
 

@@ -31,7 +31,7 @@ from app.models.event_safety_review import EventSafetyReview
 from app.models.event_status_history import EventStatusHistory
 from app.services.audiences import people
 from app.core.config import settings
-from app.core.sgt import to_sgt
+from app.core.sgt import before_today, to_sgt
 from app.orchestration.clients import (
     affected_arrangements,
     booked_venue_capacities,
@@ -1414,6 +1414,13 @@ class EventService(BaseService):
         if "equipmentLines" in values:
             values["equipmentLines"] = _equipment_line_dicts(values["equipmentLines"])
         changes = {field: value for field, value in values.items() if _differs(_stored(event, field), value)}
+        # AC8: only a changed start or end is checked, so a date already saved stays valid.
+        for field, label in (("proposedStartAt", "start"), ("proposedEndAt", "end")):
+            if changes.get(field) and before_today(changes[field]):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"The {label} cannot be before today.",
+                )
         start = changes.get("proposedStartAt", event.proposedStartAt)
         end = changes.get("proposedEndAt", event.proposedEndAt)
         if start and end and end <= start:

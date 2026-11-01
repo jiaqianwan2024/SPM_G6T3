@@ -14,3 +14,8 @@ def to_sgt(value: datetime) -> datetime:
     """A stored naive-UTC (or offset-aware) time as Singapore wall-clock time."""
     aware = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     return aware.astimezone(SGT).replace(tzinfo=None)
+
+
+def before_today(value: datetime, now: datetime | None = None) -> bool:
+    """Whether a time falls on a Singapore day before today's (SPM-71 AC8, SPM-5 AC10)."""
+    return to_sgt(value).date() < to_sgt(now or datetime.utcnow()).date()

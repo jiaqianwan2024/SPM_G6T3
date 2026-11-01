@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test'
 import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
-import { venueBookingPayload } from './support/api-data.js'
+import { bookVenue, planningEvent } from './support/confirmation.js'
+import { setEventStatus } from './support/database.js'
+import { createPendingRequest, equipmentApi } from './support/equipment.js'
 import { assignCoordinator, createSubmittedEvent, eventApi } from './support/event.js'
 import { venueRequest } from './support/venue.js'
 
@@ -87,17 +89,37 @@ test.describe('SPM-70 Reject a submitted request with a reason', () => {
   })
 
   test('TC-SPM70-AC05 rejecting releases venue and equipment holds', async () => {
-    const eventId = await underReviewEvent()
-    const booking = await venueRequest('POST', '/venues/bookings', 'EC-01', {
-      ...venueBookingPayload(290, eventId, 'v2'),
+    // The app books a venue and reserves equipment only once an event is approved for planning, and
+    // rejects only while it is under review. So the event gets both in planning and is then put back
+    // under review in the database, to check that rejecting releases them.
+    const event = await planningEvent('SPM70-release')
+    const booking = await bookVenue(event)
+    const request = await createPendingRequest({
+      eventId: event.eventId,
+      equipmentId: 'eq1',
+      quantity: 1,
+      startsAt: event.period.startsAt,
+      endsAt: event.period.endsAt,
+      technicalRequirements: 'AUTO-SPM70',
     })
-    expect(booking.status).toBe(201)
-    await eventApi('POST', `/${eventId}/reject`, 'EC-01', {
+    const reviewed = await equipmentApi('POST', `/equipment/requests/${request.requestId}/review`, 'TS-01', {
+      approve: true,
+      reviewNote: 'AUTO-SPM70',
+    })
+    expect(reviewed.status, JSON.stringify(reviewed.body)).toBe(200)
+    const reserved = await equipmentApi('POST', `/equipment/requests/${request.requestId}/reserve`, 'TS-01')
+    expect(reserved.status, JSON.stringify(reserved.body)).toBe(201)
+    setEventStatus(event.eventId, 'under review')
+
+    const rejected = await eventApi('POST', `/${event.eventId}/reject`, 'EC-01', {
       reason: 'outside ConnectSphere services',
       explanation: 'Released',
     })
-    const viewed = await venueRequest('GET', `/venues/bookings/${booking.body.bookingId}`, 'VS-01')
-    expect(viewed.body.status).toMatch(/released|withdrawn|rejected|cancelled/i)
+    expect(rejected.status, JSON.stringify(rejected.body)).toBe(200)
+    const viewed = await venueRequest('GET', `/venues/bookings/${booking.bookingId}`, 'VS-01')
+    expect(viewed.body.status).toBe('cancelled')
+    const reservations = await equipmentApi('GET', `/equipment/reservations?eventId=${event.eventId}`, 'TS-01')
+    expect(reservations.body.map((row) => row.status)).toEqual(['released'])
   })
 
   test('TC-SPM70-AC06 the rejected event stays in organiser history and the activity log', async () => {

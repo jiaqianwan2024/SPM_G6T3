@@ -16,7 +16,7 @@
 
     <form v-else class="form-card" @submit.prevent="submit">
       <p class="form-intro">
-        Fields marked <span class="req">*</span> are required to submit — save a draft any time
+        Fields marked <span class="req">*</span> are required to submit. You can save a draft any time
         with just an event name.
       </p>
       <p v-if="editingEventId" class="draft-banner">Editing a saved draft.</p>

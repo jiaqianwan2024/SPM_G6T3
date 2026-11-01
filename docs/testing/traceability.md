@@ -169,15 +169,17 @@
 | SPM-5 | Confirmation on status | TC-SPM05-AC07 | `e2e/spm05.spec.js` | Automated |
 | SPM-5 | Near-due line items are alerted | TC-SPM05-AC08 | `e2e/spm05.spec.js` | Automated |
 | SPM-5 | Overdue line items are flagged | TC-SPM05-AC09 | `e2e/spm05.spec.js` | Automated |
+| SPM-5 | A new or changed due date cannot be before today (SGT) | TC-SPM05-AC10 | `e2e/spm05.spec.js`; `services/event-service/tests/unit/test_event_followup.py` | Automated |
 | SPM-15 | Organisation events with status and date | TC-SPM15-AC01 | `e2e/spm15.spec.js` | Automated |
 | SPM-15 | Drafts distinguishable from submitted | TC-SPM15-AC02 | `e2e/spm15.spec.js` | Automated |
 | SPM-15 | Arrangements in plain language | TC-SPM15-AC03 | `e2e/spm15.spec.js` | Automated |
 | SPM-15 | Needs-action items flagged and linked | TC-SPM15-AC04 | `e2e/spm15.spec.js` | Automated |
 | SPM-15 | Assigned coordinator name and contact | TC-SPM15-AC05 | `e2e/spm15.spec.js` | Automated |
 | SPM-15 | Confirmed venue, date, time, layout, equipment | TC-SPM15-AC06 | `e2e/spm15.spec.js` | Automated |
-| SPM-15 | Shown status matches stored status | TC-SPM15-AC07 | `e2e/spm15.spec.js` | Automated |
-| SPM-15 | No internal notes or other clients | TC-SPM15-AC08 | `e2e/spm15.spec.js` | Automated |
-| SPM-15 | Empty state points at creating a request | TC-SPM15-AC09 | `e2e/spm15.spec.js` | Automated |
+| SPM-15 | Organiser sees when the event waits on the Safety Officer, or changes were requested | TC-SPM15-AC07 | `e2e/spm121.spec.js` (TC-SPM121-AC05) | Automated |
+| SPM-15 | Shown status matches stored status | TC-SPM15-AC08 | `e2e/spm15.spec.js` | Automated |
+| SPM-15 | No internal notes or other clients | TC-SPM15-AC09 | `e2e/spm15.spec.js` | Automated |
+| SPM-15 | Empty state points at creating a request | TC-SPM15-AC10 | `e2e/spm15.spec.js` | Automated |
 | SPM-65 | Queue statuses exclude drafts | TC-SPM65-AC01 | `e2e/spm65.spec.js` | Automated |
 | SPM-65 | Queue row fields | TC-SPM65-AC02 | `e2e/spm65.spec.js` | Automated |
 | SPM-65 | Unassigned distinguished and filterable | TC-SPM65-AC03 | `e2e/spm65.spec.js` | Automated |
@@ -228,6 +230,7 @@
 | SPM-71 | Edits written to the activity log | TC-SPM71-AC05 | `e2e/spm71.spec.js` | Automated |
 | SPM-71 | Confirmed event no longer reads fully confirmed | TC-SPM71-AC06 | `e2e/spm71.spec.js` | Automated |
 | SPM-71 | Terminal events cannot be edited | TC-SPM71-AC07 | `e2e/spm71.spec.js` | Automated |
+| SPM-71 | A changed start or end cannot be before today | TC-SPM71-AC08 | `e2e/spm71.spec.js`; `services/event-service/tests/unit/test_event_updates.py` | Automated |
 | SPM-72 | Confirm needs an approved venue booking for the event's date and time, and every equipment line reserved or recorded as not required | TC-SPM72-AC01 | `e2e/spm72.spec.js`; `services/event-service/tests/unit/test_event_confirmation.py` | Automated: a booking at another time, an equipment line, a blank and a real not-required reason, cancel and rebook, then ready |
 | SPM-72 | Confirm unavailable while anything is outstanding, and the view names it | TC-SPM72-AC02 | `e2e/spm72.spec.js`; `services/event-service/tests/unit/test_event_confirmation.py` | Automated (API and UI): venue, equipment, and safety gaps named; marking a line not required from the view |
 | SPM-72 | Confirming records Confirmed, the decider, and the time | TC-SPM72-AC03 | `e2e/spm72.spec.js`; `services/event-service/tests/unit/test_event_confirmation.py` | Automated (UI): an organiser gets 403, a second confirm is 409 |
@@ -382,9 +385,9 @@
 | SPM-120 | Review only after venue and technical are confirmed | TC-SPM120-AC01 | `e2e/spm120.spec.js` | Automated |
 | SPM-120 | Venue Staff and technical support send their confirmed arrangements; the review opens once both are in (Week 7 change 6) | TC-SPM120-AC01 | `e2e/spm120.spec.js`; `services/event-service/tests/unit/test_event_safety_handoff.py` | Automated (API and UI): each part only for its own staff, refused until its arrangements are confirmed, the venue part alone when there is no equipment |
 | SPM-120 | Officer sees attendance, venue, emergency access, accessibility, placement, crowd movement, restrictions | TC-SPM120-AC02 | `e2e/spm120.spec.js` | Automated |
-| SPM-120 | Approve records decision, officer, and time | TC-SPM120-AC03 AC04 | `e2e/spm120.spec.js` | Automated |
+| SPM-120 | Approve records decision, officer, and time | TC-SPM120-AC03, TC-SPM120-AC04 | `e2e/spm120.spec.js` | Automated |
 | SPM-120 | Approve, reject, or request changes from the Safety Officer dashboard | TC-SPM120-AC03 | `e2e/spm120.spec.js` | Automated |
-| SPM-120 | Reject records reason, no preparation, not cancelled, both notified, resubmit | TC-SPM120-AC05 AC09 | `e2e/spm120.spec.js` | Automated |
+| SPM-120 | Reject records reason, no preparation, not cancelled, both notified, resubmit | TC-SPM120-AC05, TC-SPM120-AC09 | `e2e/spm120.spec.js` | Automated |
 | SPM-120 | Request changes returns to planning and flags arrangements | TC-SPM120-AC06 | `e2e/spm120.spec.js` | Automated |
 | SPM-120 | Safety Officer signs in with a pre-created account | TC-SPM120-AC07; TC-SPM43-AC01 (SO-01) | `e2e/spm120.spec.js`; `e2e/spm43.spec.js` | Automated |
 | SPM-120 | Other roles get 403 on decisions | TC-SPM120-AC08 | `e2e/spm120.spec.js` | Automated |

@@ -66,9 +66,9 @@
         <dl>
           <dt>Code</dt><dd>{{ selected.code }}</dd>
           <dt>Category</dt><dd>{{ sentenceCase(selected.category) }}</dd>
-          <dt>Description</dt><dd>{{ selected.description || "—" }}</dd>
-          <dt>Home location</dt><dd>{{ selected.homeLocation || "—" }}</dd>
-          <dt>Technical notes</dt><dd>{{ selected.technicalNotes || "—" }}</dd>
+          <dt>Description</dt><dd>{{ selected.description || "None" }}</dd>
+          <dt>Home location</dt><dd>{{ selected.homeLocation || "Not set" }}</dd>
+          <dt>Technical notes</dt><dd>{{ selected.technicalNotes || "None" }}</dd>
           <dt>Total owned</dt><dd>{{ selected.totalQuantity }}</dd>
           <dt>Damaged</dt><dd>{{ selected.outOfService.damaged }}</dd>
           <dt>Under maintenance</dt><dd>{{ selected.outOfService.maintenance }}</dd>

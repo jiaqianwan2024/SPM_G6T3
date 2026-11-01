@@ -175,7 +175,7 @@ test.describe('SPM-120 Safety review after venue and technical arrangements are 
     await expect(page.getByTestId('safety-crowd')).toContainText('promenade doors')
   })
 
-  test('TC-SPM120-AC03 AC04 approving through the review records the decision, the officer, and the time', async ({
+  test('TC-SPM120-AC03 TC-SPM120-AC04 approving through the review records the decision, the officer, and the time', async ({
     page,
   }) => {
     const { event } = await underSafetyReview('ac04')
@@ -202,7 +202,7 @@ test.describe('SPM-120 Safety review after venue and technical arrangements are 
     expect(stored.body.status).toBe('safety approved')
   })
 
-  test('TC-SPM120-AC05 AC09 rejecting records the reason, keeps the event out of preparation without cancelling it, notifies both sides, and allows a new check', async () => {
+  test('TC-SPM120-AC05 TC-SPM120-AC09 rejecting records the reason, keeps the event out of preparation without cancelling it, notifies both sides, and allows a new check', async () => {
     const { event, review } = await underSafetyReview('ac05')
     const missingReason = await decide(event, review, 'reject', 'SO-01', {})
     expect(missingReason.status).toBe(422)
@@ -289,7 +289,7 @@ test.describe('SPM-120 Safety review after venue and technical arrangements are 
       reject: { reason: 'Not allowed' },
       'request-changes': { requiredChanges: 'Not allowed' },
     }
-    for (const accountId of ['EC-01', 'EO-01', 'VS-01', 'TS-01', 'ATT-01']) {
+    for (const accountId of ['EC-01', 'ECL-01', 'EO-01', 'VS-01', 'TS-01', 'ATT-01']) {
       for (const [action, body] of Object.entries(bodies)) {
         const denied = await decide(event, review, action, accountId, body)
         expect(denied.status, `${accountId} ${action}`).toBe(403)

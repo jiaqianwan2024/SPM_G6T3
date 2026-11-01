@@ -48,7 +48,7 @@
               <span class="item-title">{{ c.reason }}</span>
               <span class="item-meta">
                 {{ eventName(c.eventId) }} · {{ outcomeLabel(c.status) }}
-                <template v-if="c.decisionReason"> — {{ c.decisionReason }}</template>
+                <template v-if="c.decisionReason">: {{ c.decisionReason }}</template>
               </span>
             </button>
           </li>

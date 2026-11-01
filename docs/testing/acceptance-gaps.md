@@ -32,6 +32,8 @@ Out of scope: SPM-56, SPM-123, SPM-124 (In Progress) and the scrapped or depreca
 | Upcoming equipment queue too slow (12–13 s) | SPM-4 (performance) | Fixed |
 | Every request paid ~200 ms building an HTTP client to check the caller | All screens (performance) | Fixed |
 | Coordinator dashboard makes one request per event per section | SPM-55 (performance) | **Open** |
+| A changed event date can be in the past | SPM-71 AC8 | Fixed |
+| A readiness due date can be in the past | SPM-5 AC10 | Fixed |
 | Notifications that only go to the stub email | SPM-69 AC3, SPM-68 AC2, SPM-63 AC5, AC8, SPM-115, SPM-3 AC7 | **Deferred** until real email is set up |
 | SPM-93 rules bypassed by `/notifications/records` | SPM-93 AC5, AC6 | **Open** (story conflict) |
 | Specs that need rewriting; seed drift | spm93, spm95; seeded e1/e2 | **Open** (test suite) |
@@ -98,6 +100,21 @@ assessment, reminders), but the boxes themselves should be updated.
   those specs to build their own events, as spm11, spm55 and spm86 AC06 now do with `e2e/support/confirmation.js`.
 
 ## Fixed
+
+- **SPM-5 personnel (1 Nov 2026).** The readiness page offered every user as the personnel for a line, organisers and
+  attendees included, and the server accepted any id. Both now allow only ConnectSphere staff (Event Coordinators, the
+  Lead, Venue Staff, Technical Support and the Safety Officer); anyone else is refused with a plain message.
+
+- **SPM-71 AC8 and SPM-5 AC10 (1 Nov 2026): past dates.** event-service now refuses a changed event start or end, and a
+  new or changed readiness due date, that falls before today in Singapore time (`before_today` in `app/core/sgt.py`,
+  used by `_apply_changes` and the readiness create and update). A saved date sent back unchanged stays valid. The
+  screens already kept their date pickers to today onwards; this closes the same gap on the server.
+
+- **spm73, spm68, spm70 and spm05 (1 Nov 2026).** spm73 no longer reads seeded e1: it makes its own confirmed
+  events and moves them into the past, so AC2 to AC6 test a really completed event. TC-SPM68-AC08 now makes a real
+  draft. TC-SPM70-AC05 gives a planning event a booking and a reservation, puts it back under review, rejects it
+  and checks both are released. TC-SPM05-AC09 makes its item due later and then moves it into the past, so it
+  keeps working once AC10 refuses past dates. The setup the app cannot produce is in `e2e/support/database.js`.
 
 Each fix comes with unit tests that keep the 100% coverage gate.
 

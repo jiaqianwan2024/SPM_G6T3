@@ -4,9 +4,10 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import httpx
+from fastapi import HTTPException, status
 
 from app.core.config import settings
-from app.core.sgt import to_sgt
+from app.core.sgt import before_today, to_sgt
 from app.dao.event_change_request_dao import EventChangeRequestDAO
 from app.dao.event_dao import EventDAO
 from app.dao.event_readiness_dao import EventReadinessDAO
@@ -21,6 +22,8 @@ from shared.services.base import BaseService
 DUE_SOON = timedelta(days=3)
 # Readiness statuses that mean nothing is left to do. Anything else is still outstanding (SPM-95).
 READY_STATUSES = frozenset({"ready", "in place", "confirmed"})
+# SPM-5: a line is followed up by ConnectSphere staff, never an organiser or an attendee.
+HANDLER_ROLES = frozenset({"coordinator", "coordinatorlead", "venue", "techsupport", "safety"})
 DATE_FIELDS = {"proposedStartAt", "proposedEndAt", "layoutPreference"}
 SCHEDULE_FIELDS = ("proposedStartAt", "proposedEndAt")
 VENUE_FIELDS = {"venueName", "venueLocation", "venueId"}
@@ -32,6 +35,30 @@ def _naive(value: datetime | None) -> datetime | None:
     if value.tzinfo is not None:
         return value.astimezone(timezone.utc).replace(tzinfo=None)
     return value
+
+
+def _staff_handler(user_id: str, authorization: str | None) -> tuple[str, str, str]:
+    """The staff member chosen to handle a line: name, email and phone. 422 for anyone else."""
+    for user in list_users(authorization):
+        if user.get("userId") == user_id and user.get("role") in HANDLER_ROLES:
+            return user.get("userName") or user.get("name") or "", user.get("email") or "", user.get("phone") or ""
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail="Choose a ConnectSphere staff member to handle this line.",
+    )
+
+
+def _minute(value: datetime | None) -> datetime | None:
+    """A time to the minute: a date input holds no seconds, so a saved date sent back is the same minute."""
+    return value.replace(second=0, microsecond=0) if value else None
+
+
+def _check_due(due: datetime | None) -> None:
+    """SPM-5 AC10: a new or changed due date cannot be before today, the Singapore day."""
+    if due is not None and before_today(due):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="The due date cannot be before today."
+        )
 
 
 def _soft_get(url: str, authorization: str | None, params: dict | None = None):
@@ -253,7 +280,8 @@ class EventFollowUp(BaseService):
         self, event_id: str, body: ReadinessCreate, authorization: str | None, coordinator_id: str
     ) -> ReadinessItemOut:
         self._managed(event_id, coordinator_id)
-        name, email, phone = _person(body.handlerId, authorization)
+        _check_due(_naive(body.dueAt))
+        name, email, phone = _staff_handler(body.handlerId, authorization)
         row = EventReadinessItem(
             itemId=str(uuid4()),
             eventId=event_id,
@@ -305,9 +333,14 @@ class EventFollowUp(BaseService):
         if "note" in sent and body.note is not None:
             row.note = body.note
         if "dueAt" in sent:
-            row.dueAt = _naive(body.dueAt)
-        if "handlerId" in sent and body.handlerId is not None:
-            name, email, phone = _person(body.handlerId, authorization)
+            due = _naive(body.dueAt)
+            # A saved overdue date sent back unchanged stays valid.
+            if _minute(due) != _minute(row.dueAt):
+                _check_due(due)
+            row.dueAt = due
+        # Only a changed handler is checked, so a line already handled by someone keeps saving.
+        if "handlerId" in sent and body.handlerId is not None and body.handlerId != row.handlerId:
+            name, email, phone = _staff_handler(body.handlerId, authorization)
             row.handlerId = body.handlerId
             row.handlerName = name or body.handlerId
             row.handlerEmail = email

@@ -13,6 +13,6 @@ export function eventDateLabel(event) {
 export function eventTimeLabel(event) {
   const start = event.proposedStartAt
   const end = event.proposedEndAt
-  if (!start || !end) return '—'
+  if (!start || !end) return 'Not set'
   return `${formatSgtTime(start)} – ${formatSgtTime(end)} SGT`
 }

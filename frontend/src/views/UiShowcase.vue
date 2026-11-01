@@ -26,7 +26,7 @@
         <div class="type-list">
           <div v-for="w in weights" :key="w.value" class="type-row">
             <code>{{ w.value }}</code>
-            <span class="sample" :style="{ fontWeight: w.value }">{{ w.label }} — The quick brown fox jumps over the lazy dog</span>
+            <span class="sample" :style="{ fontWeight: w.value }">{{ w.label }}: The quick brown fox jumps over the lazy dog</span>
           </div>
         </div>
       </UiCard>
