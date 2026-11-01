@@ -5,6 +5,7 @@ import { bookVenue, confirm, events, passSafetyReview, planningEvent, readyToCon
 import { assignCoordinator, createSubmittedEvent, eventApi } from './support/event.js'
 import { notificationApi } from './support/registration.js'
 import { venueRequest } from './support/venue.js'
+import { THEATRE_EVENT, approvedEvent, requestVenue } from './support/venue-request.js'
 
 // SPM-93 is checked through the routes that exist: actions taken through each
 // service, the caller's own inbox (GET /notifications), and for the rules the
@@ -145,9 +146,31 @@ test.describe('SPM-93 Notification delivery and recipient resolution', () => {
     expect(types(await inbox('EC-01', held.eventId))).toContain('hold.expired')
   })
 
-  // A replacement-venue request emails Venue Staff (a stub that only logs) and stores no
-  // notification record, so there is nothing for a test to read. Needs an in-app notice.
-  test.fixme('TC-SPM93-AC04b a request for a replacement venue notifies Venue Staff', async () => {})
+  test('TC-SPM93-AC04b a request for a replacement venue notifies Venue Staff', async () => {
+    const event = await approvedEvent(THEATRE_EVENT)
+    const created = await requestVenue(event, 'v1')
+    expect(created.status, JSON.stringify(created.body)).toBe(201)
+    const approved = await venueRequest('POST', `/venues/bookings/${created.body.bookingId}/approve`, 'VS-01', {
+      reason: 'Booked',
+    })
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200)
+    const blocked = await venueRequest('POST', '/venues/v1/unavailability', 'VS-01', {
+      startsAt: approved.body.startsAt,
+      endsAt: approved.body.endsAt,
+      reason: 'maintenance',
+      acknowledgeConflicts: true,
+    })
+    expect(blocked.status, JSON.stringify(blocked.body)).toBe(201)
+
+    const replaced = await venueRequest('POST', `/venues/bookings/${approved.body.bookingId}/replacement`, 'EC-01', {
+      venueId: 'v3',
+    })
+    expect(replaced.status, JSON.stringify(replaced.body)).toBe(201)
+
+    await eventuallyContains('VS-01', event.eventId, 'venue.replacement')
+    const notice = (await inbox('VS-01', event.eventId)).find((row) => row.type === 'venue.replacement')
+    expect(notice.body).toContain('Exhibition Hall B')
+  })
 
   test('TC-SPM93-AC05 the user who performed an action is not notified about it', async () => {
     const event = await assignedEvent('actor')

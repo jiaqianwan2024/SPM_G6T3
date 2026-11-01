@@ -9,7 +9,7 @@ from app.dao.venue_booking_dao import VenueBookingDAO
 from app.dao.venue_dao import VenueDAO
 from app.dao.venue_unavailability_dao import VenueUnavailabilityDAO
 from app.db.session import get_db
-from app.orchestration.clients import fetch_event_facts, notify_coordinator, notify_venue_staff
+from app.orchestration.clients import fetch_event_facts, notify_coordinator, notify_role, notify_venue_staff
 from app.schemas.venue import (
     BookingClashOut,
     BookingRecheck,
@@ -686,7 +686,9 @@ def request_replacement(
     original = service.get_booking(booking_id)
     event = fetch_event_facts(original.eventId, authorization)
     created = service.request_replacement(booking_id, body, caller, event)
-    notify_venue_staff(*service.venue_staff_notice(created, "requested"), authorization)
+    # SPM-93 AC4b: Venue Staff also get a readable in-app notice, not just the email.
+    title, notice = service.venue_staff_notice(created, "requested")
+    notify_role("venue", created.eventId, title, notice, authorization, "venue.replacement")
     notify_venue_staff(*service.venue_staff_notice(service.get_booking(booking_id), "cancelled"), authorization)
     return created
 
