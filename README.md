@@ -126,7 +126,7 @@ Acceptance tests leave hundreds of `AUTO-…` events behind. To trim them, run:
 python scripts/migrate.py --clean-test-data
 ```
 
-It keeps the seeded demo events plus one example event for each status the demo events don't cover, and deletes every other event with its bookings, equipment requests, registrations and notifications. Users, organisations, venues and equipment stay. It shows what it will keep and asks before deleting, then writes a full backup to `backups/` (gitignored) first. Add `--yes` to skip the question. To undo, load the backup: `docker exec -i infra-mysql-1 mysql -uroot -pconnectsphere < backups/<file>.sql`.
+It keeps the seeded demo events plus one example event for each status the demo events don't cover, and deletes every other event with its bookings, equipment requests, registrations and notifications. Users, organisations, venues and equipment stay, except that venues the tests left active (`AUTO-…`, "Capacity Guard", "Logged Venue" and the like) are retired, which hides them from every venue list but keeps their history. It shows what it will keep and asks before deleting, then writes a full backup to `backups/` (gitignored) first. Add `--yes` to skip the question. To undo, load the backup: `docker exec -i infra-mysql-1 mysql -uroot -pconnectsphere < backups/<file>.sql`.
 
 If a local database is hopelessly out of date, wipe volumes and start clean:
 
