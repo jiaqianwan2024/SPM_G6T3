@@ -36,7 +36,7 @@
         </dl>
       </section>
 
-      <!-- SPM-11: register, or see the registration already held (AC3, AC5). -->
+      <!-- SPM-11: register, or see the registration already held (AC1, AC4). -->
       <section v-if="mine" class="panel register" data-testid="existing-registration">
         <p class="register-done" data-testid="register-confirmation">
           You are registered for <strong>{{ event.eventName }}</strong><template v-if="schedule">, {{ schedule }}</template>,

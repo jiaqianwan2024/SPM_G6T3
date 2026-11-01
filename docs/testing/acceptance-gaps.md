@@ -14,8 +14,8 @@ Out of scope: SPM-56, SPM-123, SPM-124 (In Progress) and the scrapped or depreca
 | Area | Stories | Status |
 |---|---|---|
 | Attendee registration only worked for seeded events | SPM-11 (and SPM-12, 59, 89, 90, 91, 92, 105) | Fixed |
-| No attendee registration UI | SPM-11 AC2, AC3, AC5, AC6, AC8 | Fixed |
-| Registration notices, last-place race, period in the refusal | SPM-11 AC3, AC7, AC8, AC10 | Fixed |
+| No attendee registration UI | SPM-11 AC2, AC4, AC5, AC7 | Fixed |
+| Registration notices, last-place race, period in the refusal | SPM-11 AC6, AC7, AC9 | Fixed |
 | Change-request impact assessment | SPM-85 AC2–AC5 | Fixed upstream (PR #116) |
 | Reschedule UI | SPM-87 AC1, AC2, AC4, AC7 | Fixed |
 | Technical-support and coordinator equipment actions | SPM-77 AC1, AC2, AC5, AC6; SPM-78 AC1–AC4; SPM-86 AC7, AC10 | Fixed |
@@ -61,9 +61,9 @@ with a registered trigger, as the other flows already do.
 from attendees. `/notifications/records` and `/records/batch` do none of that. They carry
 assignment, confirmation, change-request decisions, registration-setting changes, attendee change notices,
 safety handoff and claim notices, and venue-service's notices. Moving them all onto `/publish` is the
-fix. The conflict with SPM-11 AC3 and SPM-12 AC6 is settled (1 Nov 2026): SPM-93 AC5 wins, so the attendee
-gets no notice about their own registration or withdrawal, only the on-screen confirmation. Reword those two
-ACs in the backlog to match.
+fix. The conflict with SPM-11's former AC3 and SPM-12 AC6 is settled (1 Nov 2026): SPM-93 AC5 wins, so the attendee
+gets no notice about their own registration or withdrawal, only the on-screen confirmation. SPM-11 AC3 has been
+removed from the backlog (its AC4 to AC10 are now AC3 to AC9); SPM-12 AC6 still needs rewording to match.
 
 ### Performance: per-event requests and per-call HTTP clients
 
@@ -105,16 +105,16 @@ Each fix comes with unit tests that keep the 100% coverage gate.
   row the first time someone registers, and refreshes it from event-service's record each time
   (`registration-service/app/services/registration_service.py`, `_lock_window`). Before this, only
   `seed.py` created those rows, so registering for an event confirmed in the app returned 409.
-- **SPM-11 AC8, last-place race.** The window row is locked with `SELECT ... FOR UPDATE`
+- **SPM-11 AC7, last-place race.** The window row is locked with `SELECT ... FOR UPDATE`
   (`RegistrationWindowDAO.get_for_event(lock=True)`) while the places are counted. The transaction that first
   looks for the row is ended before the lock is taken. Under MySQL's REPEATABLE READ, a count in that same
   transaction would not see a registration committed while it waited, and both attendees got the last place
   (reproduced live in 1 of 5 runs). **LIVE:** 10 of 10 runs now give exactly one 201 and one "full" 409.
-- **SPM-11 AC3 and AC10, notices.** The attendee is not notified of their own registration (decided 1 Nov 2026,
+- **SPM-11 AC9 and SPM-93 AC5, notices.** The attendee is not notified of their own registration (decided 1 Nov 2026,
   SPM-93 AC5); the screen confirms it with the event, date, time and venue. Taking the last place calls the new `POST /events/{id}/capacity-notice`.
   Event-service re-checks the count itself and publishes `registration.full` to the organiser and the
   coordinator, once per capacity value.
-- **SPM-11 AC7.** A refusal outside the period states the period in SGT.
+- **SPM-11 AC6.** A refusal outside the period states the period in SGT.
 - **SPM-11 UI.** The attendee's public event page (`frontend/src/features/browse-events/BrowseEvent.vue`,
   `/app/browse/:id`) has the registration form with inline validation, the "you are registered" panel (also
   shown for an existing registration), and the full notice. Register on the list opens the form straight away. The
@@ -216,7 +216,7 @@ Each fix comes with unit tests that keep the 100% coverage gate.
   a coordinator is reviewing the request. Reword AC4 to match, or add Submitted to SPM-106 AC1.
 - **SPM-66 AC1 and AC7, and SPM-45 AC3** ("coordinators assign") are superseded by SPM-117 (only the Lead assigns).
   The code follows SPM-117.
-- **SPM-93 AC5 versus SPM-11 AC3 and SPM-12 AC6.** "The actor is never notified" against "the attendee is
+- **SPM-93 AC5 versus SPM-11's former AC3 (now removed) and SPM-12 AC6.** "The actor is never notified" against "the attendee is
   notified of their registration or withdrawal".
 - **SPM-127 versus the old spm11 spec.** Attendees may not open staff event pages, so registration lives on the
   public page `/app/browse/:id`.
