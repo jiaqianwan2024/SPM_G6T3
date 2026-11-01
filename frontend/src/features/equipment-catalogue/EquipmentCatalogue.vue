@@ -230,7 +230,8 @@ async function checkWindow() {
 onMounted(async () => {
   try {
     await refreshList()
-    if (items.value.length) await selectItem(items.value[0].equipmentId)
+    // Skipped if Add equipment was clicked while the list loaded, so the open form is kept.
+    if (items.value.length && mode.value === 'view') await selectItem(items.value[0].equipmentId)
   } catch {
     error.value = 'Unable to load the equipment catalogue. Please try again.'
   } finally {
