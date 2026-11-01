@@ -31,6 +31,14 @@
         </label>
         <button
           class="filter-btn"
+          :class="{ active: sortMode === 'date' }"
+          data-testid="queue-sort-date"
+          @click="setSort('date')"
+        >
+          Sort by event date
+        </button>
+        <button
+          class="filter-btn"
           :class="{ active: sortMode === 'name-asc' }"
           @click="setSort('name-asc')"
         >
@@ -216,7 +224,7 @@ import { IN_REVIEW_EVENT_STATUSES, REJECTION_REASONS } from '../../config/eventS
 import { session } from '../../store/session.js'
 import ApproveEventDialog from '../event-detail/ApproveEventDialog.vue'
 import AssignCoordinatorDialog from '../event-detail/AssignCoordinatorDialog.vue'
-import { formatSgt, formatSgtRange } from '../../utils/datetime.js'
+import { formatSgt, formatSgtRange, parseServerTime } from '../../utils/datetime.js'
 
 const events = ref([])
 const loading = ref(true)
@@ -312,6 +320,11 @@ const filteredEvents = computed(() => {
       const organisation = (event.organisationName || '').toLowerCase()
       return name.includes(term) || organisation.includes(term)
     })
+  }
+  if (sortMode.value === 'date') {
+    // SPM-65 AC4: soonest proposed date first; a request with no date goes last.
+    const time = (event) => parseServerTime(event.proposedStartAt)?.getTime() ?? Infinity
+    list = [...list].sort((a, b) => (time(a) === time(b) ? 0 : time(a) < time(b) ? -1 : 1))
   }
   if (sortMode.value === 'name-asc' || sortMode.value === 'name-desc') {
     const direction = sortMode.value === 'name-asc' ? 1 : -1
