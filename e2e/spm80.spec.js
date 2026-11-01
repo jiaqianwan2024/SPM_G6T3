@@ -98,7 +98,7 @@ test.describe('SPM-80 Capture venue, layout, accessibility and equipment require
       accessibilityNeeds: ['Wheelchair accessible'],
       equipmentLines: [{ equipmentId: 'eq1', quantity: 2, technicalNotes: 'Keep HDMI' }],
       purpose: 'Visible to coordinator',
-      category: 'meeting',
+      category: 'Meeting',
       expectedAttendance: 10,
       proposedStartAt: new Date(Date.now() + 40 * 86400000).toISOString(),
       proposedEndAt: new Date(Date.now() + 40 * 86400000 + 7200000).toISOString(),

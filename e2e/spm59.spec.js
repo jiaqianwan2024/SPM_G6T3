@@ -1,8 +1,13 @@
 import { test, expect } from '@playwright/test'
 import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
+import { openEvent, releaseEvents } from './support/registration.js'
+
+const created = []
 
 test.describe('SPM-59 Attendee home', () => {
+  test.afterAll(async () => releaseEvents(created))
+
   test('TC-SPM59-AC01 next upcoming registration is first with date, time, venue, location', async ({
     page,
   }) => {
@@ -13,7 +18,9 @@ test.describe('SPM-59 Attendee home', () => {
     await expect(changed).toBeVisible()
     const nextBox = await next.boundingBox()
     const changedBox = await changed.boundingBox()
-    expect(nextBox.y).toBeLessThan(changedBox.y)
+    // Cards sit three to a row, so "first" is reading order: an earlier row, or further left in the same row.
+    const sameRow = Math.abs(nextBox.y - changedBox.y) < 1
+    expect(sameRow ? nextBox.x < changedBox.x : nextBox.y < changedBox.y).toBe(true)
     await expect(next).toContainText('AI in Events Summit')
     await expect(next.getByTestId('attendee-next-upcoming-date')).toBeVisible()
     await expect(next.getByTestId('attendee-next-upcoming-time')).toBeVisible()
@@ -42,6 +49,10 @@ test.describe('SPM-59 Attendee home', () => {
   })
 
   test('TC-SPM59-AC04 open events appear beneath the attendee registrations', async ({ page }) => {
+    // The home offers only events the attendee is not registered for. ATT-01 already holds e1, so
+    // the test opens an event of its own for registration.
+    const event = await openEvent('SPM59-open')
+    created.push(event.eventId)
     await login(page, account('ATT-01'))
     const registrations = page.getByTestId('attendee-section-registrations')
     const open = page.getByTestId('attendee-section-open')
@@ -52,7 +63,8 @@ test.describe('SPM-59 Attendee home', () => {
     expect(registrationBox).toBeTruthy()
     expect(openBox).toBeTruthy()
     expect(openBox.y).toBeGreaterThan(registrationBox.y)
-    await expect(open.getByTestId('attendee-open-e1')).toBeVisible()
+    await expect(open.getByTestId(`attendee-open-${event.eventId}`)).toBeVisible()
+    await expect(open.getByTestId('attendee-open-e1')).toHaveCount(0)
   })
 
   test('TC-SPM59-AC05 no coordinator, internal note, or other attendee identity is shown', async ({
@@ -70,6 +82,12 @@ test.describe('SPM-59 Attendee home', () => {
   test('TC-SPM59-AC06 an attendee with no registrations is pointed at browsing events', async ({
     page,
   }) => {
+    // An attendee who never registered. Other specs register as ATT-02, so registration-service's
+    // list is answered as empty, as SPM-94 AC07 does for the inbox.
+    await page.route(
+      (url) => url.port === '8005' && url.pathname === '/registrations/me',
+      (route) => route.fulfill({ json: [] }),
+    )
     await login(page, account('ATT-02'))
     const empty = page.getByTestId('attendee-registrations-empty')
     await expect(empty).toBeVisible()

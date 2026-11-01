@@ -25,6 +25,7 @@ from shared.testing.cases import ServiceTestCase
 
 AMY = {"userId": "u-amy", "role": "attendee", "email": "amy@example.com"}
 BEN = {"userId": "u-ben", "role": "attendee", "email": "ben@example.com"}
+CAT = {"userId": "u-cat", "role": "attendee", "email": "cat@example.com"}
 ORGANISER = {"userId": "u-org", "role": "organiser", "email": "org@example.com"}
 HEADERS = {"Authorization": "Bearer token"}
 
@@ -157,7 +158,9 @@ class TestRegistering(RegistrationFlowCase):
 
     def test_full_event_refuses_the_next_attendee_and_stores_nothing(self):
         self.register(name="Amy", email="amy@example.com")
+        self.caller = dict(CAT)
         self.register(name="Cat", email="cat@example.com")
+        self.caller = dict(BEN)
 
         resp = self.register(name="Ben", email="ben@example.com")
 
@@ -191,7 +194,7 @@ class TestRegistering(RegistrationFlowCase):
 
 
 class TestWithdrawing(RegistrationFlowCase):
-    def test_withdrawal_keeps_the_row_releases_the_place_and_tells_the_attendee(self):
+    def test_withdrawal_keeps_the_row_and_releases_the_place_without_a_notice(self):
         registration_id = self.register().json()["attendeeRegistrationId"]
 
         resp = self.client.post(f"/registrations/{registration_id}/withdraw", headers=HEADERS)
@@ -201,9 +204,10 @@ class TestWithdrawing(RegistrationFlowCase):
         self.assertEqual(row.status, "withdrawn")
         self.assertIsNotNone(row.withdrawnAt)
         self.assertEqual(self.count(), 0)
+        # SPM-93 AC5: the attendee is not told about their own withdrawal.
         paths = [path for _method, path, _body in self.platform.sent]
-        self.assertIn("/notifications/records", paths)
-        self.assertIn("/notifications", paths)
+        self.assertNotIn("/notifications/records", paths)
+        self.assertNotIn("/notifications", paths)
 
     def test_a_released_place_can_be_taken_by_someone_else(self):
         self.open_window("e2", capacity=1)
@@ -270,7 +274,9 @@ class TestRoster(RegistrationFlowCase):
 
     def test_organiser_sees_names_and_withdrawn_rows_can_be_left_out(self):
         withdrawn = self.register(name="Amy", email="amy@example.com").json()["attendeeRegistrationId"]
+        self.caller = dict(CAT)
         self.register(name="Cat", email="cat@example.com")
+        self.caller = dict(AMY)
         self.client.post(f"/registrations/{withdrawn}/withdraw", headers=HEADERS)
         self.caller = dict(ORGANISER)
 

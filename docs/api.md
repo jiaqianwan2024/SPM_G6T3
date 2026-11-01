@@ -31,6 +31,7 @@ Role gates (enforced by forwarding the token to `GET /users/me`):
 | `GET /events/{id}`, `/activity-log`, `/readiness`, `/readiness-items/{item}`; `GET /equipment/reservations/summary` | An `organiser` only for their own organisation's events, else 403 "You can only open your own organisation's events." (SPM-47); staff for any event. Event lists are limited to the organiser's organisation |
 | `GET /events/{id}/attendee-card` | Staff and organisers for any event; an `attendee` only for a `confirmed` event or one they hold a registration for (SPM-127), else 403. Public fields only, including `registrationEnabled` and the registration period |
 | `GET /registrations/counts?eventIds=e1,e2` | Registered attendees for several events in one call: `{"counts": {"e1": 2, "e2": 0}}`. event-service uses it for every event list, instead of one `/registrations/count` call per event |
+| `POST /registrations` | The signed-in user registers themselves (SPM-11). `email` must be their account's own (left out, it is filled in; any other is 403 "You can only register yourself, with your account's email address."). An account holds one registration per event (409 "You are already registered for this event."). The attendee gets no notice about their own registration (SPM-93 AC5) |
 | `GET /registrations/mine/event-ids` | The signed-in user: ids of the events they hold a registration for (SPM-127). It never calls event-service, so the two services cannot loop |
 | `GET /users`; `GET /equipment`, `/equipment/{id}`, `/equipment/{id}/activity-log`, `/equipment/reservations/summary` | Any role except `attendee` (SPM-127, 403) |
 | `GET /events/upcoming/technical` | `techsupport` |
@@ -291,7 +292,7 @@ Once confirmed, each of these people gets an email and an in-app notice (`event.
 - the venue staff who approved the bookings;
 - the technical support who reserved the equipment.
 
-A confirmed event with registration enabled appears in `GET /events/open-for-registration` once its registration period opens.
+A confirmed event with registration enabled appears in `GET /events/open-for-registration` once its registration period opens. A full event is left out of that list until a withdrawal frees a place; `GET /events/open-for-registration/{id}` still returns it with `full: true`, so its page says it is full.
 
 `POST /events/{id}/equipment-lines/{equipmentId}/not-required` with `{"reason": "The venue has a built-in projector."}` records that an equipment line is no longer needed.
 
@@ -350,6 +351,8 @@ The coordinator's page for this is `/app/events/{id}/change-requests/{crid}`, li
 ## Editing an event (SPM-71)
 
 `PATCH /events/{id}` takes only the fields that change. Name, description, purpose, category, internal notes, and organiser contact save without a warning. Start, end, expected attendance, layout, accessibility needs, and equipment requirements are significant; `GET /events/significant-fields` lists both groups.
+
+An event's `category` is one of `Conference`, `Workshop`, `Networking`, or `Meeting`, wherever it is sent (create, draft, edit). Any casing is accepted and stored in that spelling (`meeting` is saved as `Meeting`); any other value is refused with 422. A draft may leave it blank.
 
 A significant change on an event with a confirmed (`approved`) venue booking or an `active`/`reserved` equipment reservation, or on a `confirmed` event, returns 409 and saves nothing:
 

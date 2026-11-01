@@ -71,7 +71,7 @@ class TestQuietEdits(UpdateCase):
         )
 
         self.assertEqual(updated.eventName, "Partner Networking Night")
-        self.assertEqual(updated.category, "networking")
+        self.assertEqual(updated.category, "Networking")
         self.assertEqual(updated.internalNotes, "Staff only")
         self.assertEqual(updated.organiserContact, "organiser@connectsphere.com")
         self.assertEqual(updated.status, "confirmed")
@@ -86,7 +86,8 @@ class TestQuietEdits(UpdateCase):
 
         edits = self.edits()
         self.assertEqual([edit.field for edit in edits], ["category", "description"])
-        self.assertEqual((edits[0].oldValue, edits[0].newValue), (None, "networking"))
+        # The category is stored the way the organiser form spells it.
+        self.assertEqual((edits[0].oldValue, edits[0].newValue), (None, "Networking"))
         self.assertEqual((edits[1].oldValue, edits[1].newValue), ("Old description", "New description"))
         self.assertTrue(all(edit.changedBy == "coord-1" for edit in edits))
         self.assertTrue(all(edit.createdAt for edit in edits))

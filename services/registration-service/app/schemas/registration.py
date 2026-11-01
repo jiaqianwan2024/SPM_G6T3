@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class RegisterRequest(BaseModel):
     eventId: str
     name: str
-    email: str
+    email: str = Field(default="", description="The signed-in attendee's own email; left out, it is filled in from the account.")
 
     model_config = ConfigDict(
         json_schema_extra={

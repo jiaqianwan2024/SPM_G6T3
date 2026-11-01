@@ -395,7 +395,7 @@
 | SPM-121 | The organiser sees the event waiting on the safety review or with safety changes requested | TC-SPM121-AC05 | `e2e/spm121.spec.js`; `services/event-service/tests/unit/test_event_safety_reviews.py` | Automated: the My Events list, then the event page |
 | SPM-11 | Registration succeeds only for confirmed, enabled, in-period events with a place | TC-SPM11-AC01 | `e2e/spm11.spec.js` | Automated |
 | SPM-11 | Mandatory fields block submit with inline validation | TC-SPM11-AC02 | `e2e/spm11.spec.js` | Automated |
-| SPM-11 | Success confirms event, date, time, venue, and notifies | TC-SPM11-AC03 | `e2e/spm11.spec.js` | Automated |
+| SPM-11 | Success confirms event, date, time, venue on screen; no notification to the attendee (SPM-93 AC5) | TC-SPM11-AC03 | `e2e/spm11.spec.js` | Automated |
 | SPM-11 | Remaining places drop by one immediately | TC-SPM11-AC04 | `e2e/spm11.spec.js` | Automated |
 | SPM-11 | Second registration refused; existing shown | TC-SPM11-AC05 | `e2e/spm11.spec.js` | Automated |
 | SPM-11 | Full event refuses registration and is shown as full | TC-SPM11-AC06 | `e2e/spm11.spec.js` | Automated |
@@ -408,9 +408,10 @@
 | SPM-12 | Confirm dialog names the event | TC-SPM12-AC03 | `e2e/spm12.spec.js` | Automated |
 | SPM-12 | Status becomes withdrawn; record kept | TC-SPM12-AC04 | `e2e/spm12.spec.js` | Automated |
 | SPM-12 | Place released immediately | TC-SPM12-AC05 | `e2e/spm12.spec.js` | Automated |
-| SPM-12 | Re-register after withdraw succeeds | TC-SPM12-AC06 | `e2e/spm12.spec.js` | Automated |
-| SPM-12 | Withdraw unavailable after start, complete, or cancel | TC-SPM12-AC07 | `e2e/spm12.spec.js` | Automated |
-| SPM-12 | Organiser and coordinator see the withdrawal | TC-SPM12-AC08 | `e2e/spm12.spec.js` | Automated |
+| SPM-12 | Attendee confirmation on screen; no notification to the attendee (SPM-93 AC5) | TC-SPM12-AC06 | `e2e/spm12.spec.js` | Automated |
+| SPM-12 | Re-register after withdraw succeeds | TC-SPM12-AC07 | `e2e/spm12.spec.js` | Automated |
+| SPM-12 | Withdraw unavailable after start, complete, or cancel | TC-SPM12-AC08 | `e2e/spm12.spec.js` | Automated |
+| SPM-12 | Organiser and coordinator see the withdrawal | TC-SPM12-AC09 | `e2e/spm12.spec.js` | Automated |
 | SPM-89 | Organiser and assigned coordinator see that event only | TC-SPM89-AC01 | `e2e/spm89.spec.js` | Automated |
 | SPM-89 | List shows name, supplied information, time, and status | TC-SPM89-AC02 | `e2e/spm89.spec.js` | Automated |
 | SPM-89 | Summary of capacity, registered, withdrawn, remaining | TC-SPM89-AC03 | `e2e/spm89.spec.js` | Automated |
@@ -428,7 +429,7 @@
 | SPM-91 | Browse shows confirmed, enabled, in-period events | TC-SPM91-AC01 | `e2e/spm91.spec.js` | Automated |
 | SPM-91 | Card fields include venue and remaining places | TC-SPM91-AC02 | `e2e/spm91.spec.js` | Automated |
 | SPM-91 | Detail shows description, access, close, remaining | TC-SPM91-AC03 | `e2e/spm91.spec.js` | Automated |
-| SPM-91 | Full events shown as full, register unavailable | TC-SPM91-AC04 | `e2e/spm91.spec.js` | Automated |
+| SPM-91 | A full event leaves the list until a withdrawal frees a place; its own page says it is full | TC-SPM91-AC04 | `e2e/spm91.spec.js` | Automated |
 | SPM-91 | Non-open statuses never appear; direct read refused | TC-SPM91-AC05 | `e2e/spm91.spec.js` | Automated |
 | SPM-91 | Closed or unopened periods excluded | TC-SPM91-AC06 | `e2e/spm91.spec.js` | Automated |
 | SPM-91 | Search by name; filter by category and date | TC-SPM91-AC07 | `e2e/spm91.spec.js` | Automated |

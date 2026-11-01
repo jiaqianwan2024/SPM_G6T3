@@ -193,14 +193,16 @@ def seed_event() -> None:
     engine = create_engine(URLS["event"])
     now = datetime.utcnow()
     day = timedelta(days=1)
+    # SPM-47: Beacon Media's event, which Apex Partners organisers must never see. Its text is
+    # public, since attendees can open it (SPM-91 AC8: no internal notes or client details).
     foreign_event = {
         "event_id": "e5",
         "organiser_id": "u7",
         "organisation_id": "org-2",
         "coordinator_id": None,
         "name": "Beacon Q4 Showcase",
-        "purpose": "Private planning for Beacon Media.",
-        "description": "Internal client showcase. Must stay invisible to Apex organisers.",
+        "purpose": "Present Beacon Media's Q4 campaign work to partners.",
+        "description": "An afternoon showcase of Beacon Media's Q4 campaigns, followed by networking.",
         "category": "Meeting",
         "proposed_start_at": now + 18 * day,
         "proposed_end_at": now + 18 * day + timedelta(hours=3),
@@ -271,8 +273,9 @@ def seed_event() -> None:
                 "organisation_id": "org-1",
                 "coordinator_id": "u2",
                 "name": "Partner Networking Night",
+                # In planning, with registration not enabled yet.
                 "purpose": "Informal networking for partner organisations.",
-                "description": "Evening reception. Registration not yet enabled.",
+                "description": "An evening reception for partner organisations, with short introductions and drinks.",
                 "category": "Networking",
                 "proposed_start_at": now + 30 * day,
                 "proposed_end_at": now + 30 * day + timedelta(hours=3),
@@ -294,8 +297,9 @@ def seed_event() -> None:
                 "organisation_id": "org-1",
                 "coordinator_id": "u2",
                 "name": "Q1 Client Briefing",
+                # Confirmed, with a registration period that opens in the future (SPM-11 AC7).
                 "purpose": "Quarterly briefing for Apex Partners.",
-                "description": "Registration opens in the future.",
+                "description": "A two-hour briefing on first-quarter plans and results, followed by questions.",
                 "category": "Meeting",
                 "proposed_start_at": now + 45 * day,
                 "proposed_end_at": now + 45 * day + timedelta(hours=2),
@@ -325,8 +329,9 @@ def seed_event() -> None:
                     "organisation_id": "org-1",
                     "coordinator_id": None,
                     "name": "Unassigned Client Brief",
-                    "purpose": "Waiting for a coordinator to pick it up.",
-                    "description": "Submitted request with no coordinator yet.",
+                    # Submitted and waiting in the Lead's queue, with no coordinator yet (SPM-117).
+                    "purpose": "Brief the client team on the year's priorities.",
+                    "description": "A working session to walk the client team through the brief.",
                     "category": "Meeting",
                     "proposed_start_at": now + 10 * day,
                     "proposed_end_at": now + 10 * day + timedelta(hours=2),
@@ -355,8 +360,10 @@ def seed_event() -> None:
                     "organisation_id": "org-1",
                     "coordinator_id": "u2",
                     "name": "Colleague Town Hall",
-                    "purpose": "Created by a colleague in Apex Partners.",
-                    "description": "Must appear on EO-01's organiser dashboard.",
+                    # Filed by EO-03, a colleague in Apex Partners, so it must appear on EO-01's
+                    # organiser dashboard too (SPM-47, SPM-56).
+                    "purpose": "Update staff on company news and plans.",
+                    "description": "An all-hands town hall with updates from the leadership team and an open Q&A.",
                     "category": "Meeting",
                     "proposed_start_at": now + 12 * day,
                     "proposed_end_at": now + 12 * day + timedelta(hours=2),
@@ -383,8 +390,10 @@ def seed_event() -> None:
                     "organisation_id": "org-1",
                     "coordinator_id": "u2",
                     "name": "Cancelled Briefing",
-                    "purpose": "Cancelled after registrations were taken.",
-                    "description": "Attendees who registered must see this as cancelled.",
+                    # Cancelled after registrations were taken, so attendees who registered must
+                    # see it as cancelled (SPM-59 AC3, SPM-92 AC4).
+                    "purpose": "Brief clients on the new service schedule.",
+                    "description": "A one-hour briefing on the new service schedule.",
                     "category": "Meeting",
                     "proposed_start_at": now + 8 * day,
                     "proposed_end_at": now + 8 * day + timedelta(hours=1),
@@ -1156,6 +1165,14 @@ def _ensure_registrations(conn, now: datetime, day: timedelta) -> None:
             ),
             {"id": row["id"]},
         ).first():
+            # A test may have withdrawn Amy's demo registration; re-seeding puts it back.
+            conn.execute(
+                text(
+                    "UPDATE attendee_registrations SET status = :status, withdrawn_at = NULL "
+                    "WHERE attendee_registration_id = :id"
+                ),
+                row,
+            )
             continue
         conn.execute(
             text(

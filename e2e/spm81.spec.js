@@ -20,7 +20,7 @@ test.describe('SPM-81 State registration needs at submission time', () => {
     const missing = await eventApi('POST', '', 'EO-01', {
       eventName: 'AUTO-SPM81-flag',
       purpose: 'x',
-      category: 'meeting',
+      category: 'Meeting',
       proposedStartAt: new Date(Date.now() + 10 * 86400000).toISOString(),
       proposedEndAt: new Date(Date.now() + 10 * 86400000 + 3600000).toISOString(),
       expectedAttendance: 10,
