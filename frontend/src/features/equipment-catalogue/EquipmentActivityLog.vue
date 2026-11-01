@@ -24,10 +24,21 @@ const entries = ref([])
 const loading = ref(true)
 const error = ref('')
 
+// Out-of-service counts arrive as an object, so they are spelled out rather than printed as [object Object].
+function show(value) {
+  if (value === null || value === undefined || value === '') return 'none'
+  if (typeof value === 'object') return Object.entries(value).map(([k, v]) => `${k} ${v}`).join(', ')
+  return String(value)
+}
+
+// Edits log {old, new} pairs; reservation and review entries log plain values.
 function summarise(changes) {
   if (!changes) return ''
   return Object.entries(changes)
-    .map(([field, change]) => `${field}: ${change.old ?? 'none'} → ${JSON.stringify(change.new)}`)
+    .map(([field, change]) =>
+      change && typeof change === 'object' && ('old' in change || 'new' in change)
+        ? `${field}: ${show(change.old)} → ${show(change.new)}`
+        : `${field}: ${show(change)}`)
     .join('; ')
 }
 

@@ -1,105 +1,233 @@
 import { test, expect } from '@playwright/test'
+import { serviceUrls } from './support/api-data.js'
+import { bookVenue, events, passSafetyReview, planningEvent, requestBooking } from './support/confirmation.js'
 import { assignCoordinator, createSubmittedEvent, eventApi } from './support/event.js'
 import { notificationApi } from './support/registration.js'
+import { venueRequest } from './support/venue.js'
+
+// SPM-93 is checked through the routes that exist: actions taken through each
+// service, the caller's own inbox (GET /notifications), and for the rules the
+// notification service applies on every publish (actor, attendee, repeat), its
+// service-key publish route, which every other service calls.
+
+const SERVICE_KEY = process.env.INTERNAL_SERVICE_KEY || 'dev-only-service-key'
+
+async function inbox(accountId, eventId) {
+  const listed = await notificationApi('GET', '/notifications?pageSize=100', accountId)
+  expect(listed.status, JSON.stringify(listed.body)).toBe(200)
+  return listed.body.filter((row) => row.eventId === eventId)
+}
+
+function types(rows) {
+  return rows.map((row) => row.type)
+}
+
+async function publish(body) {
+  const response = await fetch(`${serviceUrls.notification}/notifications/publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Service-Key': SERVICE_KEY },
+    body: JSON.stringify(body),
+  })
+  return { status: response.status, body: await response.json().catch(() => null) }
+}
+
+async function assignedEvent(label) {
+  const event = await createSubmittedEvent('EO-01', `AUTO-SPM93-${label}-${Date.now()}`)
+  await assignCoordinator(event.eventId, 'u2')
+  return event
+}
+
+function cancel(event, accountId) {
+  return events('POST', `/${event.eventId}/cancel`, accountId, { reason: 'AUTO-SPM93 cancelled' })
+}
+
+// The cancellation notice is published after the response, as a background task.
+async function eventuallyContains(accountId, eventId, type) {
+  await expect.poll(async () => types(await inbox(accountId, eventId)), { timeout: 15_000 }).toContain(type)
+}
 
 test.describe('SPM-93 Notification delivery and recipient resolution', () => {
   test('TC-SPM93-AC01 one notification service is the only way a notification record is created', async () => {
-    const created = await notificationApi('POST', '/notifications', 'EC-01', {
-      trigger: 'event.assigned',
-      eventId: 'e6',
-      recipientUserId: 'u2',
-    })
-    expect([201, 200]).toContain(created.status)
-    const direct = await eventApi('POST', '/e6/notifications', 'EC-01', {
-      message: 'should not write a row',
-    })
-    expect([403, 404, 405]).toContain(direct.status)
+    const event = await assignedEvent('only')
+    // The action happened in event-service; the record is read back from notification-service.
+    expect(types(await inbox('EC-01', event.eventId))).toContain('booking.assigned')
+    // Event-service has no route of its own that writes a notification.
+    const direct = await eventApi('POST', `/${event.eventId}/notifications`, 'EC-01', { message: 'no row' })
+    expect([404, 405]).toContain(direct.status)
   })
 
   test('TC-SPM93-AC02 each notification records recipient, trigger, event, message, link, time, and read state', async () => {
-    const inbox = await notificationApi('GET', '/notifications', 'EO-01')
-    expect(inbox.status).toBe(200)
-    const row = (inbox.body.items || inbox.body)[0]
-    expect(row).toBeTruthy()
-    for (const field of ['recipientUserId', 'trigger', 'eventId', 'message', 'link', 'createdAt', 'isRead']) {
-      expect(row[field] ?? row.userId ?? row.body, field).not.toBeUndefined()
-    }
+    const event = await assignedEvent('fields')
+    const row = (await inbox('EC-01', event.eventId)).find((item) => item.type === 'booking.assigned')
+    expect(row, 'booking.assigned row for EC-01').toBeTruthy()
+    expect(row).toMatchObject({
+      userId: 'u2',
+      type: 'booking.assigned',
+      eventId: event.eventId,
+      resourceType: 'event',
+      resourceId: event.eventId,
+      link: `/app/events/${event.eventId}`,
+      isRead: false,
+    })
+    expect(`${row.title} ${row.body}`).toContain(event.eventName)
+    expect(Number.isNaN(Date.parse(row.createdAt))).toBe(false)
   })
 
-  test('TC-SPM93-AC03 recipients are resolved from the relationship to the event, not from role alone', async () => {
-    const resolved = await notificationApi('GET', '/notifications/recipients?eventId=e1&trigger=event.confirmed', 'EC-01')
-    expect(resolved.status).toBe(200)
-    const ids = (resolved.body || []).map((row) => row.userId || row.recipientUserId)
-    expect(ids).toContain('u1')
-    expect(ids).toContain('u2')
-    expect(ids).not.toContain('u6')
-  })
+  test('TC-SPM93-AC03 recipients are resolved from their relationship to the event, not from role alone', async () => {
+    const event = await createSubmittedEvent('EO-01', `AUTO-SPM93-relations-${Date.now()}`)
+    // Submitting tells the Event Coordinator Lead a request is waiting.
+    expect(types(await inbox('ECL-01', event.eventId))).toContain('booking.submitted')
 
-  test('TC-SPM93-AC04 each trigger declares which relationships it notifies, and new triggers are registered', async () => {
-    const catalog = await notificationApi('GET', '/notifications/triggers', 'EC-01')
-    expect(catalog.status).toBe(200)
-    const assigned = (catalog.body || []).find((row) => /assign/i.test(row.trigger || row.id))
-    expect(assigned.relationships || assigned.recipients).toBeTruthy()
-  })
-
-  test('TC-SPM93-AC05 the actor never receives a notification about their own action', async () => {
-    const event = await createSubmittedEvent('EO-01', 'AUTO-SPM93-self')
     await assignCoordinator(event.eventId, 'u2')
-    const inbox = await notificationApi('GET', `/notifications?eventId=${event.eventId}`, 'ECL-01')
-    expect(JSON.stringify(inbox.body || [])).not.toMatch(new RegExp(event.eventId))
+    expect(types(await inbox('EC-01', event.eventId))).toContain('booking.assigned')
+    expect(types(await inbox('EO-01', event.eventId))).toContain('event.coordinator')
+    // Another coordinator, and an organiser from another organisation, have no tie to the event.
+    expect(await inbox('EC-02', event.eventId)).toEqual([])
+    expect(await inbox('EO-02', event.eventId)).toEqual([])
+
+    // A reassignment also tells the coordinator it was taken from.
+    await assignCoordinator(event.eventId, 'u6')
+    expect(types(await inbox('EC-01', event.eventId))).toContain('event.reassigned')
+    expect(types(await inbox('EC-02', event.eventId))).toContain('booking.assigned')
   })
 
-  test('TC-SPM93-AC06 one notification is created per recipient per occurrence, so a repeat does not duplicate', async () => {
-    // A request of its own, so the seeded unassigned request (e6) stays unassigned.
-    const event = await createSubmittedEvent('EO-01', 'AUTO-SPM93-repeat')
-    await eventApi('POST', `/${event.eventId}/assign-coordinator`, 'ECL-01', { coordinatorId: 'u2' })
-    await eventApi('POST', `/${event.eventId}/assign-coordinator`, 'ECL-01', { coordinatorId: 'u2' })
-    const inbox = await notificationApi('GET', `/notifications?eventId=${event.eventId}&trigger=event.assigned`, 'EO-01')
-    const rows = (inbox.body.items || inbox.body || []).filter((row) => row.eventId === event.eventId)
-    const keys = rows.map((row) => `${row.trigger}:${row.recipientUserId || row.userId}`)
-    expect(new Set(keys).size).toBe(keys.length)
+  test('TC-SPM93-AC04 the triggers include assignment, reassignment, hold expiry, venue unavailability, and the safety decision', async () => {
+    test.setTimeout(180_000)
+
+    // Assignment and reassignment.
+    const submitted = await createSubmittedEvent('EO-01', `AUTO-SPM93-assign-${Date.now()}`)
+    await assignCoordinator(submitted.eventId, 'u6')
+    expect(types(await inbox('EC-02', submitted.eventId))).toContain('booking.assigned')
+    await assignCoordinator(submitted.eventId, 'u2')
+    expect(types(await inbox('EC-02', submitted.eventId))).toContain('event.reassigned')
+
+    // The Safety Officer's decision.
+    const reviewed = await planningEvent('SPM93-safety')
+    await bookVenue(reviewed)
+    await passSafetyReview(reviewed)
+    expect(types(await inbox('EO-01', reviewed.eventId))).toContain('safety.approved')
+
+    // Venue unavailability that affects a confirmed booking.
+    const blocked = await venueRequest('POST', '/venues/v1/unavailability', 'VS-01', {
+      startsAt: reviewed.period.startsAt,
+      endsAt: reviewed.period.endsAt,
+      reason: 'maintenance',
+      acknowledgeConflicts: true,
+    })
+    expect(blocked.status, JSON.stringify(blocked.body)).toBe(201)
+    expect(types(await inbox('EC-01', reviewed.eventId))).toContain('venue.unavailability')
+
+    // Tentative-hold expiry, announced by the reminder check.
+    const held = await planningEvent('SPM93-hold')
+    const booking = await requestBooking(held)
+    const placed = await venueRequest('POST', `/venues/bookings/${booking.bookingId}/hold`, 'VS-01', {
+      expiresAt: new Date(Date.now() + 3000).toISOString(),
+    })
+    expect(placed.status, JSON.stringify(placed.body)).toBe(200)
+    await new Promise((resolve) => setTimeout(resolve, 5000))
+    const run = await events('POST', '/reminders/run', 'EC-01')
+    expect(run.status, JSON.stringify(run.body)).toBe(200)
+    expect(run.body.expiredHolds).toContain(booking.bookingId)
+    expect(types(await inbox('EC-01', held.eventId))).toContain('hold.expired')
   })
 
-  test('TC-SPM93-AC07 an attendee can only receive an attendee-visible trigger', async () => {
-    const inbox = await notificationApi('GET', '/notifications', 'ATT-01')
-    expect(inbox.status).toBe(200)
-    for (const row of inbox.body.items || inbox.body || []) {
-      expect(row.attendeeVisible ?? row.visibility).not.toBe('internal')
-      expect(JSON.stringify(row)).not.toMatch(/internal note|staff only/i)
+  // A replacement-venue request emails Venue Staff (a stub that only logs) and stores no
+  // notification record, so there is nothing for a test to read. Needs an in-app notice.
+  test.fixme('TC-SPM93-AC04b a request for a replacement venue notifies Venue Staff', async () => {})
+
+  test('TC-SPM93-AC05 the user who performed an action is not notified about it', async () => {
+    const event = await assignedEvent('actor')
+    const cancelled = await cancel(event, 'EC-01')
+    expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200)
+    // The organiser is told; the coordinator who cancelled is not, though they are a recipient.
+    await eventuallyContains('EO-01', event.eventId, 'event.cancelled')
+    expect(types(await inbox('EC-01', event.eventId))).not.toContain('event.cancelled')
+
+    // The same rule on the publish route itself.
+    const published = await publish({
+      trigger: 'booking.assigned',
+      occurrenceId: `${event.eventId}:actor-check`,
+      eventId: event.eventId,
+      actorId: 'u2',
+      recipients: [{ userId: 'u2', role: 'coordinator' }],
+      context: { eventName: event.eventName },
+    })
+    expect(published.status, JSON.stringify(published.body)).toBe(201)
+    expect(published.body).toMatchObject({ created: 0, skipped: { actor: 1 } })
+  })
+
+  test('TC-SPM93-AC06 one notification is created per recipient per occurrence of a trigger', async () => {
+    const eventId = `AUTO-SPM93-repeat-${Date.now()}`
+    const occurrence = {
+      trigger: 'booking.assigned',
+      occurrenceId: `${eventId}:booking.assigned:1`,
+      eventId,
+      recipients: [
+        { userId: 'u2', role: 'coordinator' },
+        { userId: 'u2', role: 'coordinator' },
+        { userId: 'u6', role: 'coordinator' },
+      ],
+      context: { eventName: 'AUTO SPM-93 repeat' },
     }
+    const first = await publish(occurrence)
+    expect(first.status, JSON.stringify(first.body)).toBe(201)
+    expect(first.body).toMatchObject({ created: 2, skipped: { duplicate: 1 } })
+    // The same occurrence again (a retry) notifies nobody twice.
+    const again = await publish(occurrence)
+    // Skipped: u2 listed twice, plus u2 and u6 already notified for this occurrence.
+    expect(again.body).toMatchObject({ created: 0, skipped: { duplicate: 3 } })
+    expect(await inbox('EC-01', eventId)).toHaveLength(1)
+    expect(await inbox('EC-02', eventId)).toHaveLength(1)
+  })
+
+  test('TC-SPM93-AC07 an attendee receives only a notification whose trigger is attendee-visible', async () => {
+    const eventId = `AUTO-SPM93-attendee-${Date.now()}`
+    const internal = await publish({
+      trigger: 'booking.assigned',
+      occurrenceId: `${eventId}:internal`,
+      eventId,
+      recipients: [{ userId: 'u5', role: 'attendee' }],
+      context: { eventName: 'AUTO SPM-93 attendee' },
+    })
+    expect(internal.body).toMatchObject({ created: 0, skipped: { attendeeHidden: 1 } })
+    expect(await inbox('ATT-01', eventId)).toEqual([])
+
+    const visible = await publish({
+      trigger: 'event.cancelled',
+      occurrenceId: `${eventId}:visible`,
+      eventId,
+      recipients: [{ userId: 'u5', role: 'attendee' }],
+      context: { eventName: 'AUTO SPM-93 attendee', reason: 'AUTO' },
+    })
+    expect(visible.body).toMatchObject({ created: 1 })
+    expect(types(await inbox('ATT-01', eventId))).toEqual(['event.cancelled'])
   })
 
   test('TC-SPM93-AC08 every message names the event and states what happened in plain language', async () => {
-    const inbox = await notificationApi('GET', '/notifications', 'EO-01')
-    const row = (inbox.body.items || inbox.body)[0]
-    expect(JSON.stringify(row)).toMatch(/AI in Events Summit|e1/)
-    expect(JSON.stringify(row)).not.toMatch(/\b(submitted|planning|under_review)\b/)
+    const event = await assignedEvent('wording')
+    const rows = [...(await inbox('EC-01', event.eventId)), ...(await inbox('EO-01', event.eventId))]
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      const text = `${row.title} ${row.body}`
+      expect(text).toContain(event.eventName)
+      // Plain language: no trigger keys or raw status codes (contact emails aside).
+      expect(text.replace(/\S+@\S+/g, '')).not.toMatch(/\b[a-z_]+\.[a-z_]+\b|under_review|\bsubmitted\b/)
+    }
   })
 
-  test('TC-SPM93-AC09 if delivery fails, the action still succeeds and the failure is logged', async () => {
-    // A request of its own, assigned by the Lead (SPM-117): the seeded unassigned
-    // request (e6) must stay unassigned for the review-queue specs.
-    const event = await createSubmittedEvent('EO-01', 'AUTO-SPM93-delivery')
-    const assigned = await eventApi('POST', `/${event.eventId}/assign-coordinator`, 'ECL-01', {
-      coordinatorId: 'u2',
-      simulateNotificationFailure: true,
-    })
-    expect(assigned.status).toBe(201)
-  })
+  // Making delivery fail needs the notification service to refuse or be down while the action
+  // runs, which an end-to-end run cannot arrange. Covered by unit tests instead:
+  // event-service test_event_assignment (send failure), test_event_reminders (refused publish),
+  // registration-service test_registration_withdrawal, venue-service test_venue_replacement_routes.
+  test.skip('TC-SPM93-AC09 if delivery fails, the action still succeeds and the failure is logged', async () => {})
 
-  test('TC-SPM93-AC10 notifications persist after the event is completed or cancelled', async () => {
-    const inbox = await notificationApi('GET', '/notifications?eventId=e8', 'EO-01')
-    expect(inbox.status).toBe(200)
-  })
-
-  test('TC-SPM93-AC11 automated coverage of recipient resolution, actor exclusion, deduplication, attendee scoping, and delivery failure', async () => {
-    const resolved = await notificationApi('GET', '/notifications/recipients?eventId=e1&trigger=event.confirmed', 'EC-01')
-    expect(resolved.status).toBe(200)
-    const ids = (resolved.body || []).map((row) => row.userId || row.recipientUserId)
-    expect(ids).toEqual(expect.arrayContaining(['u1']))
-    const attendee = await notificationApi('GET', '/notifications', 'ATT-01')
-    expect(attendee.status).toBe(200)
-    const self = await notificationApi('GET', '/notifications?eventId=e1&actor=u2', 'EC-01')
-    expect(JSON.stringify(self.body || [])).not.toMatch(/assigned themselves/)
+  test('TC-SPM93-AC10 notifications remain after the event is completed or cancelled', async () => {
+    const event = await assignedEvent('persist')
+    const cancelled = await cancel(event, 'EO-01')
+    expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200)
+    expect(cancelled.body.status).toMatch(/cancelled/i)
+    await eventuallyContains('EC-01', event.eventId, 'event.cancelled')
+    expect(types(await inbox('EC-01', event.eventId))).toContain('booking.assigned')
+    expect(types(await inbox('EO-01', event.eventId))).toContain('event.coordinator')
   })
 })

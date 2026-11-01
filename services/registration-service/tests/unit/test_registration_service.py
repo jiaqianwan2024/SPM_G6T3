@@ -108,6 +108,31 @@ class TestRegistrationService(ServiceTestCase):
 
         self.assertEqual(ctx.exception.status_code, 409)
 
+    def test_an_attendee_registers_only_with_their_own_email(self):
+        # Nobody registers someone else: the email is the account's, and is filled in when left out.
+        make_window(self.db)
+
+        with self.assertRaises(HTTPException) as ctx:
+            self.service.register(
+                "e1", "Ben Tan", "ben@example.com", user_id="u-amy", account_email="amy@example.com"
+            )
+        row = self.service.register("e1", "Amy Wong", "", user_id="u-amy", account_email="Amy@Example.com")
+
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertEqual(row.attendeeEmail, "Amy@Example.com")
+        self.assertEqual(len(self.service.list_for_event("e1")), 1)
+
+    def test_an_account_holds_one_registration_per_event(self):
+        # SPM-11 AC5: a second registration from the same account is refused, whatever the email.
+        make_window(self.db)
+        self.service.register("e1", "Amy Wong", "amy@example.com", user_id="u-amy")
+
+        with self.assertRaises(HTTPException) as ctx:
+            self.service.register("e1", "Amy Wong", "amy.other@example.com", user_id="u-amy")
+
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.assertEqual(ctx.exception.detail, "You are already registered for this event.")
+
     def test_list_for_event_returns_only_registered_rows(self):
         make_window(self.db)
         registered = self.service.register("e1", "Amy Wong", "amy@example.com", user_id=None)

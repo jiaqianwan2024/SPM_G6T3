@@ -86,6 +86,7 @@ class TestQuietEdits(UpdateCase):
 
         edits = self.edits()
         self.assertEqual([edit.field for edit in edits], ["category", "description"])
+        # The category is stored the way the organiser form spells it.
         self.assertEqual((edits[0].oldValue, edits[0].newValue), (None, "Networking"))
         self.assertEqual((edits[1].oldValue, edits[1].newValue), ("Old description", "New description"))
         self.assertTrue(all(edit.changedBy == "coord-1" for edit in edits))

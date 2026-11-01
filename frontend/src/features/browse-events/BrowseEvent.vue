@@ -59,8 +59,9 @@
           <input id="register-name" v-model.trim="form.name" autocomplete="name" data-testid="register-name" />
           <p v-if="attempted && !form.name" class="field-error" data-testid="register-name-error">Enter your name.</p>
           <label for="register-email">Email</label>
-          <input id="register-email" v-model.trim="form.email" type="email" autocomplete="email" data-testid="register-email" />
-          <p v-if="attempted && emailError" class="field-error" data-testid="register-email-error">{{ emailError }}</p>
+          <!-- An attendee registers only themselves, so the email is their account's (enforced on the server too). -->
+          <input id="register-email" :value="form.email" type="email" readonly data-testid="register-email" />
+          <p class="field-hint" data-testid="register-email-hint">You can only register yourself, with your account's email.</p>
           <p v-if="submitError" class="form-error" data-testid="register-error">{{ submitError }}</p>
           <div class="actions">
             <button type="button" class="btn btn-ghost" @click="registering = false">Cancel</button>
@@ -80,8 +81,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { getAttendeeCard, getOpenEvent } from '../../api/eventService.js'
 import { getMyRegistrations, registerForEvent } from '../../api/registrationService.js'
 import { formatSgt, formatSgtDate, formatSgtTime, parseServerTime } from '../../utils/datetime.js'
-
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+import { session } from '../../store/session.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -93,15 +93,12 @@ const openForRegistration = ref(false)
 const mine = ref(null)
 // The list's Register button opens the form straight away.
 const registering = ref(route.query.register === '1')
-const form = reactive({ name: '', email: '' })
+// The attendee registers themselves: the name starts as their account's and can be edited
+// (SPM-11 AC2), and the email is always their account's.
+const form = reactive({ name: session.name || '', email: session.email || '' })
 const attempted = ref(false)
 const saving = ref(false)
 const submitError = ref('')
-
-const emailError = computed(() => {
-  if (!form.email) return 'Enter your email address.'
-  return EMAIL.test(form.email) ? '' : 'Enter a valid email address, like name@example.com.'
-})
 
 const schedule = computed(() => {
   const start = event.value?.proposedStartAt || event.value?.startsAt
@@ -157,7 +154,7 @@ async function loadMine() {
 async function submit() {
   attempted.value = true
   submitError.value = ''
-  if (!form.name || emailError.value) return
+  if (!form.name) return
   saving.value = true
   try {
     const { data } = await registerForEvent(route.params.id, form.name, form.email)
@@ -270,7 +267,9 @@ onMounted(async () => {
   padding: 9px 12px;
   font-size: 14px;
 }
+.register-form input[readonly] { color: var(--muted); cursor: default; }
 .field-error { margin: 0; font-size: 12px; color: #FF8A76; }
+.field-hint { margin: 0; font-size: 12px; color: var(--muted); }
 .register-form .actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
 @media (max-width: 720px) {
   .browse-detail { padding: 22px 18px 36px; }

@@ -247,8 +247,13 @@ class TestFollowUp(EventCase):
         self.count_mock.return_value = 5
         with patch("app.services.event_followup._soft_get", return_value={}):
             full = self.follow.get_open("e-open", "Bearer token")
+            self.assertEqual(self.follow.list_open("Bearer token"), [])
         self.assertTrue(full.full)
         self.assertEqual(full.remaining, 0)
+        # A withdrawal frees a place, and the event is listed again.
+        self.count_mock.return_value = 4
+        with patch("app.services.event_followup._soft_get", return_value={}):
+            self.assertEqual([row.eventId for row in self.follow.list_open("Bearer token")], ["e-open"])
         with self.assertRaises(HTTPException):
             self.follow.get_open("e-later", "Bearer token")
         self.assertEqual(self.follow.list_open("Bearer token", search="zzzz"), [])

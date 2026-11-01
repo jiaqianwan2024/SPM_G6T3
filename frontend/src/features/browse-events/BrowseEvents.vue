@@ -26,51 +26,53 @@
     <p v-else-if="error" class="form-error" data-testid="browse-error">{{ error }}</p>
     <p v-else-if="!visible.length" class="empty-note" data-testid="browse-empty">No events are open for registration.</p>
 
-    <article
-      v-for="event in visible"
-      :key="event.eventId"
-      class="event-card"
-      :data-testid="`browse-event-${event.eventId}`"
-      :data-full="event.full ? 'true' : 'false'"
-    >
-      <h3 class="event-name">{{ event.eventName }}</h3>
-      <dl class="event-facts">
-        <div>
-          <dt>Category:</dt>
-          <dd data-testid="browse-category">{{ event.category }}</dd>
+    <div v-if="visible.length" class="cards">
+      <article
+        v-for="event in visible"
+        :key="event.eventId"
+        class="event-card"
+        :data-testid="`browse-event-${event.eventId}`"
+        :data-full="event.full ? 'true' : 'false'"
+      >
+        <h3 class="event-name" :title="event.eventName">{{ event.eventName }}</h3>
+        <dl class="event-facts">
+          <div>
+            <dt>Category:</dt>
+            <dd data-testid="browse-category">{{ event.category }}</dd>
+          </div>
+          <div>
+            <dt>Date:</dt>
+            <dd data-testid="browse-date">{{ datePart(event.proposedStartAt) }}</dd>
+          </div>
+          <div>
+            <dt>Time:</dt>
+            <dd>
+              <span data-testid="browse-start">{{ timePart(event.proposedStartAt) }}</span>
+              – <span data-testid="browse-end">{{ timePart(event.proposedEndAt) }}</span> SGT
+            </dd>
+          </div>
+          <div>
+            <dt>Location:</dt>
+            <dd>{{ [event.venueName, event.venueLocation].filter(Boolean).join(' · ') || 'To be confirmed' }}</dd>
+          </div>
+        </dl>
+        <p class="places" data-testid="browse-remaining">
+          {{ event.full ? 'Full' : `${event.remaining} place(s) remaining` }}
+        </p>
+        <div class="actions">
+          <button type="button" class="btn btn-outline" @click="open(event.eventId)">View</button>
+          <button
+            v-if="!event.full"
+            type="button"
+            class="btn btn-solid"
+            data-testid="event-register"
+            @click="open(event.eventId, true)"
+          >
+            Register
+          </button>
         </div>
-        <div>
-          <dt>Date:</dt>
-          <dd data-testid="browse-date">{{ datePart(event.proposedStartAt) }}</dd>
-        </div>
-        <div>
-          <dt>Time:</dt>
-          <dd>
-            <span data-testid="browse-start">{{ timePart(event.proposedStartAt) }}</span>
-            – <span data-testid="browse-end">{{ timePart(event.proposedEndAt) }}</span> SGT
-          </dd>
-        </div>
-        <div>
-          <dt>Location:</dt>
-          <dd>{{ event.venueName }} · {{ event.venueLocation }}</dd>
-        </div>
-      </dl>
-      <p class="places" data-testid="browse-remaining">
-        {{ event.full ? 'Full' : `${event.remaining} place(s) remaining` }}
-      </p>
-      <div class="actions">
-        <button type="button" class="btn btn-outline" @click="open(event.eventId)">View</button>
-        <button
-          v-if="!event.full"
-          type="button"
-          class="btn btn-solid"
-          data-testid="event-register"
-          @click="open(event.eventId, true)"
-        >
-          Register
-        </button>
-      </div>
-    </article>
+      </article>
+    </div>
   </div>
 </template>
 
@@ -89,11 +91,19 @@ const category = ref('')
 const fromDate = ref('')
 const toDate = ref('')
 
-const categories = computed(() => [...new Set(events.value.map((event) => event.category).filter(Boolean))])
+// Older events may spell a category in a different case ("meeting"); list each category once.
+const categories = computed(() => {
+  const byKey = new Map()
+  for (const event of events.value) {
+    const name = event.category?.trim()
+    if (name && !byKey.has(name.toLowerCase())) byKey.set(name.toLowerCase(), name)
+  }
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b))
+})
 
 const visible = computed(() => events.value.filter((event) => {
   if (search.value && !event.eventName.toLowerCase().includes(search.value.toLowerCase())) return false
-  if (category.value && event.category !== category.value) return false
+  if (category.value && event.category?.trim().toLowerCase() !== category.value.toLowerCase()) return false
   const start = sgtDay(event.proposedStartAt)
   if (fromDate.value && start && start < fromDate.value) return false
   if (toDate.value && start && start > toDate.value) return false
@@ -125,7 +135,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.browse { display: flex; flex-direction: column; gap: 14px; max-width: 860px; }
+.browse { display: flex; flex-direction: column; gap: 14px; }
 .filters {
   display: grid;
   grid-template-columns: minmax(180px, 1.6fr) minmax(150px, 1fr) 158px 158px;
@@ -184,7 +194,18 @@ onMounted(async () => {
   .filters { grid-template-columns: 1fr 1fr; }
   .search { grid-column: 1 / -1; }
 }
+/* Events sit three to a row so the page uses its full width. */
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1100px) {
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .cards { grid-template-columns: minmax(0, 1fr); }
+}
 .event-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
   background: var(--glass);
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
@@ -192,6 +213,9 @@ onMounted(async () => {
 }
 .event-name {
   margin: 0 0 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 22px;
   font-weight: 500;
   letter-spacing: -.02em;
@@ -202,5 +226,6 @@ onMounted(async () => {
 .event-facts dd { margin: 0; color: var(--body); }
 .places { margin: 12px 0 0; font-size: 14px; color: var(--text); }
 .empty-note { font-size: 13px; color: var(--muted); }
-.actions { display: flex; gap: 8px; margin-top: 14px; }
+/* Pinned to the bottom so the buttons line up across a row of cards. */
+.actions { display: flex; gap: 8px; margin-top: auto; padding-top: 14px; }
 </style>

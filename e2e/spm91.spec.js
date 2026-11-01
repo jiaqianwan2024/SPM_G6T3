@@ -2,8 +2,18 @@ import { test, expect } from '@playwright/test'
 import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { eventApi } from './support/event.js'
+import { guestRegistration, openEvent, registrationApi, releaseEvents } from './support/registration.js'
+
+const created = []
+async function confirmedEvent(label, options) {
+  const event = await openEvent(label, options)
+  created.push(event.eventId)
+  return event
+}
 
 test.describe('SPM-91 Browse events open for registration', () => {
+  test.afterAll(async () => releaseEvents(created))
+
   test('TC-SPM91-AC01 an attendee sees confirmed, registration-enabled events that are within their period', async () => {
     const list = await eventApi('GET', '/open-for-registration', 'ATT-01')
     expect(list.status).toBe(200)
@@ -43,16 +53,28 @@ test.describe('SPM-91 Browse events open for registration', () => {
     await expect(page.getByTestId('browse-remaining')).toBeVisible()
   })
 
-  test('TC-SPM91-AC04 full events are shown, marked full, with registration unavailable', async ({
+  test('TC-SPM91-AC04 a full event leaves the list until a withdrawal frees a place, and its own page says it is full', async ({
     page,
   }) => {
+    const event = await confirmedEvent('SPM91-full', { capacity: 1 })
+    const listed = async () =>
+      ((await eventApi('GET', '/open-for-registration', 'ATT-01')).body || []).map((row) => row.eventId)
+    expect(await listed()).toContain(event.eventId)
+
+    const taken = await registrationApi('POST', '/registrations', 'ATT-02', guestRegistration(event.eventId, 'SPM91-FULL'))
+    expect(taken.status, JSON.stringify(taken.body)).toBe(201)
+    expect(await listed()).not.toContain(event.eventId)
+
     await login(page, account('ATT-01'))
     await page.locator('.nav-item').getByText('Browse Events', { exact: true }).click()
-    const full = page.getByTestId('browse-event-e2')
-    await expect(full).toBeVisible()
-    await expect(full).toHaveAttribute('data-full', 'true')
-    await expect(full).toContainText(/full/i)
-    await expect(full.getByTestId('event-register')).toHaveCount(0)
+    await expect(page.getByTestId(`browse-event-${event.eventId}`)).toHaveCount(0)
+    await page.goto(`/app/browse/${event.eventId}`)
+    await expect(page.getByTestId('event-full')).toBeVisible()
+    await expect(page.getByTestId('event-register')).toHaveCount(0)
+
+    const withdrawn = await registrationApi('POST', `/registrations/${taken.body.attendeeRegistrationId}/withdraw`, 'ATT-02')
+    expect(withdrawn.status, JSON.stringify(withdrawn.body)).toBe(200)
+    expect(await listed()).toContain(event.eventId)
   })
 
   test('TC-SPM91-AC05 draft, submitted, planning, completed, cancelled, or rejected events never appear, and a direct request returns no event data', async () => {
