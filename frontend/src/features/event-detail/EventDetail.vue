@@ -258,6 +258,7 @@
                 <dt>Expected attendance</dt>
                 <dd>{{ event.expectedAttendance }}</dd>
               </div>
+              <div class="wide" data-testid="event-organiser"><dt>Organiser</dt><dd>{{ [event.organisationName, organiser?.userName, organiser?.email].filter(Boolean).join(' · ') || event.organiserId }}</dd></div>
               <div
                 v-if="coordinator"
                 class="wide"
@@ -485,6 +486,7 @@ import {
   getInternalNotes,
 } from '../../api/eventService.js'
 import { getPublicVenue, getVenueBookings } from '../../api/venueService.js'
+import { getUsers } from '../../api/userService.js'
 import {
   IN_REVIEW_EVENT_STATUSES,
   LOCKED_EVENT_STATUSES,
@@ -528,6 +530,7 @@ const editing = ref(false)
 const savedNote = ref('')
 
 const coordinator = ref(null)
+const organiser = ref(null)
 const assigning = ref(false)
 const decision = ref(null)
 const approving = ref(false)
@@ -746,6 +749,7 @@ async function load() {
     loading.value = false
   }
   if (event.value && session.role === 'coordinator') loadInternalNotes()
+  if (event.value && session.role !== 'attendee') loadOrganiser()
   if (event.value) loadReschedule()
   if (event.value && CONTACT_ROLES.includes(session.role)) {
     loadCoordinator()
@@ -851,6 +855,16 @@ function onApproved(approved) {
     decidedAt: approved.decidedAt,
   }
   savedNote.value = 'Request approved. The organiser has been notified.'
+}
+
+// Who raised the request, so staff know who they are asking before a clarification. Best effort.
+async function loadOrganiser() {
+  try {
+    const { data } = await getUsers()
+    organiser.value = data.find((user) => user.userId === event.value.organiserId) || null
+  } catch {
+    organiser.value = null
+  }
 }
 
 // SPM-66 AC5: the organiser's one person to deal with. Best effort, like the notes.
