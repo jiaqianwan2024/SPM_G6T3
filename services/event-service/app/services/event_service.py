@@ -42,6 +42,7 @@ from app.orchestration.clients import (
     event_bookings,
     equipment_requests_for,
     equipment_reservations_for,
+    handoff_arrangements,
     flag_arrangements,
     flag_technical_arrangements,
     flag_venue_arrangements,
@@ -539,6 +540,13 @@ def require_organisation_access(event, caller: dict) -> None:
         raise forbidden(ORGANISATION_REFUSAL)
 
 
+def require_submitted_for_staff(event, caller: dict) -> None:
+    """SPM-79 AC6: until it is submitted, a request belongs to its organisation alone, so
+    staff get 404, as if it did not exist yet. Organisers are left to require_organisation_access."""
+    if caller.get("role") != "organiser" and event.status in ("draft", "discarded"):
+        raise not_found("Event not found")
+
+
 def _require_canceller(event, caller: dict) -> None:
     """SPM-88 AC1: an organiser of the event's own client organisation, or its assigned coordinator."""
     if caller.get("role") == "organiser":
@@ -898,6 +906,7 @@ class EventService(BaseService):
         event = self._require_event(event_id)
         if caller is not None:
             require_organisation_access(event, caller)
+            require_submitted_for_staff(event, caller)
         return _to_out(event, authorization)
 
     def registration_access(self, event_id: str, caller: dict) -> RegistrationAccessOut:
@@ -1148,6 +1157,11 @@ class EventService(BaseService):
         missing = []
         if not event.eventName:
             missing.append("eventName")
+        # SPM-14 AC1 / SPM-82 AC1: the same required fields as a request submitted with its details.
+        if not (event.category or "").strip():
+            missing.append("category")
+        if not (event.purpose or "").strip():
+            missing.append("purpose")
         if event.proposedStartAt is None:
             missing.append("proposedStartAt")
         if event.proposedEndAt is None:
@@ -1261,6 +1275,7 @@ class EventService(BaseService):
         event = self._require_event(event_id)
         if caller is not None:
             require_organisation_access(event, caller)
+            require_submitted_for_staff(event, caller)
         assignments = []
         previous = None
         for row in self.assignment_dao.list_by_event(event_id):
@@ -2928,7 +2943,7 @@ class EventService(BaseService):
         Officer this round, and whether the event needs technical ones at all."""
         event = self._require_event(event_id)
         _require_organiser_or_staff(event, caller, "safety reviews")
-        arrangements = self._check_arrangements(event, authorization)
+        arrangements = self._check_arrangements(event, authorization, as_service=True)
         needed = technical_needed(event.equipmentLines or [], arrangements.requests, arrangements.reservations)
         return _handoff_out(event.eventId, self.handoff_dao.get(event.eventId), needed)
 
@@ -2957,7 +2972,7 @@ class EventService(BaseService):
         event = self._require_event(event_id)
         if event.status not in SAFETY_SUBMITTABLE_STATUSES:
             raise conflict(f"Arrangements are sent to the Safety Officer from planning (this one is {event.status})")
-        arrangements = self._check_arrangements(event, authorization)
+        arrangements = self._check_arrangements(event, authorization, as_service=True)
         needed = technical_needed(event.equipmentLines or [], arrangements.requests, arrangements.reservations)
         if kind == "equipment" and not needed:
             raise conflict("This event has no equipment, so there are no technical arrangements to send.")
@@ -3022,13 +3037,22 @@ class EventService(BaseService):
         return review
 
     @staticmethod
-    def _check_arrangements(event: Event, authorization: str | None) -> "Arrangements":
+    def _check_arrangements(event: Event, authorization: str | None, as_service: bool = False) -> "Arrangements":
         """The venue and equipment rules shared by the safety review gate
         (SPM-120) and confirmation (SPM-72). Reads are strict: an arrangement
-        that cannot be checked is never treated as confirmed."""
-        bookings = event_bookings(event.eventId, authorization)
-        requests = equipment_requests_for(event.eventId, authorization)
-        reservations = equipment_reservations_for(event.eventId, authorization)
+        that cannot be checked is never treated as confirmed. `as_service` reads
+        the rows with the service key, for the handoff, whose senders may each
+        read only their own team's rows."""
+        if as_service:
+            bookings, requests, reservations = handoff_arrangements(event.eventId)
+        else:
+            # The three reads are independent, so they run side by side rather than one after
+            # another: every confirmation and safety-review view waits on them (SPM-55 lists many).
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                bookings_job = pool.submit(event_bookings, event.eventId, authorization)
+                requests_job = pool.submit(equipment_requests_for, event.eventId, authorization)
+                reservations_job = pool.submit(equipment_reservations_for, event.eventId, authorization)
+            bookings, requests, reservations = bookings_job.result(), requests_job.result(), reservations_job.result()
         lines = list(event.equipmentLines or [])
         names = equipment_names(authorization) if requests or lines else {}
         gaps = venue_gaps(bookings, event.proposedStartAt, event.proposedEndAt) + equipment_gaps(
@@ -3456,6 +3480,25 @@ class EventService(BaseService):
         event = self._require_event(event_id)
         told = self._tell_registered_attendees(event, change, authorization)
         return {"eventId": event.eventId, "notified": told}
+
+    def notify_capacity_reached(self, event_id: str, authorization: str | None) -> dict:
+        """SPM-11 AC10: registration-service reports that the last place was taken, and the
+        organiser and the assigned coordinator are told. The count is read here, so nobody
+        can raise the notice early. One notice per capacity: a place released and taken
+        again does not repeat it, but a raised capacity that fills up again does."""
+        event = self._require_event(event_id)
+        capacity = event.capacity or 0
+        if not event.registrationEnabled or capacity <= 0 or registration_count(event.eventId, authorization) < capacity:
+            return {"eventId": event.eventId, "notified": False}
+        notified = publish_notification(
+            "registration.full",
+            event.eventId,
+            f"{event.eventId}:registration.full:{capacity}",
+            people(event, ["organiser", "coordinator"], {}),
+            {"eventName": event.eventName, "capacity": str(capacity)},
+            resource={"type": "event", "id": event.eventId},
+        )
+        return {"eventId": event.eventId, "notified": notified}
 
     def _tell_registered_attendees(self, event: Event, change: str, authorization: str | None) -> int:
         try:

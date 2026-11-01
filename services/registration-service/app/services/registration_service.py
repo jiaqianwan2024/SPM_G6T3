@@ -3,6 +3,7 @@ from datetime import datetime
 from uuid import uuid4
 
 import httpx
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -10,6 +11,7 @@ from app.core.sgt import to_sgt
 from app.dao.attendee_registration_dao import AttendeeRegistrationDAO
 from app.dao.registration_window_dao import RegistrationWindowDAO
 from app.models.attendee_registration import AttendeeRegistration
+from app.models.registration_window import RegistrationWindow
 from shared.exceptions.http import conflict, forbidden, not_found, unauthorized
 from shared.services.base import BaseService
 
@@ -37,6 +39,15 @@ def _event(event_id: str, authorization: str | None) -> dict:
     return response.json()
 
 
+def _when(raw) -> datetime:
+    return datetime.fromisoformat(str(raw).replace("Z", ""))
+
+
+def _period(opens: datetime, closes: datetime) -> str:
+    """The registration period in Singapore time, e.g. "1 Nov 2026 09:00 to 20 Nov 2026 17:00 SGT"."""
+    return f"{to_sgt(opens):%d %b %Y %H:%M} to {to_sgt(closes):%d %b %Y %H:%M} SGT"
+
+
 def eligibility(event: dict, registered_count: int) -> tuple[bool, str | None]:
     now = datetime.utcnow()
     if event.get("status") != "confirmed":
@@ -47,14 +58,15 @@ def eligibility(event: dict, registered_count: int) -> tuple[bool, str | None]:
     closes_raw = event.get("registrationClosesAt")
     if not opens_raw or not closes_raw:
         return False, "Registration has not been enabled for this event."
-    opens = datetime.fromisoformat(str(opens_raw).replace("Z", ""))
-    closes = datetime.fromisoformat(str(closes_raw).replace("Z", ""))
+    opens = _when(opens_raw)
+    closes = _when(closes_raw)
+    # SPM-11 AC7: a refusal outside the period states the period.
     if now < opens:
-        return False, f"Registration opens {to_sgt(opens).date()}."
+        return False, f"Registration has not opened yet. The registration period is {_period(opens, closes)}."
     if now > closes:
-        return False, "Registration has closed for this event."
+        return False, f"Registration has closed for this event. The registration period was {_period(opens, closes)}."
     if registered_count >= event["capacity"]:
-        return False, "This event has reached capacity."
+        return False, "This event is full: it has reached capacity."
     return True, None
 
 
@@ -139,6 +151,46 @@ def _notify_withdrawal(row: AttendeeRegistration, event: dict, authorization: st
             )
     except httpx.HTTPError:
         logger.warning("withdrawal notification failed for %s", row.attendeeRegistrationId)
+
+
+def _notify_registration(row: AttendeeRegistration, event: dict, authorization: str | None) -> None:
+    """SPM-11 AC3: tell the attendee they are registered, naming the event, its date, time
+    and venue. A notification failure does not undo the registration."""
+    event_name = event.get("eventName") or row.eventId
+    details = []
+    if event.get("proposedStartAt") and event.get("proposedEndAt"):
+        starts, ends = to_sgt(_when(event["proposedStartAt"])), to_sgt(_when(event["proposedEndAt"]))
+        details.append(f"{starts:%d %b %Y}, {starts:%H:%M} to {ends:%H:%M} SGT")
+    if event.get("venueName"):
+        details.append(f"at {event['venueName']}")
+    when = f" on {' '.join(details)}" if details else ""
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            client.post(
+                f"{settings.notification_service_url}/notifications/records",
+                json={
+                    "eventId": row.eventId,
+                    "type": "registration.confirmed",
+                    "title": f"You are registered for {event_name}",
+                    "body": f"Your place at {event_name}{when} is confirmed.",
+                },
+                headers={"Authorization": authorization} if authorization else {},
+            )
+    except httpx.HTTPError:
+        logger.warning("registration notification failed for %s", row.attendeeRegistrationId)
+
+
+def _report_capacity_reached(event_id: str, authorization: str | None) -> None:
+    """SPM-11 AC10: the last place went, so ask event-service to tell the organiser and the
+    assigned coordinator. Event-service checks the count itself. Best effort."""
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            client.post(
+                f"{settings.event_service_url}/events/{event_id}/capacity-notice",
+                headers={"Authorization": authorization} if authorization else {},
+            )
+    except httpx.HTTPError:
+        logger.warning("capacity notice for %s could not be sent", event_id)
 
 
 class RegistrationService(BaseService):
@@ -270,18 +322,25 @@ class RegistrationService(BaseService):
     def register(
         self, event_id: str, name: str, email: str, user_id: str | None, authorization: str | None = None
     ) -> AttendeeRegistration:
+        """SPM-11. The event's own record decides whether registration is open (AC1, AC7) and
+        the event's window row is locked while the places are counted, so two attendees
+        sending for the last place are decided one after the other (AC8). The attendee is
+        told (AC3), and taking the last place tells the organiser and coordinator (AC10)."""
         if not name or not email:
             raise conflict("Name and email are required.")
         event = _event(event_id, authorization)
-        window = self.window_dao.get_for_event(event_id)
-        if not window:
-            raise conflict("Registration is not open for this event.")
+        ok, reason = eligibility(event, 0)
+        if not ok:
+            raise conflict(reason)
+        self._lock_window(event_id, event)
         existing = self.list_for_event(event_id)
         ok, reason = eligibility(event, len(existing))
         if not ok:
+            self.db.rollback()
             raise conflict(reason)
         duplicate = next((row for row in existing if row.attendeeEmail.lower() == email.lower()), None)
         if duplicate:
+            self.db.rollback()
             raise conflict("This email is already registered for the event.")
         row = AttendeeRegistration(
             attendeeRegistrationId=str(uuid4()),
@@ -295,4 +354,32 @@ class RegistrationService(BaseService):
         self.registration_dao.add(row)
         self.db.commit()
         self.db.refresh(row)
+        _notify_registration(row, event, authorization)
+        if len(existing) + 1 >= event["capacity"]:
+            _report_capacity_reached(event_id, authorization)
         return row
+
+    def _lock_window(self, event_id: str, event: dict) -> RegistrationWindow:
+        """The event's window row, locked until the registration commits. Event-service owns
+        the period and capacity, so the row is created the first time someone registers and
+        refreshed from the event every time. Two first registrations racing to create it are
+        settled by the primary key: the loser rolls back and locks the winner's row.
+
+        The transaction that looked for the row always ends before the lock is taken. MySQL's
+        REPEATABLE READ fixes a transaction's snapshot at its first plain read, so a count made in
+        that same transaction, even after waiting for the lock, would not see a registration the
+        lock holder committed meanwhile, and both would get the last place."""
+        if self.window_dao.get_for_event(event_id) is None:
+            now = datetime.utcnow()
+            self.db.add(RegistrationWindow(eventId=event_id, capacity=0, opensAt=now, closesAt=now))
+            try:
+                self.db.commit()
+            except IntegrityError:
+                self.db.rollback()
+        else:
+            self.db.commit()
+        window = self.window_dao.get_for_event(event_id, lock=True)
+        window.capacity = int(event["capacity"])
+        window.opensAt = _when(event["registrationOpensAt"])
+        window.closesAt = _when(event["registrationClosesAt"])
+        return window

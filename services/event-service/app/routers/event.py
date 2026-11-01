@@ -596,6 +596,22 @@ def notify_attendees_of_change(
     return service.notify_attendees_of_change(event_id, body.change, authorization)
 
 
+@router.post(
+    "/{event_id}/capacity-notice",
+    summary="Tell the organiser and coordinator that registration is full",
+    description="SPM-11 AC10. Registration-service calls this, with the registering attendee's token, after "
+    "the last place is taken. The count is checked here, and each capacity is announced once.",
+    responses=error_responses(404),
+)
+def notify_capacity_reached(
+    event_id: str,
+    authorization: str | None = Depends(forwarded_bearer),
+    service: EventService = Depends(get_event_service),
+):
+    resolve_caller(authorization, settings.user_service_url)
+    return service.notify_capacity_reached(event_id, authorization)
+
+
 @router.patch(
     "/{event_id}",
     response_model=EventUpdateOut,

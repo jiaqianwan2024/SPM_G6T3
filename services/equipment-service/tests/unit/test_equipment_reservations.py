@@ -1,4 +1,5 @@
 from datetime import timedelta, timezone
+from unittest.mock import patch
 
 from fastapi import HTTPException
 
@@ -21,12 +22,44 @@ class TestEquipmentReservations(EquipmentCase):
         self.assertEqual(ctx.exception.status_code, 409)
         self.assertIn("e1", ctx.exception.detail)
 
-        acknowledged = self.service.update_equipment(
-            created.equipmentId,
-            EquipmentUpdate(totalQuantity=3, acknowledgeReservationImpact=True),
+        record = {"eventId": "e1", "eventName": "Summit", "coordinatorId": "coord-1", "organiserId": "org-1"}
+        with (
+            patch("app.services.equipment_service._event_record", return_value=record) as looked_up,
+            patch("app.services.equipment_service.publish_notification", return_value=True) as published,
+        ):
+            acknowledged = self.service.update_equipment(
+                created.equipmentId,
+                EquipmentUpdate(totalQuantity=3, acknowledgeReservationImpact=True),
+                CALLER,
+                "Bearer token",
+            )
+        self.assertEqual(acknowledged.totalQuantity, 3)
+        # SPM-75 AC6: the affected event's coordinator is told.
+        looked_up.assert_called_once_with("e1", "Bearer token")
+        trigger, event_id, occurrence, recipients, context = published.call_args.args
+        self.assertEqual((trigger, event_id), ("equipment.out_of_service", "e1"))
+        self.assertTrue(occurrence.startswith(f"e1:equipment.out_of_service:{created.equipmentId}:"))
+        self.assertEqual(recipients, [{"userId": "coord-1", "role": "coordinator"}])
+        self.assertEqual(context, {"eventName": "Summit", "equipmentName": created.name})
+
+    def test_a_shortfall_on_an_event_that_cannot_be_read_still_names_it(self):
+        created = self.service.create_equipment(equipment_create(totalQuantity=2), CALLER)
+        self.service.reserve_quantity(
+            EquipmentQuantityReserve(
+                eventId="e1", equipmentId=created.equipmentId, quantity=2, startsAt=START, endsAt=END
+            ),
             CALLER,
         )
-        self.assertEqual(acknowledged.totalQuantity, 3)
+        with (
+            patch("app.services.equipment_service._event_record", return_value=None),
+            patch("app.services.equipment_service.publish_notification", return_value=True) as published,
+        ):
+            self.service.update_equipment(
+                created.equipmentId, EquipmentUpdate(totalQuantity=1, acknowledgeReservationImpact=True), CALLER
+            )
+        # No record means no coordinator to address, so nobody is listed; the message still names the event.
+        self.assertEqual(published.call_args.args[3], [])
+        self.assertEqual(published.call_args.args[4]["eventName"], "e1")
 
     def test_availability_subtracts_overlapping_reservations_only(self):
         created = self.service.create_equipment(equipment_create(), CALLER)

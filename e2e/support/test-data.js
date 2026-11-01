@@ -60,7 +60,7 @@ export const expectedTabs = {
     'Review Queue',
     'Venue Catalogue',
   ],
-  'ECL-01': ['Dashboard', 'Review Queue', 'Assignments'],
+  'ECL-01': ['Dashboard', 'Review Queue', 'Assignments', 'Venue Calendar'],
   'VS-01': [
     'Dashboard',
     'Venue Calendar',
@@ -80,18 +80,14 @@ export const expectedTabs = {
     'Upcoming Events',
     'Equipment Catalogue',
     'Reservations',
-    'My Assignments',
-    'Maintenance Status',
   ],
   'TS-02': [
     'Dashboard',
     'Upcoming Events',
     'Equipment Catalogue',
     'Reservations',
-    'My Assignments',
-    'Maintenance Status',
   ],
-  'SO-01': ['Dashboard', 'Safety Reviews'],
+  'SO-01': ['Dashboard', 'Safety Reviews', 'Venue Calendar'],
   'ATT-01': ['Dashboard', 'Browse Events', 'My Registrations'],
   'ATT-02': ['Dashboard', 'Browse Events', 'My Registrations'],
 }

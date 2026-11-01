@@ -135,12 +135,15 @@ class TestEventRequirements(EventCase):
         row.proposedStartAt = END
         row.proposedEndAt = START
         row.expectedAttendance = 2
+        # Everything else is present, so the times are what is refused.
+        row.category, row.purpose = "meeting", "Plan Q4"
         self.db.commit()
 
         with self.assertRaises(HTTPException) as ctx:
             self.service.submit_stored_draft(created.eventId, "org-1")
 
         self.assertEqual(ctx.exception.status_code, 422)
+        self.assertEqual(ctx.exception.detail, "proposedEndAt must be after proposedStartAt")
 
     def test_a_draft_upsert_can_carry_the_requirement_fields(self):
         created = self.service.create_draft(draft_payload(), "org-1", "o1")
@@ -214,6 +217,8 @@ class TestEventRequirementRoutes(ServiceTestCase):
             f"/events/{event_id}",
             headers=headers,
             json={
+                "category": "Conference",
+                "purpose": "Share",
                 "proposedStartAt": "2026-11-01T09:00:00",
                 "proposedEndAt": "2026-11-01T17:00:00",
                 "expectedAttendance": 10,

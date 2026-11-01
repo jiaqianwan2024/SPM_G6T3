@@ -78,6 +78,13 @@ class SafetyCase(EventCase):
             "requests": patch("app.services.event_service.equipment_requests_for", return_value=[]),
             "reservations": patch("app.services.event_service.equipment_reservations_for", return_value=[]),
             "equipment": patch("app.services.event_service.equipment_names", return_value={"eq1": "Projector"}),
+            # The handoff reads the same rows with the service key; the tests drive both through the mocks above.
+            "handoff": patch(
+                "app.services.event_service.handoff_arrangements",
+                side_effect=lambda event_id: tuple(
+                    self.mocks[name](event_id, None) for name in ("bookings", "requests", "reservations")
+                ),
+            ),
             "flag_venue": patch(
                 "app.services.event_service.flag_venue_arrangements",
                 return_value=[{"kind": "venue", "id": "vb-1", "summary": "Venue booking at Marina Hall A"}],

@@ -58,8 +58,9 @@ class TestVenueRouteGuards(VenueCase):
         self.assertEqual(edited.json()["turnaroundMinutes"], 40)
         self.assertEqual(retired.status_code, 200)
 
-    def test_coordinators_and_technical_support_can_read_but_not_change_venues(self):
-        for role in ("coordinator", "techsupport"):
+    def test_every_internal_role_can_read_but_not_change_venues(self):
+        # SPM-108 AC7: the Coordinator Lead and the Safety Officer pick a venue on the calendar too.
+        for role in ("coordinator", "techsupport", "coordinatorlead", "safety"):
             with self.subTest(role=role), signed_in_as(role):
                 self.assertEqual(self.client.get("/venues", headers=HEADERS).status_code, 200)
                 self.assertEqual(self.client.get(f"/venues/{self.venue_id}", headers=HEADERS).status_code, 200)

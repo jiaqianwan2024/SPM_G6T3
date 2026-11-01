@@ -30,11 +30,11 @@ async function statusOf(event) {
   return (await events('GET', `/${event.eventId}`, 'EC-01')).body.status
 }
 
-// What an attendee can browse, and the confirmed list anyone can read.
+// What an attendee can browse, or open as a public page (SPM-127: only confirmed events open for them).
 async function visibleToAttendees(event) {
   const open = (await events('GET', '/open-for-registration', 'ATT-01')).body.map((row) => row.eventId)
-  const confirmed = (await events('GET', '/confirmed', 'ATT-01')).body.map((row) => row.eventId)
-  return open.includes(event.eventId) || confirmed.includes(event.eventId)
+  const card = await events('GET', `/${event.eventId}/attendee-card`, 'ATT-01')
+  return open.includes(event.eventId) || card.status === 200
 }
 
 // The safety part of what Confirm is waiting on, if anything.

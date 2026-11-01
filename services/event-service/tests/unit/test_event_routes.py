@@ -50,6 +50,8 @@ class TestEventRoutes(ServiceTestCase):
         headers = {"Authorization": "Bearer token"}
         body = {
             "eventName": "Summit",
+            "category": "Conference",
+            "purpose": "Share",
             "proposedStartAt": "2026-10-06T09:00:00",
             "proposedEndAt": "2026-10-06T17:00:00",
             "expectedAttendance": 10,
@@ -156,6 +158,8 @@ class TestEventRoutes(ServiceTestCase):
             headers=headers,
             json={
                 "eventName": "Summit",
+                "category": "Conference",
+                "purpose": "Share",
                 "proposedStartAt": "2026-10-06T09:00:00",
                 "proposedEndAt": "2026-10-06T17:00:00",
                 "expectedAttendance": 10,
@@ -191,6 +195,8 @@ class TestEventRoutes(ServiceTestCase):
             headers=headers,
             json={
                 "eventName": "Renamed draft",
+                "category": "Conference",
+                "purpose": "Share",
                 "proposedStartAt": "2026-10-06T09:00:00",
                 "proposedEndAt": "2026-10-06T17:00:00",
                 "expectedAttendance": 4,

@@ -70,12 +70,15 @@ test.describe('SPM-79 Create and save a draft event request', () => {
     await login(page, account('EO-01'))
     await page.locator('.nav-item').getByText('New Request', { exact: true }).click()
     await page.getByTestId('event-name-input').fill('AUTO-SPM79-unsaved')
+    let warning = ''
     page.once('dialog', async (dialog) => {
-      expect(dialog.message()).toMatch(/unsaved|lost/i)
+      warning = dialog.message()
       await dialog.dismiss()
     })
     await page.locator('.nav-item').getByText('My Events', { exact: true }).click()
-    await expect(page.getByTestId('unsaved-changes-warning')).toBeVisible()
+    // Staying put keeps what was typed.
+    await expect.poll(() => warning).toMatch(/unsaved|lost/i)
+    await expect(page.getByTestId('event-name-input')).toHaveValue('AUTO-SPM79-unsaved')
   })
 
   test('TC-SPM79-AC06 no internal ConnectSphere user can see or act on a draft before it is submitted', async () => {

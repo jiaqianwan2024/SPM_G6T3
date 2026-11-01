@@ -52,10 +52,11 @@ router = APIRouter(
     responses=error_responses(401),
 )
 
-# SPM-17 AC1/AC5: only these roles can reach the catalogue at all; Event
+# SPM-17 AC1/AC5: only internal roles can reach the catalogue at all; Event
 # Organisers and Attendees are excluded, enforced here rather than only by
-# hiding the tab in the frontend.
-CATALOGUE_READER_ROLES = {"coordinator", "venue", "techsupport"}
+# hiding the tab in the frontend. The Coordinator Lead and the Safety Officer read
+# it too, since the venue calendar picks its venue from it (SPM-108 AC7).
+CATALOGUE_READER_ROLES = {"coordinator", "coordinatorlead", "venue", "techsupport", "safety"}
 # SPM-62: coordinators check before requesting a venue; Venue Staff can run
 # the same check when assessing a request.
 SUITABILITY_ROLES = {"coordinator", "venue"}

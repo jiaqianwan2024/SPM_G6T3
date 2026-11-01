@@ -13,6 +13,7 @@ from app.models.event_status_history import EventStatusHistory
 from app.schemas.event import EventUpdate, SafetySubmission, SafetyTechnicalHandoff, SafetyVenueHandoff
 from app.services.arrangements import technical_needed
 from shared.auth.deps import require_authenticated_user
+from shared.exceptions.http import service_unavailable
 from shared.testing.cases import ServiceTestCase
 from tests.unit.support import insert_event
 from tests.unit.test_event_safety_reviews import (
@@ -225,6 +226,10 @@ class TestHandoffRoutes(ServiceTestCase):
             patch("app.services.event_service.equipment_requests_for", return_value=[REQUEST]),
             patch("app.services.event_service.equipment_reservations_for", return_value=[RESERVATION]),
             patch("app.services.event_service.equipment_names", return_value={"eq1": "Projector"}),
+            patch(
+                "app.services.event_service.handoff_arrangements",
+                return_value=([BOOKING], [REQUEST], [RESERVATION]),
+            ),
         ]
         for p in self.patches:
             p.start()
@@ -268,3 +273,25 @@ class TestHandoffRoutes(ServiceTestCase):
                 "/events/e1/safety-handoff/technical", headers=HEADERS, json={"equipmentPlacement": "x"}
             )
             self.assertEqual(response.status_code, 403, caller["role"])
+
+
+class TestHandoffReadsAcrossTeams(HandoffCase):
+    """The senders may each read only their own team's rows: Venue Staff are refused equipment
+    requests and technical support venue bookings. The handoff reads both with the service key."""
+
+    def refuse_user_token_reads(self):
+        for name in ("bookings", "requests", "reservations"):
+            self.mocks[name].side_effect = service_unavailable("refused for this role")
+        self.mocks["handoff"].side_effect = None
+        self.mocks["handoff"].return_value = ([BOOKING], [REQUEST], [RESERVATION])
+
+    def test_venue_staff_and_technical_support_both_send_without_reading_across(self):
+        self.event()
+        self.refuse_user_token_reads()
+
+        self.assertTrue(self.service.safety_handoff("e1", VENUE_STAFF, "Bearer token").technicalNeeded)
+        self.assertIsNone(self.send_technical().review)
+        opened = self.send_venue()
+
+        self.assertEqual(opened.review.submittedBy, "venue-1")
+        self.mocks["handoff"].assert_called_with("e1")

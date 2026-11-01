@@ -3,6 +3,7 @@ import { authedApi, login } from './support/auth.js'
 import { account } from './support/test-data.js'
 import { serviceUrls } from './support/api-data.js'
 import { createDraftEvent, eventApi } from './support/event.js'
+import { eventStatusLabel } from '../frontend/src/config/eventStatus.js'
 
 test.describe('SPM-15 View Event and preparation status', () => {
   test('TC-SPM15-AC01 the organiser sees their organisation events with status and date', async ({
@@ -90,7 +91,8 @@ test.describe('SPM-15 View Event and preparation status', () => {
     await page.goto('/app/events/e1')
     const shown = page.getByTestId('organiser-event-status')
     await expect(shown).toBeVisible()
-    await expect(shown).toContainText(new RegExp(stored.body.status, 'i'))
+    // The page names the stored status in plain language (SPM-56 AC2), from the same mapping.
+    await expect(shown).toHaveText(eventStatusLabel(stored.body.status))
   })
 
   test('TC-SPM15-AC08 the organiser sees no internal notes, other clients, or unrelated records', async ({

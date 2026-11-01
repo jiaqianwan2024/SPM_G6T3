@@ -44,6 +44,8 @@
       <CreateEvent v-else-if="activeTab === 'New Request'" />
       <UpcomingEventsQueue v-else-if="activeTab === 'Upcoming Events'"/>
       <EquipmentCatalogue v-else-if="activeTab === 'Equipment Catalogue'" />
+      <!-- SPM-78 and SPM-86: every event's requests and the reservations held for it, to change or release. -->
+      <RequestAvailability v-else-if="activeTab === 'Reservations'" />
       <AssignedEvents v-else-if="activeTab === 'Assigned Events'" />
       <ReviewQueue v-else-if="activeTab === 'Review Queue'" />
       <CoordinatorAssignments v-else-if="activeTab === 'Assignments'" />
@@ -83,6 +85,7 @@ import { auth } from '../firebase.js'
 import { session, logoutSession } from '../store/session.js'
 import UpcomingEventsQueue from '../features/upcoming-events/UpcomingEventsQueue.vue'
 import EquipmentCatalogue from '../features/equipment-catalogue/EquipmentCatalogue.vue'
+import RequestAvailability from '../features/equipment-catalogue/RequestAvailability.vue'
 import AssignedEvents from '../features/assigned-events/AssignedEvents.vue'
 import ReviewQueue from '../features/review-queue/ReviewQueue.vue'
 import CoordinatorAssignments from '../features/assignments/CoordinatorAssignments.vue'

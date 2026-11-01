@@ -91,6 +91,27 @@ class TestReservationRules(EquipmentCase):
         )
         self.assertEqual(context, {"eventName": "Summit", "reason": "panel failed"})
 
+    def test_a_reconsidered_or_unreadable_event_also_needs_a_reason(self):
+        # SPM-78 AC4: still a confirmed event while its arrangements are re-verified (SPM-71), and
+        # an event that cannot be read for a signed-in caller is not assumed safe to release silently.
+        created = self.service.create_equipment(equipment_create(code="RCN", totalQuantity=4), CALLER)
+        for record in ({"status": "reconsidering", "coordinatorId": "u-coord"}, None):
+            reserved = self.service.reserve_quantity(
+                EquipmentQuantityReserve(
+                    eventId="e1", equipmentId=created.equipmentId, quantity=1, startsAt=START, endsAt=END
+                ),
+                CALLER,
+            )
+            with self.subTest(record=record), patch(
+                "app.services.equipment_service._event_record", return_value=record
+            ), patch("app.services.equipment_service.publish_notification") as publish:
+                with self.assertRaises(HTTPException) as ctx:
+                    self.service.release_reservation(reserved.reservationId, CALLER, " ", "Bearer token")
+                self.assertEqual(ctx.exception.status_code, 422)
+                released = self.service.release_reservation(reserved.reservationId, CALLER, "panel failed", "Bearer token")
+                self.assertEqual(released.status, "released")
+                self.assertEqual(publish.call_count, 1 if record else 0)
+
     def test_a_finished_event_cannot_be_adjusted(self):
         created = self.service.create_equipment(equipment_create(code="END", totalQuantity=2), CALLER)
         reserved = self.service.reserve_quantity(

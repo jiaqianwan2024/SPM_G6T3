@@ -137,7 +137,8 @@ test.describe('SPM-04 View upcoming events', () => {
     await login(page, account('TS-01'))
     await page.locator('.nav-item').getByText('Upcoming Events', { exact: true }).click()
     await page.getByTestId('queue-view-calendar').click()
-    await expect(page.locator('.fc').first()).toBeVisible()
+    // FullCalendar 7 names its root with generated classes (fc-monarch-...), not a plain .fc.
+    await expect(page.locator('[class*="fc-"]').first()).toBeVisible()
     await page.getByTestId('queue-view-list').click()
     await expect(page.getByTestId('equipment-queue-e1')).toBeVisible()
   })

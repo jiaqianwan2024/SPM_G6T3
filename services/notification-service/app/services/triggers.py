@@ -199,6 +199,29 @@ TRIGGERS: dict[str, Trigger] = {
             required_context=("eventName", "reason"),
             attendee_visible=True,
         ),
+        # SPM-75 AC6: technical support took units out of service that were reserved for the event.
+        Trigger(
+            key="equipment.out_of_service",
+            title="Equipment for {eventName} is short",
+            body=(
+                "Units of {equipmentName} reserved for {eventName} have been taken out of service, so fewer "
+                "are available than were reserved. Check the event's equipment with technical support."
+            ),
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "equipmentName"),
+        ),
+        # SPM-11 AC10: the last place was taken.
+        Trigger(
+            key="registration.full",
+            title="{eventName} is full",
+            body=(
+                "{eventName} has reached its registration capacity of {capacity}. "
+                "New registrations are refused until someone withdraws."
+            ),
+            recipient_roles=frozenset({"coordinator", "organiser"}),
+            required_context=("eventName", "capacity"),
+            link="/app/events/{eventId}/registrations",
+        ),
         # A coordinator asked for equipment, so technical support know a request is waiting for review.
         Trigger(
             key="equipment.requested",
@@ -238,6 +261,25 @@ TRIGGERS: dict[str, Trigger] = {
             body="The equipment for {eventName} on {eventDate} is still outstanding.",
             recipient_roles=frozenset({"techsupport"}),
             required_context=("eventName", "eventDate"),
+        ),
+        Trigger(
+            key="hold.expired",
+            title="The hold on {venueName} for {eventName} has expired",
+            body=(
+                "The tentative hold on {venueName} for {eventName} expired on {expiredAt}. The venue is no longer "
+                "held; the booking request is still waiting for Venue Staff."
+            ),
+            recipient_roles=frozenset({"coordinator"}),
+            required_context=("eventName", "venueName", "expiredAt"),
+            link="/app/events/{eventId}/venues",
+        ),
+        Trigger(
+            key="readiness.due_soon",
+            title="A readiness item for {eventName} is due soon",
+            body="The {category} item for {eventName} is due on {dueDate} and is still {status}.",
+            recipient_roles=frozenset({"coordinator", "coordinatorlead"}),
+            required_context=("eventName", "category", "dueDate", "status"),
+            link="/app/events/{eventId}/readiness",
         ),
         Trigger(
             key="readiness.reminder.unassigned",

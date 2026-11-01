@@ -26,7 +26,11 @@ test.describe("SPM-119 View every coordinator's assignments and active events", 
     const bens = await assignedTo('u2', 'ben')
     const caras = await assignedTo('u6', 'cara')
     const finished = await assignedTo('u2', 'rejected')
-    const rejected = await events('POST', `/${finished.eventId}/reject`, 'EC-01', { reason: 'AUTO-SPM119' })
+    // SPM-70: a reason from the published list and an explanation.
+    const rejected = await events('POST', `/${finished.eventId}/reject`, 'EC-01', {
+      reason: 'outside ConnectSphere services',
+      explanation: 'AUTO-SPM119',
+    })
     expect(rejected.status).toBe(200)
 
     const view = await assignments('ECL-01')

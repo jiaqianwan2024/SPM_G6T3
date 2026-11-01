@@ -13,7 +13,21 @@
       >
         Request a change
       </button>
+      <button
+        v-else-if="awaitingCoordinator"
+        type="button"
+        class="btn btn-outline small"
+        data-testid="raise-change-request"
+        disabled
+      >
+        Request a change
+      </button>
     </div>
+    <!-- SPM-14 AC4 / SPM-82 AC4: a submitted request is changed through a change request, which
+         opens once a coordinator has it (SPM-106 AC1), so the route is shown with when it opens. -->
+    <p v-if="awaitingCoordinator" class="hint" data-testid="change-request-not-yet">
+      Your request can no longer be edited directly. Once a coordinator is reviewing it, you can request a change here.
+    </p>
     <p v-if="loadError" class="form-error">{{ loadError }}</p>
 
     <form v-if="raising" class="raise-form" data-testid="change-request-form" @submit.prevent="submitRaise">
@@ -219,9 +233,13 @@ const isAssignedCoordinator = computed(
 const canRaise = computed(
   () => session.role === 'organiser' && CHANGE_REQUEST_STATUSES.includes(props.event.status) && !pending.value,
 )
+const awaitingCoordinator = computed(() => session.role === 'organiser' && props.event.status === 'submitted')
 const canWithdraw = computed(() => !!pending.value && pending.value.requestedBy === session.userId)
 const showPanel = computed(
-  () => loaded.value && !hidden.value && (requests.value.length > 0 || canRaise.value || !!loadError.value),
+  () =>
+    loaded.value &&
+    !hidden.value &&
+    (requests.value.length > 0 || canRaise.value || awaitingCoordinator.value || !!loadError.value),
 )
 
 // datetime-local inputs need "YYYY-MM-DDTHH:mm" in Singapore time; the API returns UTC ISO strings.

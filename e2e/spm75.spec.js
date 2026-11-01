@@ -6,6 +6,7 @@ import {
   planningEventWithRequest,
   reserveQuantity,
 } from './support/equipment.js'
+import { notificationApi } from './support/registration.js'
 
 test.describe('SPM-75 Equipment catalogue with quantities and operational status', () => {
   test('TC-SPM75-AC01 an equipment record holds code, name, category, description, total quantity, home location, and notes', async () => {
@@ -101,6 +102,15 @@ test.describe('SPM-75 Equipment catalogue with quantities and operational status
       acknowledgeReservationImpact: true,
     })
     expect(confirmed.status).toBe(200)
+    // The affected event's coordinator (EC-01) is told.
+    await expect
+      .poll(async () => {
+        const inbox = await notificationApi('GET', '/notifications?pageSize=50', 'EC-01')
+        return (inbox.body || []).some(
+          (row) => row.eventId === holder.event.eventId && row.type === 'equipment.out_of_service',
+        )
+      }, { message: 'the coordinator is told the event is short' })
+      .toBe(true)
   })
 
   test('TC-SPM75-AC07 quantity and out-of-service changes are written to the activity log', async () => {

@@ -20,7 +20,7 @@ export const roles = {
   // Lead assigns it to an Event Coordinator. The Lead does not manage events.
   coordinatorlead: {
     label: 'Event Coordinator Lead',
-    tabs: ['Dashboard', 'Review Queue', 'Assignments'],
+    tabs: ['Dashboard', 'Review Queue', 'Assignments', 'Venue Calendar'],
     // The Dashboard tab is LeadDashboard (live counts, waiting requests, workload), not cards.
     cards: []
   },
@@ -32,13 +32,13 @@ export const roles = {
   },
   techsupport: {
     label: 'Technical Support Staff',
-    tabs: ['Dashboard', 'Upcoming Events', 'Venue Catalogue', 'Venue Calendar', 'Equipment Catalogue', 'Reservations', 'My Assignments', 'Maintenance Status'],
+    tabs: ['Dashboard', 'Upcoming Events', 'Venue Catalogue', 'Venue Calendar', 'Equipment Catalogue', 'Reservations'],
     // The Dashboard tab is TechDashboard (live requests, re-verification, shortfalls, supplied events), not cards.
     cards: []
   },
   safety: {
     label: 'Safety Officer',
-    tabs: ['Dashboard', 'Safety Reviews'],
+    tabs: ['Dashboard', 'Safety Reviews', 'Venue Calendar'],
     // The Dashboard tab is SafetyDashboard (live counts and decisions), not cards.
     cards: []
   },

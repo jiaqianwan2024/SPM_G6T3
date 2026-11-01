@@ -94,6 +94,20 @@ class VenueBookingDAO(BaseDAO):
             query = query.filter(VenueBooking.needsReverification.is_(True))
         return query.order_by(VenueBooking.startsAt, VenueBooking.bookingId).all()
 
+    def list_holds_expired_between(self, since: datetime, until: datetime) -> list[VenueBooking]:
+        """SPM-116 / SPM-93 AC4: holds that ran out in (since, until] and were not released first."""
+        return (
+            self.db.query(VenueBooking)
+            .filter(
+                VenueBooking.holdExpiresAt.isnot(None),
+                VenueBooking.holdExpiresAt > since,
+                VenueBooking.holdExpiresAt <= until,
+                VenueBooking.holdEndedAt.is_(None),
+            )
+            .order_by(VenueBooking.holdExpiresAt, VenueBooking.bookingId)
+            .all()
+        )
+
     def list(self, status: str | None, event_id: str | None, venue_id: str | None) -> list[VenueBooking]:
         """Oldest first: the customer handles venue requests first come, first served."""
         query = self.db.query(VenueBooking)
