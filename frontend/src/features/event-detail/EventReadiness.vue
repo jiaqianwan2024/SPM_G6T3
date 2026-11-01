@@ -24,7 +24,7 @@
             Personnel
             <select v-model="draft.handlerId" required data-testid="readiness-create-handler">
               <option value="" disabled>Choose someone</option>
-              <option v-for="person in people" :key="person.userId" :value="person.userId">
+              <option v-for="person in handlers" :key="person.userId" :value="person.userId">
                 {{ person.userName }} · {{ person.email }}
               </option>
             </select>
@@ -150,7 +150,7 @@
               <option v-if="edit.handlerId && !knownHandler(edit.handlerId)" :value="edit.handlerId">
                 {{ handlerLabel(row) }}
               </option>
-              <option v-for="person in people" :key="person.userId" :value="person.userId">
+              <option v-for="person in handlers" :key="person.userId" :value="person.userId">
                 {{ person.userName }} · {{ person.email }}
               </option>
             </select>
@@ -229,6 +229,10 @@ const route = useRoute()
 const router = useRouter()
 const rows = ref([])
 const people = ref([])
+// SPM-5 AC1: the personnel handling an item are ConnectSphere staff, not an organiser or an
+// attendee. Everyone stays in `people`, so an older item's handler still shows by name.
+const HANDLER_ROLES = ['coordinator', 'coordinatorlead', 'venue', 'techsupport', 'safety']
+const handlers = computed(() => people.value.filter((person) => HANDLER_ROLES.includes(person.role)))
 const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
@@ -274,8 +278,9 @@ function contactOf(row) {
   return row.handlerEmail || row.handlerPhone || personFor(row)?.email || ''
 }
 
+// Whether the picker already lists this handler; if not, the current one is shown on its own.
 function knownHandler(handlerId) {
-  return people.value.some((person) => person.userId === handlerId)
+  return handlers.value.some((person) => person.userId === handlerId)
 }
 
 function statusChoices(current) {
