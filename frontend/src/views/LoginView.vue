@@ -51,11 +51,26 @@
           {{ isSubmitting ? 'Logging in…' : 'Log in' }}
         </button>
 
-        <details class="demo-creds">
+        <details class="demo-creds" data-testid="demo-credentials">
           <summary>Demo credentials (for markers/testing)</summary>
-          <ul>
-            <li v-for="u in users" :key="u.username">{{ u.role }}: {{ u.username }} / {{ u.password }}</li>
-          </ul>
+          <p class="demo-hint">Click an email or password to copy it.</p>
+          <div v-for="group in demoGroups" :key="group.role" class="demo-group">
+            <p class="demo-role">{{ group.label }}</p>
+            <div v-for="u in group.users" :key="u.username" class="demo-row">
+              <button
+                v-for="field in ['username', 'password']"
+                :key="field"
+                type="button"
+                class="demo-copy"
+                :class="{ 'is-copied': copied === `${u.username}:${field}` }"
+                :aria-label="`Copy ${field === 'username' ? 'email' : 'password'} ${u[field]}`"
+                @click="copy(u[field], `${u.username}:${field}`)"
+              >
+                {{ u[field] }}
+              </button>
+            </div>
+          </div>
+          <p class="sr-only" aria-live="polite">{{ copied ? 'Copied to clipboard.' : '' }}</p>
         </details>
       </form>
     </div>
@@ -70,6 +85,7 @@ import AnimatedOrb from '../components/shared/AnimatedOrb.vue'
 import AppLogo from '../components/shared/AppLogo.vue'
 import { auth } from '../firebase.js'
 import { users } from '../auth/users.data.js'
+import { roles } from '../config/roles.js'
 import { getMe } from '../api/userService.js'
 import { loginSession } from '../store/session.js'
 
@@ -81,8 +97,43 @@ const authError = ref('')
 const isSubmitting = ref(false)
 const router = useRouter()
 
+// Demo accounts grouped under their role's display name, in the order users.data.js lists them.
+const demoGroups = users.reduce((groups, user) => {
+  let group = groups.find((g) => g.role === user.role)
+  if (!group) groups.push((group = { role: user.role, label: roles[user.role]?.label ?? user.role, users: [] }))
+  group.users.push(user)
+  return groups
+}, [])
+
+const copied = ref('')
+let copiedTimer = null
+
+async function copy(text, key) {
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    // navigator.clipboard only exists on https or localhost; this older route works over a LAN address too.
+    const field = document.createElement('textarea')
+    field.value = text
+    field.setAttribute('readonly', '')
+    field.style.position = 'fixed'
+    field.style.opacity = '0'
+    document.body.appendChild(field)
+    field.select()
+    document.execCommand('copy')
+    field.remove()
+  }
+  copied.value = key
+  clearTimeout(copiedTimer)
+  copiedTimer = setTimeout(() => { copied.value = '' }, 1500)
+}
+
 async function submit() {
   authError.value = ''
+  // Pasted credentials often bring a stray space or line break with them, so whitespace
+  // is dropped from both fields before anything else looks at them.
+  username.value = username.value.replace(/\s+/g, '')
+  password.value = password.value.replace(/\s+/g, '')
 
   // Empty-field validation blocks submission (acceptance criterion).
   if (!username.value || !password.value) {
@@ -249,7 +300,41 @@ async function submit() {
 
 .demo-creds { margin-top: 22px; font-size: 11px; color: var(--muted); }
 .demo-creds summary { cursor: pointer; letter-spacing: .04em; }
-.demo-creds ul { margin: 10px 0 0; padding-left: 16px; line-height: 1.9; }
+.demo-hint { margin: 10px 0 4px; }
+.demo-group { margin-top: 10px; }
+.demo-role {
+  margin: 0 0 4px;
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.demo-row { display: flex; gap: 6px; margin-bottom: 4px; }
+.demo-copy {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+  font-size: 11px;
+  color: var(--body);
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: copy;
+  transition: border-color .2s var(--ease-out), color .2s var(--ease-out);
+}
+.demo-copy:hover,
+.demo-copy:focus-visible { color: var(--text); border-color: rgba(167, 139, 250, .5); outline: none; }
+.demo-copy.is-copied { color: var(--signal); border-color: var(--signal); }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
 
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(18px); }
