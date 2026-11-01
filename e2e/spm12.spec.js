@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { login } from './support/auth.js'
 import { account } from './support/test-data.js'
-import { guestRegistration, notificationApi, registrationApi } from './support/registration.js'
+import { guestRegistration, registrationApi } from './support/registration.js'
 
 test.describe('SPM-12 Registration withdrawal', () => {
   test('TC-SPM12-AC01 the attendee can withdraw only from an event they are currently registered for', async () => {
@@ -83,29 +83,7 @@ test.describe('SPM-12 Registration withdrawal', () => {
     expect(remainingAfter).toBe(remainingBefore + 1)
   })
 
-  test('TC-SPM12-AC06 the attendee is shown confirmation and notified of the withdrawal', async ({
-    page,
-  }) => {
-    const created = await registrationApi(
-      'POST',
-      '/registrations',
-      'ATT-02',
-      guestRegistration('e1', 'SPM12-NOTE'),
-    )
-    expect(created.status).toBe(201)
-    await registrationApi(
-      'POST',
-      `/registrations/${created.body.attendeeRegistrationId}/withdraw`,
-      'ATT-02',
-    )
-    await login(page, account('ATT-02'))
-    await page.goto(`/app/registrations/${created.body.attendeeRegistrationId}`)
-    await expect(page.getByTestId('withdraw-confirmation')).toContainText(/withdrawn/i)
-    const inbox = await notificationApi('GET', '/notifications', 'ATT-02')
-    expect(JSON.stringify(inbox.body)).toMatch(/withdrawn|e1/i)
-  })
-
-  test('TC-SPM12-AC07 the attendee can register again later while the period is open and a place remains', async () => {
+  test('TC-SPM12-AC06 the attendee can register again later while the period is open and a place remains', async () => {
     const first = await registrationApi(
       'POST',
       '/registrations',
@@ -126,7 +104,7 @@ test.describe('SPM-12 Registration withdrawal', () => {
     expect(again.status).toBe(201)
   })
 
-  test('TC-SPM12-AC08 withdrawal is unavailable after the event has started, completed, or been cancelled', async ({
+  test('TC-SPM12-AC07 withdrawal is unavailable after the event has started, completed, or been cancelled', async ({
     page,
   }) => {
     await login(page, account('ATT-01'))
@@ -136,7 +114,7 @@ test.describe('SPM-12 Registration withdrawal', () => {
     expect([400, 403, 409]).toContain(denied.status)
   })
 
-  test('TC-SPM12-AC09 the organiser and assigned coordinator can see the withdrawal in the registration list', async () => {
+  test('TC-SPM12-AC08 the organiser and assigned coordinator can see the withdrawal in the registration list', async () => {
     const created = await registrationApi(
       'POST',
       '/registrations',

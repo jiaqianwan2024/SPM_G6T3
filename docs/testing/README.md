@@ -42,6 +42,11 @@ same preparation and then runs every spec under `e2e/`, including the stories
 that `test:acceptance` omits. Playwright reuses backends and a Vue app that are
 already running.
 
+To run one test case from a known state, load its setup SQL first:
+`python scripts/test_setup.py TC-SPM43-AC01` resets the test database to the
+seed. Every case has one in `docs/testing/setup/`; see "Test case setup SQL" in
+the root README.
+
 The job reads these Actions secrets and writes them to a gitignored `.env` on
 the runner. They must be the Firebase project that owns the accounts in
 `Test Data/credentials-valid.txt`:
@@ -82,7 +87,6 @@ npm run test:spm115
 npm run test:spm05
 npm run test:spm15
 npm run test:spm65
-npm run test:spm66
 npm run test:spm68
 npm run test:spm69
 npm run test:spm70
@@ -239,7 +243,6 @@ FIRST principles and the Week 9 advice on flaky tests, through `e2e/support/venu
 | SPM-5 | TC-SPM05-AC01–AC09 | `e2e/spm05.spec.js` |
 | SPM-15 | TC-SPM15-AC01–AC09 | `e2e/spm15.spec.js` |
 | SPM-65 | TC-SPM65-AC01–AC07 | `e2e/spm65.spec.js` |
-| SPM-66 | TC-SPM66-AC01–AC08 | `e2e/spm66.spec.js` |
 | SPM-68 | TC-SPM68-AC01–AC08 | `e2e/spm68.spec.js` |
 | SPM-69 | TC-SPM69-AC01–AC06 | `e2e/spm69.spec.js` |
 | SPM-70 | TC-SPM70-AC01–AC07 | `e2e/spm70.spec.js` |
