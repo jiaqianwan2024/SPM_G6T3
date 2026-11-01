@@ -1287,11 +1287,16 @@ class VenueService(BaseService):
 
     def check_release_allowed(self, caller: dict, event: EventFacts) -> None:
         """Only the people who can cancel the event (SPM-88 AC1) may release its
-        bookings: its assigned coordinator, or an organiser from its own client
-        organisation. Anyone else would be freeing another event's rooms."""
+        bookings: its assigned coordinator, the organiser who filed it, or an organiser
+        from its own client organisation, as event-service decides (SPM-47). Without
+        the filer, an organiser with no organisation could never cancel their own
+        event. Anyone else would be freeing another event's rooms."""
         if caller.get("role") == "coordinator" and event.coordinatorId and caller["userId"] == event.coordinatorId:
             return
-        if caller.get("role") == "organiser" and event.organisationId and caller.get("organisationId") == event.organisationId:
+        if caller.get("role") == "organiser" and (
+            (event.organiserId and caller["userId"] == event.organiserId)
+            or (event.organisationId and caller.get("organisationId") == event.organisationId)
+        ):
             return
         raise forbidden("Only the coordinator assigned to this event, or its organiser, can release its venue bookings.")
 

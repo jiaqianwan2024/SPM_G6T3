@@ -236,6 +236,9 @@ FIELD_LABELS = {
     "equipmentLines": "Equipment",
     # SPM-68: a clarification can name any field of the request.
     "venueRequirements": "Venue requirements",
+    "preferredLocation": "Preferred location",
+    "requiredFacilities": "Facilities",
+    "accessibilityNote": "Accessibility note",
     "registrationEnabled": "Registration",
     "registrationOpensAt": "Registration opens",
     "registrationClosesAt": "Registration closes",
@@ -679,10 +682,12 @@ def _accessibility_pair(value) -> tuple[str, list]:
 
 
 def _write_requirements(event: Event, data, only_sent: bool) -> None:
+    """SPM-80's structured requirements. A field the model does not carry (a submission has no
+    equipment lines) is left as the draft saved it."""
     sent = data.model_fields_set
 
     def include(name: str) -> bool:
-        return name in sent if only_sent else True
+        return name in sent if only_sent else name in type(data).model_fields
 
     if include("layoutPreference"):
         event.layoutPreference = data.layoutPreference
@@ -1012,7 +1017,7 @@ class EventService(BaseService):
             proposedEndAt=data.proposedEndAt,
             expectedAttendance=data.expectedAttendance,
             venueRequirements=data.venueRequirements,
-            accessibilityNeeds=data.accessibilityNeeds,
+            accessibilityNeeds="",
             equipmentRequirements=data.equipmentRequirements,
             layoutPreference=data.layoutPreference,
             registrationEnabled=data.registrationEnabled,
@@ -1024,6 +1029,7 @@ class EventService(BaseService):
             createdAt=now,
             updatedAt=now,
         )
+        _write_requirements(row, data, only_sent=False)
         self.event_dao.add(row)
         self.db.commit()
         self.db.refresh(row)
@@ -1221,9 +1227,9 @@ class EventService(BaseService):
         event.proposedEndAt = data.proposedEndAt
         event.expectedAttendance = data.expectedAttendance
         event.venueRequirements = data.venueRequirements
-        event.accessibilityNeeds = data.accessibilityNeeds
         event.equipmentRequirements = data.equipmentRequirements
-        event.layoutPreference = data.layoutPreference
+        # SPM-80: the form's requirements replace the draft's, so the list and the string agree.
+        _write_requirements(event, data, only_sent=False)
         event.registrationEnabled = data.registrationEnabled
         event.registrationOpensAt = data.registrationOpensAt
         event.registrationClosesAt = data.registrationClosesAt
@@ -3483,13 +3489,16 @@ class EventService(BaseService):
     def settle_reverification(self, event_id: str, changed_by: str, authorization: str | None) -> "ReverificationSettleOut":
         """SPM-86 AC10: a reconsidering event reads as confirmed again only when every
         flagged arrangement has been re-verified and the venue and equipment rules pass.
-        Planning and safety approved are left as they are."""
+        Planning and safety approved are left as they are.
+
+        The arrangements are read with the service key: Venue Staff and technical support
+        settle after re-confirming their own part, and neither may read the other team's rows."""
         from app.schemas.event import ReverificationSettleOut
 
         event = self._require_event(event_id)
         if event.status != RECONSIDERING:
             return ReverificationSettleOut(eventId=event.eventId, status=event.status, restored=False)
-        arrangements = self._check_arrangements(event, authorization)
+        arrangements = self._check_arrangements(event, authorization, as_service=True)
         if arrangements.gaps:
             return ReverificationSettleOut(eventId=event.eventId, status=event.status, restored=False)
         now = datetime.utcnow()

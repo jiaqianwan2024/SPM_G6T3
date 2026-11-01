@@ -480,21 +480,27 @@ class TestFollowUp(EventCase):
         self.db.commit()
         with self.assertRaises(HTTPException):
             self.service.submit_stored_draft("e-blank", "org-1")
-        with patch("app.orchestration.clients.httpx.Client") as client:
-            client.return_value.__enter__.return_value.post.side_effect = httpx.HTTPError("down")
-            release_event_holds("e1", "Bearer token")
-        with patch("app.orchestration.clients.httpx.Client") as client:
-            client.return_value.__enter__.return_value.post.return_value = MagicMock()
-            release_event_holds("e1", None)
-        with patch("app.orchestration.clients.httpx.Client") as client:
-            client.return_value.__enter__.return_value.post.side_effect = httpx.HTTPError("down")
-            release_event_venue_bookings("e1", "Bearer token")
-        with patch("app.orchestration.clients.httpx.Client") as client:
-            client.return_value.__enter__.return_value.post.return_value = MagicMock()
+
+    def test_a_release_after_closing_is_tried_twice_then_logged(self):
+        with patch("app.orchestration.clients.httpx.post", side_effect=httpx.HTTPError("down")) as post:
+            with self.assertLogs("perf.clients", level="WARNING") as logs:
+                release_event_holds("e1", "Bearer token")
+
+        self.assertEqual(post.call_count, 2)
+        self.assertTrue(post.call_args.args[0].endswith("/equipment/reservations/release-for-event"))
+        self.assertIn("still in place", logs.output[-1])
+
+    def test_a_release_after_closing_is_retried_after_a_refusal(self):
+        refused, ok = MagicMock(status_code=503), MagicMock(status_code=200)
+        ok.json.return_value = []
+        with patch("app.orchestration.clients.httpx.post", side_effect=[refused, ok]) as post:
             release_event_venue_bookings("e1", None)
-            post = client.return_value.__enter__.return_value.post
-            self.assertTrue(post.call_args.args[0].endswith("/venues/bookings/release"))
-            self.assertEqual(post.call_args.kwargs["json"], {"eventId": "e1"})
+
+        self.assertEqual(post.call_count, 2)
+        self.assertTrue(post.call_args.args[0].endswith("/venues/bookings/release"))
+        self.assertEqual(post.call_args.kwargs["json"], {"eventId": "e1"})
+        # Long enough for the release to finish; it used to give up after 0.8 seconds.
+        self.assertEqual(post.call_args.kwargs["timeout"], 10.0)
 
 
 class TestFollowUpRoutes(ServiceTestCase):

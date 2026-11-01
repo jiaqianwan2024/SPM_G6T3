@@ -14,7 +14,7 @@ from app.orchestration.clients import event_recipients, publish_notification, te
 from app.dao.equipment_activity_log_dao import EquipmentActivityLogDAO
 from app.dao.equipment_dao import EquipmentDAO
 from app.dao.equipment_request_dao import EquipmentRequestDAO
-from app.dao.equipment_reservation_dao import EquipmentReservationDAO
+from app.dao.equipment_reservation_dao import HOLDING_STATUSES, EquipmentReservationDAO
 from app.dao.equipment_unit_dao import EquipmentUnitDAO
 from app.models.equipment_activity_log import EquipmentActivityLog
 from app.models.equipment_info import EquipmentInfo
@@ -609,8 +609,9 @@ class EquipmentService(BaseService):
     def adjust_reservation(
         self, reservation_id: str, quantity: int, caller: dict, authorization: str | None = None
     ) -> EquipmentReservationOut:
-        row = self._require(self.reservation_dao.get_by_id(reservation_id), "Reservation not found")
-        if row.status not in ("active", "reserved"):
+        # Locked reads first, so the availability read below sees reservations committed meanwhile.
+        row = self._require(self.reservation_dao.get_by_id(reservation_id, lock=True), "Reservation not found")
+        if row.status not in HOLDING_STATUSES:
             raise conflict(f"Reservation is already {row.status}")
         record = _event_record(row.eventId, authorization) or {}
         if record.get("status") in ("completed", "cancelled", "rejected"):
@@ -618,8 +619,10 @@ class EquipmentService(BaseService):
         equipment = self._locked_equipment(row.equipmentId)
         previous = row.quantity
         if quantity > previous:
+            # Leaving this reservation out already frees the units it holds, so `available` is
+            # everything the new quantity may take. Adding `previous` again counted them twice.
             available = self._available_for(equipment, row.startsAt, row.endsAt, ignore_id=row.reservationId)
-            if quantity > available + previous:
+            if quantity > available:
                 raise conflict(f"Only {available} available for that period")
         row.quantity = quantity
         self._log_change(
@@ -996,7 +999,7 @@ class EquipmentService(BaseService):
         """SPM-86: technical support accept the held quantity. Extra units that are not free
         leave the flag in place and do not increase what is reserved."""
         row = self._require(self.reservation_dao.get_by_id(reservation_id), "Reservation not found")
-        if row.status not in ("active", "reserved") or not row.needsReverification:
+        if row.status not in HOLDING_STATUSES or not row.needsReverification:
             raise conflict("This reservation does not need re-verification.")
         event = _event_record(row.eventId, authorization) or {}
         wanted = 0
@@ -1022,7 +1025,7 @@ class EquipmentService(BaseService):
         self, reservation_id: str, caller: dict, reason: str = "", authorization: str | None = None
     ) -> EquipmentReservationOut:
         row = self._require(self.reservation_dao.get_by_id(reservation_id), "Reservation not found")
-        if row.status not in ("active", "reserved"):
+        if row.status not in HOLDING_STATUSES:
             raise conflict(f"Reservation is already {row.status}")
         record = _event_record(row.eventId, authorization)
         # SPM-78 AC4: a confirmed event, including one whose arrangements are being reconsidered,
@@ -1124,7 +1127,11 @@ class EquipmentService(BaseService):
     def record_partial(
         self, request_id: str, reserved_quantity: int, reason: str, caller: dict, authorization: str | None
     ) -> EquipmentRequestOut:
-        row = self._require_request(request_id)
+        row = self._require(self.request_dao.get_by_id(request_id, lock=True), "Equipment request not found")
+        # Only a request nothing has been decided on yet. Recording a partial again would add a
+        # second reservation for the same request.
+        if row.status not in ("pending", "approved"):
+            raise conflict(f"Request is already {row.status}")
         if reserved_quantity > row.quantity:
             raise conflict("Reserved quantity cannot exceed the request")
         equipment = self._locked_equipment(row.equipmentId)
@@ -1332,12 +1339,22 @@ class EquipmentService(BaseService):
     def reserve_request(
         self, request_id: str, actor_id: str | None = None, authorization: str | None = None
     ) -> EquipmentReservationOut:
-        request_row = self._require_request(request_id)
+        # The request and its equipment are locked before anything else is read, so two reservations
+        # of the same request, or of the last units, are decided one at a time on current rows.
+        request_row = self._require(self.request_dao.get_by_id(request_id, lock=True), "Equipment request not found")
         if request_row.status != "approved":
             raise conflict("Only approved requests can be reserved")
+        equipment = self._locked_equipment(request_row.equipmentId)
         existing = self.reservation_dao.get_by_request_id(request_id)
         if existing:
             raise conflict("Request is already reserved")
+        # Approval holds no stock, so it may have gone to another event since.
+        available = self._available_for(equipment, request_row.startsAt, request_row.endsAt)
+        if request_row.quantity > available:
+            raise conflict(
+                f"Only {available} available for that period; nothing was reserved. "
+                "Record a partial reservation or mark the request unavailable."
+            )
         row = EquipmentReservation(
             reservationId=str(uuid4()),
             requestId=request_row.requestId,

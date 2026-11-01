@@ -389,6 +389,19 @@ class TestNotRequired(ConfirmationCase):
 
 
 class TestReverificationSettle(ConfirmationCase):
+    def setUp(self):
+        super().setUp()
+        handoff = patch(
+            "app.services.event_service.handoff_arrangements",
+            side_effect=lambda event_id: (
+                self.mocks["bookings"].return_value,
+                self.mocks["requests"].return_value,
+                self.mocks["reservations"].return_value,
+            ),
+        )
+        self.handoff = handoff.start()
+        self.addCleanup(handoff.stop)
+
     def test_reconsidering_returns_to_confirmed_only_when_nothing_is_flagged(self):
         self.event(status="reconsidering")
 
@@ -396,6 +409,18 @@ class TestReverificationSettle(ConfirmationCase):
 
         self.assertTrue(settled.restored)
         self.assertEqual(settled.status, "confirmed")
+
+    def test_settling_reads_the_arrangements_with_the_service_key(self):
+        # Venue Staff may not read equipment rows, nor technical support venue bookings, so a read
+        # with their own token always failed and the event stayed reconsidering.
+        self.event(status="reconsidering")
+
+        self.service.settle_reverification("e1", "venue-1", "Bearer token")
+
+        self.handoff.assert_called_once_with("e1")
+        self.mocks["bookings"].assert_not_called()
+        self.mocks["requests"].assert_not_called()
+        self.mocks["reservations"].assert_not_called()
 
     def test_a_flagged_booking_keeps_the_event_reconsidering(self):
         self.event(status="reconsidering")
@@ -514,7 +539,8 @@ class TestConfirmationRoutes(ServiceTestCase):
             return_value=[{"userId": "att-1", "attendeeEmail": "amy@example.com", "status": "registered"}],
         ):
             notice = self.client.post("/events/e1/attendee-notice", headers=HEADERS, json={"change": "schedule"})
-        settled = self.client.post("/events/e1/reverification/settle", headers=HEADERS)
+        with patch("app.services.event_service.handoff_arrangements", return_value=([BOOKING], [], [])):
+            settled = self.client.post("/events/e1/reverification/settle", headers=HEADERS)
 
         self.assertEqual(notice.status_code, 200)
         self.assertEqual(notice.json()["notified"], 1)

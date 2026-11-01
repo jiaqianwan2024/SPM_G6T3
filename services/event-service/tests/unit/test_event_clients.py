@@ -104,15 +104,23 @@ class TestEventClients(unittest.TestCase):
 
         self.assertEqual(ctx.exception.status_code, 401)
 
-    def test_current_organiser_rejects_an_unreachable_user_service(self):
+    def test_current_organiser_is_503_when_user_service_is_unreachable(self):
+        # An outage must not read as an expired token: the browser signs the user out on a 401.
         with patch("app.orchestration.clients.httpx.Client", side_effect=httpx.ConnectError("down")):
             with self.assertRaises(HTTPException) as ctx:
                 clients.current_organiser("Bearer token")
 
-        self.assertEqual(ctx.exception.status_code, 401)
+        self.assertEqual(ctx.exception.status_code, 503)
 
-    def test_current_organiser_rejects_a_non_200_response(self):
+    def test_current_organiser_is_503_when_user_service_fails(self):
         with patch("app.orchestration.clients.httpx.Client", _user_client(503, {})):
+            with self.assertRaises(HTTPException) as ctx:
+                clients.current_organiser("Bearer token")
+
+        self.assertEqual(ctx.exception.status_code, 503)
+
+    def test_current_organiser_passes_on_user_services_401(self):
+        with patch("app.orchestration.clients.httpx.Client", _user_client(401, {})):
             with self.assertRaises(HTTPException) as ctx:
                 clients.current_organiser("Bearer token")
 
@@ -137,19 +145,19 @@ class TestEventClients(unittest.TestCase):
 
         self.assertEqual(ctx.exception.status_code, 401)
 
-    def test_current_technical_support_rejects_an_unreachable_user_service(self):
+    def test_current_technical_support_is_503_when_user_service_is_unreachable(self):
         with patch("app.orchestration.clients.httpx.Client", side_effect=httpx.ConnectError("down")):
             with self.assertRaises(HTTPException) as ctx:
                 clients.current_technical_support("Bearer token")
 
-        self.assertEqual(ctx.exception.status_code, 401)
+        self.assertEqual(ctx.exception.status_code, 503)
 
-    def test_current_technical_support_rejects_a_non_200_response(self):
+    def test_current_technical_support_is_503_for_a_non_200_response(self):
         with patch("app.orchestration.clients.httpx.Client", _user_client(404, {})):
             with self.assertRaises(HTTPException) as ctx:
                 clients.current_technical_support("Bearer token")
 
-        self.assertEqual(ctx.exception.status_code, 401)
+        self.assertEqual(ctx.exception.status_code, 503)
 
     def test_current_technical_support_rejects_another_role(self):
         with patch("app.orchestration.clients.httpx.Client", _user_client(200, ORGANISER)):

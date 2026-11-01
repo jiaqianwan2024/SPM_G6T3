@@ -34,14 +34,36 @@ class TestUserRoutes(ServiceTestCase):
 
         self.assertEqual(response.status_code, 404)
 
-    def test_list_users_returns_the_directory(self):
-        seed_user(self.db)
+    def test_staff_get_the_whole_directory(self):
+        seed_user(self.db, role="coordinator")
         seed_user(self.db, userId="u-2", email="ben@connectsphere.com", userName="Ben")
 
         response = self.client.get("/users")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 2)
+
+    def test_an_organiser_sees_staff_and_their_own_organisation_only(self):
+        # SPM-47: an organiser works for a client, so attendees and other clients' people stay hidden.
+        seed_user(self.db, organisationId="org-1")
+        seed_user(self.db, userId="u-colleague", email="cal@client.com", userName="Cal", organisationId="org-1")
+        seed_user(self.db, userId="u-rival", email="ria@rival.com", userName="Ria", organisationId="org-2")
+        seed_user(self.db, userId="u-coord", email="ben@connectsphere.com", userName="Ben", role="coordinator")
+        seed_user(self.db, userId="u-att", email="gwen@example.com", userName="Gwen", role="attendee")
+
+        response = self.client.get("/users")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(sorted(row["userId"] for row in response.json()), ["u-1", "u-colleague", "u-coord"])
+
+    def test_an_organiser_with_no_organisation_sees_staff_and_themselves(self):
+        seed_user(self.db)
+        seed_user(self.db, userId="u-other", email="olly@client.com", userName="Olly")
+        seed_user(self.db, userId="u-safety", email="sam@connectsphere.com", userName="Sam", role="safety")
+
+        response = self.client.get("/users")
+
+        self.assertEqual(sorted(row["userId"] for row in response.json()), ["u-1", "u-safety"])
 
     def test_an_attendee_cannot_read_the_directory_of_staff_and_other_attendees(self):
         # SPM-127 AC2 and AC3: other people's details are a staff page, 403 for an attendee.

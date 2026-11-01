@@ -657,6 +657,7 @@ class EventFacts(BaseModel):
     eventName: str = ""
     status: str = ""
     coordinatorId: str | None = None
+    organiserId: str | None = None
     organisationId: str | None = None
     organisationName: str | None = None
     accessibilityNeeds: str = ""

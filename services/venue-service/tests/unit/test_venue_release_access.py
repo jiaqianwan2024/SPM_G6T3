@@ -59,6 +59,14 @@ class TestWhoMayRelease(VenueCase):
             with self.subTest(caller=caller):
                 self.assertFalse(self.allowed(caller))
 
+    def test_the_organiser_who_filed_an_event_with_no_organisation_may_release(self):
+        # Event-service lets them cancel it, so a refusal here failed every such cancellation with a 503.
+        own = EVENT.model_copy(update={"organisationId": None, "organiserId": "u-org"})
+        self.service.check_release_allowed(user("organiser", "u-org"), own)
+
+        with self.assertRaises(HTTPException):
+            self.service.check_release_allowed(user("organiser", "u-someone-else"), own)
+
     def test_an_event_without_a_coordinator_or_client_lets_nobody_in_by_those_routes(self):
         bare = EVENT.model_copy(update={"coordinatorId": None, "organisationId": None})
         for caller in (user("coordinator", "u-coord"), user("organiser", "u-org")):

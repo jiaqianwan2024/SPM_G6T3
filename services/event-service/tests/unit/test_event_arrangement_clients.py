@@ -19,6 +19,8 @@ UNNAMED_BOOKING = {**BOOKING, "bookingId": "vb-2", "venueName": None}
 HELD = {"reservationId": "er-1", "equipmentId": "eq1", "equipmentName": "Projector", "quantity": 2, "status": "active"}
 RESERVED = {**HELD, "reservationId": "er-2", "equipmentName": None, "status": "reserved"}
 RELEASED = {**HELD, "reservationId": "er-3", "status": "released"}
+# Holds the part of a request technical support could cover, so a change affects it too.
+PARTIAL = {**HELD, "reservationId": "er-4", "status": "partial"}
 
 
 def reply(status_code, body=None):
@@ -36,11 +38,13 @@ def fake_client(*responses):
 
 class TestArrangementClients(unittest.TestCase):
     def test_affected_arrangements_names_confirmed_bookings_and_held_reservations(self):
-        stub, client = fake_client(reply(200, [BOOKING, UNNAMED_BOOKING]), reply(200, [HELD, RESERVED, RELEASED]))
+        stub, client = fake_client(
+            reply(200, [BOOKING, UNNAMED_BOOKING]), reply(200, [HELD, RESERVED, RELEASED, PARTIAL])
+        )
         with stub:
             affected = clients.affected_arrangements("e1", "Bearer token")
 
-        self.assertEqual([row["id"] for row in affected], ["vb-1", "vb-2", "er-1", "er-2"])
+        self.assertEqual([row["id"] for row in affected], ["vb-1", "vb-2", "er-1", "er-2", "er-4"])
         self.assertEqual(
             # Stored 09:00 to 17:00 UTC, read in Singapore time.
             affected[0]["summary"], "Venue booking at Marina Hall A, 01 Dec 2026 17:00 to 02 Dec 2026 01:00 SGT"

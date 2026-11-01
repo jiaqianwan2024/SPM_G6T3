@@ -31,9 +31,13 @@ class EventCreate(BaseModel):
     proposedEndAt: datetime
     expectedAttendance: int = Field(ge=1, description="At least one. A draft may still save zero.")
     venueRequirements: str = ""
-    accessibilityNeeds: str = ""
+    # SPM-80: the ticked options as a list, or one string; both are kept, as on a draft.
+    accessibilityNeeds: str | list[str] = ""
     equipmentRequirements: str = ""
     layoutPreference: str | None = None
+    preferredLocation: str = ""
+    requiredFacilities: list[str] = Field(default_factory=list)
+    accessibilityNote: str = ""
     registrationEnabled: bool = False
     registrationOpensAt: datetime | None = None
     registrationClosesAt: datetime | None = None
@@ -1199,10 +1203,15 @@ class EventIntake(BaseModel):
     proposedEndAt: datetime | None = None
     expectedAttendance: int | None = Field(default=None, ge=0)
     venueRequirements: str = ""
-    # The organiser form sends the ticked options as a list. The event record stores one string.
+    # The organiser form sends the ticked options as a list. The event record keeps both the
+    # list and one string of them, as a draft does.
     accessibilityNeeds: str | list[str] = ""
     equipmentRequirements: str = ""
     layoutPreference: str | None = None
+    # SPM-80: the rest of the structured requirements the form sends.
+    preferredLocation: str = ""
+    requiredFacilities: list[str] = Field(default_factory=list)
+    accessibilityNote: str = ""
     registrationEnabled: bool | None = Field(
         default=None,
         description="SPM-81 AC1: whether attendee registration is needed. Required once dates are given.",
@@ -1223,9 +1232,6 @@ class EventIntake(BaseModel):
         return self
 
     def to_create(self) -> EventCreate:
-        needs = self.accessibilityNeeds
-        if isinstance(needs, list):
-            needs = ", ".join(str(item).strip() for item in needs if str(item).strip())
         return EventCreate(
             eventName=self.eventName,
             purpose=self.purpose,
@@ -1236,9 +1242,12 @@ class EventIntake(BaseModel):
             # SPM-14 AC1: attendance must be stated to submit, so a missing one is listed, not assumed.
             expectedAttendance=self.expectedAttendance,
             venueRequirements=self.venueRequirements,
-            accessibilityNeeds=needs or "",
+            accessibilityNeeds=self.accessibilityNeeds,
             equipmentRequirements=self.equipmentRequirements,
             layoutPreference=self.layoutPreference,
+            preferredLocation=self.preferredLocation,
+            requiredFacilities=self.requiredFacilities,
+            accessibilityNote=self.accessibilityNote,
             registrationEnabled=self.registrationEnabled,
             registrationOpensAt=self.registrationOpensAt,
             registrationClosesAt=self.registrationClosesAt,
@@ -1257,6 +1266,10 @@ class EventIntake(BaseModel):
             venueRequirements=self.venueRequirements,
             equipmentRequirements=self.equipmentRequirements,
             layoutPreference=self.layoutPreference,
+            preferredLocation=self.preferredLocation,
+            requiredFacilities=self.requiredFacilities,
+            accessibilityNeeds=self.accessibilityNeeds,
+            accessibilityNote=self.accessibilityNote,
             registrationEnabled=self.registrationEnabled,
             registrationOpensAt=self.registrationOpensAt,
             registrationClosesAt=self.registrationClosesAt,

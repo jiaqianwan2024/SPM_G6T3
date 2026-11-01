@@ -122,6 +122,10 @@ def _current_user(authorization: str | None, role: str, forbidden_message: str) 
     token is forwarded to user-service's /users/me, which re-verifies it and
     maps it to the local user via firebase_uid. ``role`` is the single role
     this call accepts; ``forbidden_message`` is the 403 detail when it does not match.
+
+    Only user-service's own 401 is an auth failure. An unreachable or failing
+    user-service is a 503, as in shared resolve_caller: the browser signs the
+    user out on a 401, so an outage must not look like an expired token.
     """
     if not authorization:
         raise unauthorized()
@@ -132,9 +136,11 @@ def _current_user(authorization: str | None, role: str, forbidden_message: str) 
                 headers={"Authorization": authorization},
             )
     except httpx.HTTPError as exc:
-        raise unauthorized("Could not verify identity") from exc
+        raise service_unavailable("Could not verify identity") from exc
+    if response.status_code == 401:
+        raise unauthorized("Invalid or expired token")
     if response.status_code != 200:
-        raise unauthorized("Could not verify identity")
+        raise service_unavailable("Could not verify identity")
     user = response.json()
     if user.get("role") != role:
         raise forbidden(forbidden_message)
@@ -165,8 +171,9 @@ RESCHEDULE_UNCHECKED = (
     "Venue bookings and equipment reservations could not be checked at the new time right now, so the event "
     "was not rescheduled. Please try again shortly."
 )
-# Equipment reservation statuses that still hold stock for the event.
-HOLDING_RESERVATION_STATUSES = ("active", "reserved")
+# Equipment reservation statuses that still hold stock for the event, as equipment-service
+# counts them: a partial reservation holds the part technical support could cover.
+HOLDING_RESERVATION_STATUSES = ("active", "reserved", "partial")
 
 
 def _arrangement_rows(
@@ -634,35 +641,24 @@ def list_users(authorization: str | None) -> list[dict]:
 def release_event_holds(event_id: str, authorization: str | None) -> None:
     """Ask equipment-service to return stock when an event is rejected or completed.
 
-    Best effort: the status change is already saved, so a down service is logged.
+    Best effort: the status change is already saved, so a failure is logged.
     """
-    headers = {"Authorization": authorization} if authorization else {}
-    try:
-        with httpx.Client(timeout=0.8) as client:
-            client.post(
-                f"{settings.equipment_service_url}/equipment/reservations/release-for-event",
-                json={"eventId": event_id, "reason": "The event was closed"},
-                headers=headers,
-            )
-    except httpx.HTTPError as exc:
-        logger.info("release_event_holds(%s) raised %r", event_id, exc)
+    _release_after_close(
+        f"{settings.equipment_service_url}/equipment/reservations/release-for-event",
+        {"eventId": event_id, "reason": "The event was closed"},
+        authorization,
+        "equipment release",
+    )
 
 
 def release_event_venue_bookings(event_id: str, authorization: str | None) -> None:
     """Ask venue-service to cancel every open venue request and booking for a rejected event.
 
-    Best effort: the rejection is already saved, so a down service is logged.
+    Best effort: the rejection is already saved, so a failure is logged.
     """
-    headers = {"Authorization": authorization} if authorization else {}
-    try:
-        with httpx.Client(timeout=0.8) as client:
-            client.post(
-                f"{settings.venue_service_url}/venues/bookings/release",
-                json={"eventId": event_id},
-                headers=headers,
-            )
-    except httpx.HTTPError as exc:
-        logger.info("release_event_venue_bookings(%s) raised %r", event_id, exc)
+    _release_after_close(
+        f"{settings.venue_service_url}/venues/bookings/release", {"eventId": event_id}, authorization, "venue release"
+    )
 
 
 class ReleaseFailed(Exception):
@@ -680,6 +676,18 @@ def _release_call(url: str, body: dict, authorization: str | None, what: str) ->
         logger.warning("%s for %s got status %s", what, body.get("eventId"), response.status_code)
         raise ReleaseFailed(what)
     return response.json()
+
+
+def _release_after_close(url: str, body: dict, authorization: str | None, what: str) -> None:
+    """A release after a rejection or completion is saved. A release is safe to repeat, so a
+    failure is tried once more; if that fails too, the warning says the holds are still in place."""
+    for _attempt in range(2):
+        try:
+            _release_call(url, body, authorization, what)
+            return
+        except ReleaseFailed:
+            continue
+    logger.warning("%s for %s failed twice, so its holds are still in place", what, body.get("eventId"))
 
 
 def release_venue_for_cancellation(event_id: str, authorization: str | None) -> list[dict]:

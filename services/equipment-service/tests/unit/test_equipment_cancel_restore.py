@@ -107,10 +107,10 @@ class TestReleaseRoutes(RestoreCase):
         app.dependency_overrides.clear()
         super().tearDown()
 
-    def post(self, path, caller, body, access=None):
+    def post(self, path, caller, body, access=None, coordinator="u-coord"):
         with patch("app.routers.equipment.resolve_caller", return_value=caller), patch(
             "app.routers.equipment.check_event_access", side_effect=access
-        ) as checked:
+        ) as checked, patch("app.routers.equipment.fetch_event_coordinator", return_value=coordinator):
             return self.client.post(path, headers=HEADERS, json=body), checked
 
     def test_the_events_own_organiser_can_release_and_restore_after_event_service_agrees(self):
@@ -142,10 +142,33 @@ class TestReleaseRoutes(RestoreCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.status("held"), "active")
 
-    def test_a_coordinator_needs_no_event_check(self):
+    def test_the_events_assigned_coordinator_can_release(self):
         self.reservation("held")
 
         response, checked = self.post("/equipment/reservations/release-for-event", COORDINATOR, {"eventId": "e1"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.status("held"), "released")
+        checked.assert_not_called()
+
+    def test_another_coordinator_is_refused_and_nothing_is_released(self):
+        self.reservation("held")
+
+        for path, body in (
+            ("/equipment/reservations/release-for-event", {"eventId": "e1"}),
+            (
+                "/equipment/reservations/restore-for-event",
+                {"eventId": "e1", "reservations": [{"reservationId": "held", "status": "active"}]},
+            ),
+        ):
+            response, _ = self.post(path, COORDINATOR, body, coordinator="u-other-coord")
+            self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.status("held"), "active")
+
+    def test_technical_support_needs_no_event_check(self):
+        self.reservation("held")
+
+        response, checked = self.post("/equipment/reservations/release-for-event", CALLER, {"eventId": "e1"})
 
         self.assertEqual(response.status_code, 200)
         checked.assert_not_called()

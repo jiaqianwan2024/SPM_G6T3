@@ -3,10 +3,73 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.schemas.event import EventDraftUpsert, OrganiserDraftPatch
+from app.schemas.event import EventCreate, EventDraftUpsert, EventIntake, OrganiserDraftPatch
+from app.services.event_service import FIELD_LABELS
 from shared.auth.deps import require_authenticated_user
 from shared.testing.cases import ServiceTestCase
 from tests.unit.support import END, ORGANISER, START, EventCase, draft_payload
+
+
+def _intake(**overrides) -> EventIntake:
+    """What the organiser form sends when it submits (CreateEvent.vue buildPayload)."""
+    data = dict(
+        eventName="Summit", category="Conference", purpose="Share", proposedStartAt=START, proposedEndAt=END,
+        expectedAttendance=20, registrationEnabled=False, layoutPreference="Theatre",
+        preferredLocation="HarbourFront Centre", requiredFacilities=["Projector", "PA system"],
+        accessibilityNeeds=["Wheelchair accessible", "Accessible restrooms nearby"],
+        accessibilityNote="Need a quiet room nearby",
+    )
+    data.update(overrides)
+    return EventIntake(**data)
+
+
+class TestSubmittedRequirements(EventCase):
+    """A submission keeps every requirement the form sent, not only the ones a draft saved."""
+
+    def assert_requirements(self, saved, selections=("Wheelchair accessible", "Accessible restrooms nearby")):
+        self.assertEqual(saved.preferredLocation, "HarbourFront Centre")
+        self.assertEqual(saved.requiredFacilities, ["Projector", "PA system"])
+        self.assertEqual(saved.accessibilitySelections, list(selections))
+        self.assertEqual(saved.accessibilityNeeds, ", ".join(selections))
+        self.assertEqual(saved.accessibilityNote, "Need a quiet room nearby")
+        self.assertEqual(saved.layoutPreference, "Theatre")
+
+    def test_a_direct_submission_keeps_the_requirements(self):
+        saved = self.service.create_event(_intake().to_create(), "org-1", "o1")
+
+        self.assertEqual(saved.status, "submitted")
+        self.assert_requirements(saved)
+
+    def test_submitting_a_draft_replaces_its_requirements_and_keeps_its_equipment_lines(self):
+        draft = self.service.create_draft(
+            draft_payload(
+                accessibilityNeeds=["Wheelchair accessible"],
+                preferredLocation="Somewhere else",
+                equipmentLines=[{"equipmentId": "eq1", "quantity": 2}],
+            ),
+            "org-1",
+            "o1",
+        )
+
+        saved = self.service.submit_draft(
+            draft.eventId, _intake(accessibilityNeeds=["Accessible restrooms nearby"]).to_create(), "org-1"
+        )
+
+        # The list and the string used to disagree: the string changed and the list kept the draft's.
+        self.assert_requirements(saved, selections=("Accessible restrooms nearby",))
+        self.assertEqual(saved.equipmentLines, [{"equipmentId": "eq1", "quantity": 2, "technicalNotes": ""}])
+
+    def test_a_name_only_intake_saves_its_requirements_on_the_draft(self):
+        draft = EventIntake(
+            eventName="Idea", preferredLocation="HarbourFront Centre", requiredFacilities=["Projector", "PA system"],
+            accessibilityNeeds=["Wheelchair accessible", "Accessible restrooms nearby"],
+            accessibilityNote="Need a quiet room nearby", layoutPreference="Theatre",
+        ).to_draft()
+
+        self.assert_requirements(self.service.create_draft(draft, "org-1", "o1"))
+
+    def test_every_request_field_a_clarification_can_name_has_a_label(self):
+        self.assertEqual(set(EventCreate.model_fields) - set(FIELD_LABELS), set())
 
 
 class TestEventRequirements(EventCase):

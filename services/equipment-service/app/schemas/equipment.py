@@ -363,7 +363,8 @@ class ReleasedReservationOut(EquipmentReservationOut):
 
 class RestoredReservation(BaseModel):
     reservationId: str = Field(min_length=1)
-    status: Literal["active", "reserved"]
+    # The holding statuses (HOLDING_STATUSES): a partial reservation is released and restored too.
+    status: Literal["active", "reserved", "partial"]
 
 
 class ReservationRestoreRequest(BaseModel):

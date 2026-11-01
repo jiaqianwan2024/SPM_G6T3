@@ -42,11 +42,12 @@ def me(user=Depends(current_user)):
     "",
     response_model=list[UserPublic],
     summary="List users",
-    description="Full user directory, for staff and organisers. An attendee gets 403 (SPM-127): they never "
-    "see other people's details.",
+    description="The user directory. Staff get everyone. An organiser gets ConnectSphere's staff and their own "
+    "organisation's people only, never attendees or another client's organisers (SPM-47). An attendee gets 403 "
+    "(SPM-127): they never see other people's details.",
     responses=error_responses(403),
 )
 def list_users(service: UserService = Depends(get_user_service), user=Depends(current_user)):
     if user.role == "attendee":
         raise forbidden("Attendees can open only confirmed event pages and their own registrations.")
-    return service.list_users()
+    return service.directory_for(user)

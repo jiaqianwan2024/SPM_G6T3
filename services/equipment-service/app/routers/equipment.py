@@ -268,13 +268,18 @@ def get_reservation(
 
 
 def _event_releaser(event_id: str, authorization: str | None) -> dict:
-    """Coordinators and technical support release an event's stock; so does an organiser cancelling
-    their own organisation's event (SPM-88 AC1), which event-service decides (SPM-47)."""
+    """Technical support and the event's assigned coordinator release an event's stock; so does an
+    organiser cancelling their own organisation's event (SPM-88 AC1), which event-service decides
+    (SPM-47). Any other coordinator would be freeing another event's equipment (SPM-46)."""
     caller = resolve_caller(
         authorization, settings.user_service_url, allowed_roles={"coordinator", "techsupport", "organiser"}
     )
     if caller.get("role") == "organiser":
         check_event_access(event_id, authorization)
+    elif caller.get("role") == "coordinator":
+        require_assigned_coordinator(
+            fetch_event_coordinator(event_id, authorization), caller["userId"], "release or restore its equipment"
+        )
     return caller
 
 
@@ -282,7 +287,7 @@ def _event_releaser(event_id: str, authorization: str | None) -> dict:
     "/reservations/release-for-event",
     response_model=list[ReleasedReservationOut],
     summary="Release every reservation an event holds",
-    description="Coordinators, technical support, and the event's own organiser (SPM-88). Rejecting, cancelling, "
+    description="Technical support, the event's assigned coordinator, and its own organiser (SPM-88). Rejecting, cancelling, "
     "or completing an event frees its stock. Each reply names the previous status, so the release can be undone, "
     "and the technical support member who handled the line.",
     responses=error_responses(403, 404, 503),
