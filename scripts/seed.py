@@ -24,6 +24,17 @@ URLS = {
 }
 
 
+def schedule_anchor() -> datetime:
+    """The latest 10:00 Singapore time (02:00 UTC), which every seeded date counts from.
+
+    Counting from the moment the seed runs put events at odd times, such as 20:33 to 04:33;
+    from a fixed hour each event starts on the hour and stays inside venue opening hours.
+    """
+    now = datetime.utcnow()
+    anchor = now.replace(hour=2, minute=0, second=0, microsecond=0)
+    return anchor if anchor <= now else anchor - timedelta(days=1)
+
+
 def _empty(conn, table: str) -> bool:
     return conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar() == 0
 
@@ -42,7 +53,7 @@ def _ensure_firebase_user(email: str, password: str, display_name: str) -> str:
 
 def seed_user() -> None:
     engine = create_engine(URLS["user"])
-    now = datetime.utcnow()
+    now = schedule_anchor()
     with engine.begin() as conn:
         for org_id, name in (
             ("org-1", "Apex Partners"),
@@ -191,7 +202,7 @@ def _refresh_demo_windows(conn, now: datetime, day: timedelta) -> None:
 
 def seed_event() -> None:
     engine = create_engine(URLS["event"])
-    now = datetime.utcnow()
+    now = schedule_anchor()
     day = timedelta(days=1)
     # SPM-47: Beacon Media's event, which Apex Partners organisers must never see. Its text is
     # public, since attendees can open it (SPM-91 AC8: no internal notes or client details).
@@ -691,7 +702,7 @@ def _ensure_venue_bookings(conn, now: datetime, day: timedelta) -> None:
 
 def seed_venue() -> None:
     engine = create_engine(URLS["venue"])
-    now = datetime.utcnow()
+    now = schedule_anchor()
     day = timedelta(days=1)
     with engine.begin() as conn:
         if _empty(conn, "venues"):
@@ -1108,7 +1119,7 @@ def _ensure_equipment_catalogue(conn) -> None:
 
 def seed_equipment() -> None:
     engine = create_engine(URLS["equipment"])
-    now = datetime.utcnow()
+    now = schedule_anchor()
     day = timedelta(days=1)
     with engine.begin() as conn:
         _title_case_equipment_categories(conn)
@@ -1214,7 +1225,7 @@ def _ensure_registrations(conn, now: datetime, day: timedelta) -> None:
 
 def seed_registration() -> None:
     engine = create_engine(URLS["registration"])
-    now = datetime.utcnow()
+    now = schedule_anchor()
     day = timedelta(days=1)
     with engine.begin() as conn:
         if not _empty(conn, "registration_windows"):
@@ -1263,7 +1274,7 @@ def seed_registration() -> None:
 
 def seed_notification() -> None:
     engine = create_engine(URLS["notification"])
-    now = datetime.utcnow()
+    now = schedule_anchor()
     with engine.begin() as conn:
         if not _empty(conn, "notifications"):
             return
